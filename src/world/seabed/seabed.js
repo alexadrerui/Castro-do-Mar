@@ -28,6 +28,7 @@ import { SEABED } from './config.js';
 // active when the camera is under water or low above it.
 const TAU = Math.PI * 2;
 const CAP = 448; // instance slots per tile
+const SOLID_CELL = 4; // m: grid of the rocks for floorAt()
 const SLOTS = 64; // loaded tiles
 const GEN_PER_FRAME = 3; // tiles generated per frame at most
 
@@ -80,6 +81,8 @@ export class Seabed {
 		this.mesh = this.batch.createMesh( this.material );
 		this.group.add( this.mesh );
 
+		// the rocks of the loaded tiles on a SOLID_CELL grid (cell key -> [ rock ]), for floorAt()
+		this.solidGrid = new Map();
 		this.tiles = new Map(); // key -> tile { ix, iz, slot, n, ymin, ymax, cull arrays } (slot -1: empty)
 		this.freeSlots = [];
 		for ( let s = SLOTS - 1; s >= 0; s -- ) this.freeSlots.push( s );
@@ -323,7 +326,13 @@ export class Seabed {
 		tile.lods[ i ] = lods;
 		tile.ymin = Math.min( tile.ymin, y );
 		tile.ymax = Math.max( tile.ymax, y + radius * 2 );
-		if ( t.solid ) tile.solids.push( [ x, z, foot ] );
+		if ( t.solid ) {
+
+			tile.solids.push( [ x, z, foot ] );
+			// a dome over the footprint: base y, top at the model's height (tilted by the alignment)
+			this.addSolid( tile, { x, z, r: model.radius * s * Math.max( sxz, 1 / sxz ) * 0.92, y0: y, top: y + model.top * s * sy * _v.y } );
+
+		}
 		return true;
 
 	}
@@ -340,7 +349,51 @@ export class Seabed {
 
 	}
 
+	addSolid( tile, rock ) {
+
+		const c0x = Math.floor( ( rock.x - rock.r ) / SOLID_CELL ), c1x = Math.floor( ( rock.x + rock.r ) / SOLID_CELL );
+		const c0z = Math.floor( ( rock.z - rock.r ) / SOLID_CELL ), c1z = Math.floor( ( rock.z + rock.r ) / SOLID_CELL );
+		tile.solidCells = tile.solidCells || new Set();
+		for ( let cz = c0z; cz <= c1z; cz ++ ) for ( let cx = c0x; cx <= c1x; cx ++ ) {
+
+			const key = cx * 131072 + cz;
+			let list = this.solidGrid.get( key );
+			if ( ! list ) this.solidGrid.set( key, list = [] );
+			list.push( rock );
+			tile.solidCells.add( key );
+
+		}
+
+		( tile.rocks = tile.rocks || new Set() ).add( rock );
+
+	}
+
+	// Highest solid surface at x, z: the terrain or the top of a seabed rock of the loaded tiles
+	// (each rock is a dome over its footprint). The fish use it to swim over the rocks.
+	floorAt( x, z ) {
+
+		let h = this.hf.heightAt( x, z );
+		const list = this.solidGrid.get( Math.floor( x / SOLID_CELL ) * 131072 + Math.floor( z / SOLID_CELL ) );
+		if ( list ) for ( let i = 0; i < list.length; i ++ ) {
+
+			const r = list[ i ];
+			const dx = x - r.x, dz = z - r.z, q = 1 - ( dx * dx + dz * dz ) / ( r.r * r.r );
+			if ( q > 0 ) h = Math.max( h, r.y0 + ( r.top - r.y0 ) * Math.sqrt( q ) );
+
+		}
+
+		return h;
+
+	}
+
 	dropTile( key, tile ) {
+
+		if ( tile.solidCells ) for ( const k of tile.solidCells ) {
+
+			const list = this.solidGrid.get( k ).filter( ( r ) => ! tile.rocks.has( r ) );
+			if ( list.length ) this.solidGrid.set( k, list ); else this.solidGrid.delete( k );
+
+		}
 
 		if ( tile.slot >= 0 ) this.freeSlots.push( tile.slot );
 		this.tiles.delete( key );

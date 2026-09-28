@@ -55,7 +55,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - `schools.js`: grupos criados por habitat em células de 48 m em volta da câmera (16 células × 900 peixes, uma por frame) e descartados longe dela. Comportamentos do Tidewater: cardume, bola de isca, patrulha que caça a bola, mill, forrageio, solo, superfície, salto da tainha, raia que descansa. Os peixes fogem da câmera embaixo d'água.
   - A simulação e o culling ficam na CPU (~0,6 ms para ~1.900 peixes). Os registros visíveis são compactados e sobem num único intervalo.
   - `app.fish.paused = true` congela a simulação (QA). `node tools/fish.mjs [prefixo] [espécies...]` faz um close-up lateral de cada espécie.
-  - Limitação: o chão dos peixes é só o heightfield; eles ainda podem atravessar blocos de granito do fundo.
+  - O chão dos peixes é `seabed.floorAt(x, z)`: terreno ou topo das pedras do fundo (cada pedra é um domo sobre a base, numa grade de 4 m mantida pelos tiles carregados). Os peixes passam por cima das pedras em vez de atravessá-las.
 - Embaixo d'água o `camera.far` cai para 90 m (a névoa esconde o resto). O frame submerso passou de 27,6 para 16,6 ms.
 
 - **Pedras de granito** (`src/world/granite/`, porte do Tidewater, MIT; usadas por `rocks.js`):

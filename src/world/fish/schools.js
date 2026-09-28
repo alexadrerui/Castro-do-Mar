@@ -166,9 +166,10 @@ export class FishSchools {
 
 	// ------------------------------------------------------------------ layout
 
+	// the seabed with its rocks (seabed.js floorAt), so the fish swim over and around them
 	floorAt( x, z ) {
 
-		return this.hf.heightAt( x, z );
+		return this.seabed.floorAt( x, z );
 
 	}
 
