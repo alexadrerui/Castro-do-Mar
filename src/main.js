@@ -9,6 +9,7 @@ import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
 import { Seabed } from './world/seabed/seabed.js';
+import { FishSchools } from './world/fish/schools.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
@@ -145,6 +146,12 @@ async function main() {
 	app.seabed = seabed;
 	app.layers.seabed = { label: 'Fundo do mar', object: seabed.group };
 	app.onFrame.push( () => seabed.update( camera ) );
+	// Fish, spawned by habitat in cells around the camera (only near / under the water).
+	const fish = new FishSchools( { hf, seabed, sun: sky.sun, sunDir: sky.state.sunDir, getViewHeight: () => renderer.domElement.height } );
+	scene.add( fish.group );
+	app.fish = fish;
+	app.layers.fish = { label: 'Peixes', object: fish.group };
+	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
 
 	// ---- camera & controls ----
 	const cam = new FreeCam( camera, canvas, { groundFn: ( x, z ) => hf.heightAt( x, z ), moveSpeed: 22 } );
@@ -177,6 +184,7 @@ async function main() {
 		app.underwater?.setDaylight( hazeColor.value );
 		app.snow?.light.value.copy( hazeColor.value );
 		app.seabed?.updateSun( sky.state.sunDir );
+		app.fish?.updateSun( sky.state.sunDir );
 	};
 
 	// Post: scene pass -> tone map / sRGB -> colour grade (late-afternoon look).

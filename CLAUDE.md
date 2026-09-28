@@ -41,6 +41,15 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - `materials.js`: um material físico com um ramo por `SURFACE`, a ondulação analítica vinda do leste e a translucidez como emissivo.
   - `seabed.js`: distribuição por habitat (profundidade, declive, manchas de ruído → rocha/areia) em tiles de 16 m gerados deterministicamente em volta da câmera (64 slots × 448 instâncias). Fica desligado acima de ~26 m sobre a água.
   - O terreno submerso (`terrain.js`) usa areia/lodo com marcas de ondulação; a rocha da costa só vale na linha d'água.
+- **Peixes** (`src/world/fish/`, porte do `Fish.js` do Tidewater, MIT):
+  - `geometry.js` e `creatures.js` são cópias (peixe montado pela tabela de anatomia; raia).
+  - `species.js`: 10 espécies galegas — peixe-rei, sardinha, chicharro, xarda, muxo, robaliza, sargo, maragota, agulha e raia.
+  - `material.js`: a pele do Tidewater, com as marcas dessas espécies. A translucidez das nadadeiras entra como emissivo.
+  - `schools.js`: grupos criados por habitat em células de 48 m em volta da câmera (16 células × 900 peixes, uma por frame) e descartados longe dela. Comportamentos do Tidewater: cardume, bola de isca, patrulha que caça a bola, mill, forrageio, solo, superfície, salto da tainha, raia que descansa. Os peixes fogem da câmera embaixo d'água.
+  - A simulação e o culling ficam na CPU (~0,6 ms para ~1.900 peixes). Os registros visíveis são compactados e sobem num único intervalo.
+  - `app.fish.paused = true` congela a simulação (QA). `node tools/fish.mjs [prefixo] [espécies...]` faz um close-up lateral de cada espécie.
+  - Limitação: o chão dos peixes é só o heightfield; eles ainda podem atravessar blocos de granito do fundo.
+- Embaixo d'água o `camera.far` cai para 90 m (a névoa esconde o resto). O frame submerso passou de 27,6 para 16,6 ms.
 
 ## Pendências (backlog)
 ### Câmera

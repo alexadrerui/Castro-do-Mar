@@ -13,6 +13,7 @@ const ABSORB = [ 0.42, 0.11, 0.08 ]; // 1/m, view leg, per channel (cold, green 
 const LIGHT_ABSORB = [ 0.16, 0.055, 0.05 ]; // 1/m, sunlight going down to the point
 const SCATTER = 0.07; // 1/m: visibility of roughly 30-40 m
 const DEPTH_FALLOFF = 0.06; // 1/m: murk light lost per metre below the surface
+const UNDER_FAR = 90; // m: camera far plane while under water
 
 export class Underwater {
 
@@ -33,7 +34,23 @@ export class Underwater {
 	update( camera, waterLevel = this.waterLevel ) {
 
 		const d = waterLevel - camera.position.y;
-		this.on.value = d > 0 ? 1 : 0;
+		// under water nothing shows beyond ~80 m (the murk leaves < 0.5 %): a near far plane culls
+		// the village, the mountains and the horizon (the depth buffer's far value reads as murk)
+		const under = d > 0;
+		if ( under !== this._under ) {
+
+			if ( under ) {
+
+				this._far = camera.far;
+				camera.far = UNDER_FAR;
+
+			} else if ( this._far ) camera.far = this._far;
+			camera.updateProjectionMatrix();
+			this._under = under;
+
+		}
+
+		this.on.value = under ? 1 : 0;
 		this.depth.value = Math.max( d, 0 );
 		this.waterLevel = waterLevel;
 		if ( d > 0 ) {
