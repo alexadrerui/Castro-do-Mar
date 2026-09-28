@@ -9,43 +9,28 @@ import { clearance, sampleMask } from './vegetation.js';
 import { pathDistance, coastX } from './heightfield.js';
 import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
 import { proceduralBump } from './terrain.js';
+import { buildRockGeometry, ROCK_STYLES } from './granite/geometry.js';
+import { getDetailTexture } from './granite/detail.js';
+import { createGraniteMaterial } from './granite/shading.js';
 
 const nR = makeSimplex( 3131 );
 
-// Granite boulder: rounded block with flattened joint faces (planar cuts)
-// and noisy weathering. Unit size (~1 m), scaled per instance.
-export function boulderGeometry( detail, seed ) {
-	const rnd = mulberry32( seed );
-	const g = new THREE.IcosahedronGeometry( 1, detail );
-	const p = g.attributes.position;
-	const planes = [];
-	for ( let i = 0; i < 5; i ++ ) {
-		const n = new THREE.Vector3( rnd() - 0.5, ( rnd() - 0.3 ) * 0.8, rnd() - 0.5 ).normalize();
-		planes.push( { n, d: 0.62 + rnd() * 0.25 } );
-	}
-	const v = new THREE.Vector3();
-	for ( let i = 0; i < p.count; i ++ ) {
-		v.fromBufferAttribute( p, i );
-		const n1 = nR( v.x * 1.3 + seed, v.z * 1.3 + v.y ) * 0.16 + nR( v.x * 3.1 - seed, v.y * 3.1 + v.z ) * 0.06;
-		v.multiplyScalar( 1 + n1 );
-		// joint faces: clamp to planes
-		for ( const pl of planes ) {
-			const dd = v.dot( pl.n );
-			if ( dd > pl.d ) v.addScaledVector( pl.n, ( pl.d - dd ) * 0.85 );
-		}
-		v.y *= 0.72; // boulders are wider than tall
-		if ( v.y < - 0.35 ) v.y = - 0.35 + ( v.y + 0.35 ) * 0.3; // flat-ish base, buried
-		p.setXYZ( i, v.x, v.y, v.z );
-	}
-	g.deleteAttribute( 'uv' );
-	g.computeVertexNormals();
+// Pebble: tiny, low poly.
+function pebbleGeometry( seed ) {
+	const g = graniteGeometry( 'boulder', seed, 0 );
+	g.scale( 1, 0.7, 1 );
 	return g;
 }
 
-// Pebble: tiny, low poly.
-function pebbleGeometry( seed ) {
-	const g = boulderGeometry( 0, seed );
-	g.scale( 1, 0.7, 1 );
+// Granite rock of a style (granite/geometry.js: fracture planes, rounded edges, baked cavity
+// 'ao'), with its flat base moved to y = -0.35 like the old boulders, so the placement below keeps
+// burying the rocks the same way.
+const STYLE = Object.fromEntries( ROCK_STYLES.map( ( s, i ) => [ s.name, i ] ) );
+function graniteGeometry( style, seed, subdiv ) {
+	const g = buildRockGeometry( STYLE[ style ], seed, subdiv );
+	g.computeBoundingBox();
+	g.translate( 0, - 0.35 - g.boundingBox.min.y, 0 );
+	g.computeBoundingSphere();
 	return g;
 }
 
@@ -84,18 +69,28 @@ export function createRocks( app, progress ) {
 	const { hf } = app;
 	const group = new THREE.Group();
 	group.name = 'rocks';
-	const mat = createRockMaterial();
+	// granite surface from a pre-generated detail texture (no per-pixel noise); distant tiles use
+	// the cheap variant
+	const tex = getDetailTexture();
+	const heightTex = app.terrain.heightTex;
+	const mat = createGraniteMaterial( { tex, heightTex, waterLevel: WATER_LEVEL } );
+	const matLo = createGraniteMaterial( { tex, heightTex, waterLevel: WATER_LEVEL, lo: true } );
 	app.rockMaterial = mat;
 
-	const variants = [];
-	for ( let v = 0; v < 2; v ++ ) {
-		const s = new ChunkedInstances( { name: 'boulder' + v, hi: boulderGeometry( 2, 100 + v ), lo: boulderGeometry( 0, 100 + v ), material: mat, tile: 260, lodDistance: 100, shadowDistance: 110, layer: 1, reflect: false } );
+	// one style per setting: rounded tor blocks on the hills, boulders on the shore, angular
+	// blocks in the talus under the cliff
+	const chunked = ( name, style, seed ) => {
+		const s = new ChunkedInstances( { name, hi: graniteGeometry( style, seed, 2 ), lo: graniteGeometry( style, seed, 1 ), material: mat, materialLo: matLo, tile: 260, lodDistance: 100, shadowDistance: 110, layer: 1, reflect: false } );
 		s.addAttribute( 'aTint', 3 );
-		variants.push( s );
-	}
+		return s;
+	};
+	const tors = [ chunked( 'tor0', 'tor', 101 ), chunked( 'tor1', 'boulder', 102 ) ];
+	const shore = [ chunked( 'shore0', 'boulder', 111 ), chunked( 'shore1', 'tor', 112 ) ];
+	const talus = [ chunked( 'talus0', 'block', 121 ), chunked( 'talus1', 'slab', 122 ) ];
+	const variants = [ ...tors, ...shore, ...talus ];
 	const gravel = [];
 	for ( let v = 0; v < 2; v ++ ) {
-		const s = new ChunkedInstances( { name: 'gravel' + v, hi: pebbleGeometry( 200 + v ), material: mat, tile: 120, castShadow: false, layer: 1, maxDistance: 110, reflect: false } );
+		const s = new ChunkedInstances( { name: 'gravel' + v, hi: pebbleGeometry( 200 + v ), material: matLo, tile: 120, castShadow: false, layer: 1, maxDistance: 110, reflect: false } );
 		s.addAttribute( 'aTint', 3 );
 		gravel.push( s );
 	}
@@ -136,7 +131,7 @@ export function createRocks( app, progress ) {
 				const a = rnd() * Math.PI * 2, r = i ? big * ( 0.8 + rnd() * 1.4 ) : 0;
 				const bx = px + Math.cos( a ) * r, bz = pz + Math.sin( a ) * r;
 				if ( distV < 380 && clearance( bx, bz, app.mask, 1 ) <= 0 ) continue;
-				put( variants, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) );
+				put( tors, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) );
 				counts.boulders ++;
 			}
 		}
@@ -153,7 +148,7 @@ export function createRocks( app, progress ) {
 			const n = 0.5 + 0.5 * nR( px * 0.05, pz * 0.05 );
 			if ( rnd() > band * ( 0.12 + 0.35 * n ) ) continue;
 			if ( pathDistance( px, pz ).d < 3 ) continue;
-			put( variants, px, pz, 0.5 + Math.pow( rnd(), 2.2 ) * 3.2, 0.35 );
+			put( shore, px, pz, 0.5 + Math.pow( rnd(), 2.2 ) * 3.2, 0.35 );
 			counts.boulders ++;
 		}
 		progress?.( 0.6 + 0.25 * ( z - hf.z0 ) / hf.size );
@@ -170,7 +165,7 @@ export function createRocks( app, progress ) {
 				const dx = px - MINE.x, dz = pz - MINE.z;
 				if ( Math.abs( dx * MINE.tx + dz * MINE.tz ) < MINE.width / 2 + 1 && Math.abs( dx * MINE.nx + dz * MINE.nz ) < MINE.depth / 2 + 11 ) continue;
 				if ( pathDistance( px, pz ).d < 3 ) continue;
-				put( variants, px, pz, ( off < 5 ? 2.2 : 1.3 ) + rnd() * 1.8, 0.3 );
+				put( talus, px, pz, ( off < 5 ? 2.2 : 1.3 ) + rnd() * 1.8, 0.3 );
 				counts.boulders ++;
 			}
 		}
