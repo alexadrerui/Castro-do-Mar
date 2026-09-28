@@ -1,0 +1,172 @@
+import * as THREE from 'three/webgpu';
+
+// Game-engine style fly camera, modelled after hxtnv/three-freecam:
+//  - right (or left) drag: look      - WASD / arrows: fly     - Q / E: down / up
+//  - Shift: boost                   - wheel while looking: speed, otherwise dolly
+//  - middle drag: pan               - Alt + left drag: orbit around pivot
+//  - F: frame pivot
+export class FreeCam {
+
+	constructor( camera, dom, opts = {} ) {
+		this.camera = camera;
+		this.dom = dom;
+		this.moveSpeed = opts.moveSpeed ?? 18;
+		this.boost = opts.boost ?? 5;
+		this.lookSpeed = opts.lookSpeed ?? 0.0022;
+		this.damping = opts.damping ?? 0.82;
+		this.groundFn = opts.groundFn || null;   // (x,z) => height
+		this.minClearance = opts.minClearance ?? 1.7;
+		this.enabled = true;
+
+		this.yaw = 0; this.pitch = 0;
+		this.vel = new THREE.Vector3();
+		this.pivot = new THREE.Vector3();
+		this.keys = new Set();
+		this.mode = null; // 'look' | 'pan' | 'orbit'
+		this.last = { x: 0, y: 0 };
+		this.tween = null;
+
+		this._syncFromCamera();
+
+		dom.addEventListener( 'contextmenu', ( e ) => e.preventDefault() );
+		dom.addEventListener( 'pointerdown', this._down.bind( this ) );
+		window.addEventListener( 'pointermove', this._move.bind( this ) );
+		window.addEventListener( 'pointerup', this._up.bind( this ) );
+		dom.addEventListener( 'wheel', this._wheel.bind( this ), { passive: false } );
+		window.addEventListener( 'keydown', ( e ) => {
+			if ( e.target.closest && e.target.closest( 'input,select,textarea' ) ) return;
+			this.keys.add( e.code );
+			if ( e.code === 'KeyF' ) this.frame();
+		} );
+		window.addEventListener( 'keyup', ( e ) => this.keys.delete( e.code ) );
+		window.addEventListener( 'blur', () => this.keys.clear() );
+	}
+
+	_syncFromCamera() {
+		const e = new THREE.Euler().setFromQuaternion( this.camera.quaternion, 'YXZ' );
+		this.yaw = e.y; this.pitch = e.x;
+		const fwd = new THREE.Vector3( 0, 0, - 1 ).applyQuaternion( this.camera.quaternion );
+		this.pivot.copy( this.camera.position ).addScaledVector( fwd, 60 );
+	}
+
+	_down( e ) {
+		if ( ! this.enabled ) return;
+		this.tween = null;
+		if ( e.button === 2 || ( e.button === 0 && ! e.altKey ) ) this.mode = 'look';
+		else if ( e.button === 1 ) { this.mode = 'pan'; e.preventDefault(); }
+		else if ( e.button === 0 && e.altKey ) this.mode = 'orbit';
+		this.last.x = e.clientX; this.last.y = e.clientY;
+		this.dom.setPointerCapture?.( e.pointerId );
+		this.dom.classList.add( 'dragging' );
+	}
+
+	_move( e ) {
+		if ( ! this.mode ) return;
+		const dx = e.clientX - this.last.x, dy = e.clientY - this.last.y;
+		this.last.x = e.clientX; this.last.y = e.clientY;
+		if ( this.mode === 'look' ) {
+			this.yaw -= dx * this.lookSpeed;
+			this.pitch -= dy * this.lookSpeed;
+			this.pitch = Math.max( - 1.55, Math.min( 1.55, this.pitch ) );
+		} else if ( this.mode === 'pan' ) {
+			const d = this.camera.position.distanceTo( this.pivot );
+			const s = d * 0.0015;
+			const right = new THREE.Vector3( 1, 0, 0 ).applyQuaternion( this.camera.quaternion );
+			const up = new THREE.Vector3( 0, 1, 0 ).applyQuaternion( this.camera.quaternion );
+			const off = right.multiplyScalar( - dx * s ).add( up.multiplyScalar( dy * s ) );
+			this.camera.position.add( off ); this.pivot.add( off );
+		} else if ( this.mode === 'orbit' ) {
+			const off = this.camera.position.clone().sub( this.pivot );
+			const sph = new THREE.Spherical().setFromVector3( off );
+			sph.theta -= dx * this.lookSpeed * 1.5;
+			sph.phi = Math.max( 0.05, Math.min( Math.PI - 0.05, sph.phi - dy * this.lookSpeed * 1.5 ) );
+			off.setFromSpherical( sph );
+			this.camera.position.copy( this.pivot ).add( off );
+			this.camera.lookAt( this.pivot );
+			const eu = new THREE.Euler().setFromQuaternion( this.camera.quaternion, 'YXZ' );
+			this.yaw = eu.y; this.pitch = eu.x;
+		}
+	}
+
+	_up() {
+		this.mode = null;
+		this.dom.classList.remove( 'dragging' );
+	}
+
+	_wheel( e ) {
+		e.preventDefault();
+		if ( this.mode === 'look' ) {
+			this.moveSpeed = Math.max( 1, Math.min( 600, this.moveSpeed * ( e.deltaY > 0 ? 0.85 : 1.18 ) ) );
+			this.onSpeed?.( this.moveSpeed );
+		} else {
+			const fwd = new THREE.Vector3( 0, 0, - 1 ).applyQuaternion( this.camera.quaternion );
+			const d = Math.max( 2, this.camera.position.distanceTo( this.pivot ) );
+			this.camera.position.addScaledVector( fwd, - Math.sign( e.deltaY ) * d * 0.12 );
+		}
+	}
+
+	frame() {
+		const fwd = new THREE.Vector3( 0, 0, - 1 ).applyQuaternion( this.camera.quaternion );
+		this.flyTo( this.pivot.clone().addScaledVector( fwd, - 60 ), this.pivot.clone(), 1.2 );
+	}
+
+	// Smoothly fly to position `pos` looking at `target`.
+	flyTo( pos, target, duration = 2.2 ) {
+		const q1 = new THREE.Quaternion().setFromRotationMatrix(
+			new THREE.Matrix4().lookAt( pos, target, new THREE.Vector3( 0, 1, 0 ) ) );
+		this.tween = {
+			t: 0, d: duration,
+			p0: this.camera.position.clone(), p1: pos.clone(),
+			q0: this.camera.quaternion.clone(), q1
+		};
+		this.pivot.copy( target );
+	}
+
+	jumpTo( pos, target ) {
+		this.tween = null;
+		this.camera.position.copy( pos );
+		this.camera.lookAt( target );
+		this.pivot.copy( target );
+		this._syncFromCamera();
+		this.pivot.copy( target );
+		this.vel.set( 0, 0, 0 );
+	}
+
+	update( dt ) {
+		const cam = this.camera;
+		if ( this.tween ) {
+			const tw = this.tween;
+			tw.t += dt / tw.d;
+			const s = tw.t >= 1 ? 1 : ( tw.t < 0.5 ? 4 * tw.t ** 3 : 1 - Math.pow( - 2 * tw.t + 2, 3 ) / 2 );
+			cam.position.lerpVectors( tw.p0, tw.p1, s );
+			cam.quaternion.slerpQuaternions( tw.q0, tw.q1, s );
+			if ( tw.t >= 1 ) { this.tween = null; const eu = new THREE.Euler().setFromQuaternion( cam.quaternion, 'YXZ' ); this.yaw = eu.y; this.pitch = eu.x; }
+			return;
+		}
+
+		if ( this.mode !== 'orbit' ) cam.quaternion.setFromEuler( new THREE.Euler( this.pitch, this.yaw, 0, 'YXZ' ) );
+
+		if ( ! this.enabled ) return;
+		const k = this.keys;
+		const input = new THREE.Vector3(
+			( k.has( 'KeyD' ) || k.has( 'ArrowRight' ) ? 1 : 0 ) - ( k.has( 'KeyA' ) || k.has( 'ArrowLeft' ) ? 1 : 0 ),
+			( k.has( 'KeyE' ) || k.has( 'Space' ) ? 1 : 0 ) - ( k.has( 'KeyQ' ) || k.has( 'ControlLeft' ) ? 1 : 0 ),
+			( k.has( 'KeyS' ) || k.has( 'ArrowDown' ) ? 1 : 0 ) - ( k.has( 'KeyW' ) || k.has( 'ArrowUp' ) ? 1 : 0 )
+		);
+		const speed = this.moveSpeed * ( k.has( 'ShiftLeft' ) || k.has( 'ShiftRight' ) ? this.boost : 1 );
+		const wish = new THREE.Vector3( input.x, 0, input.z ).applyQuaternion( cam.quaternion );
+		wish.y += input.y;
+		if ( wish.lengthSq() > 0 ) wish.normalize().multiplyScalar( speed );
+
+		const damp = Math.pow( this.damping, dt * 60 );
+		this.vel.lerp( wish, 1 - damp );
+		cam.position.addScaledVector( this.vel, dt );
+		if ( this.vel.lengthSq() > 0.01 ) this.pivot.addScaledVector( this.vel, dt );
+
+		if ( this.groundFn ) {
+			const g = this.groundFn( cam.position.x, cam.position.z );
+			const minY = Math.max( g, 0 ) + this.minClearance;
+			if ( cam.position.y < minY ) cam.position.y = minY;
+		}
+	}
+}

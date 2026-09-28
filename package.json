@@ -1,0 +1,23 @@
+{
+  "name": "vila_celta_-890",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "three": "^0.186.1",
+    "three-bvh-csg": "^0.0.18",
+    "three-mesh-bvh": "^0.9.15"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.12.0",
+    "vite": "^8.3.1"
+  },
+  "type": "module"
+}

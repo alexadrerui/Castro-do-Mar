@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Castro do Mar — Vila Celta 890</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+	<link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+	<canvas id="view"></canvas>
+
+	<!-- ================= LOADING SCREEN ================= -->
+	<section id="loader" aria-live="polite">
+		<div class="ld-bg"></div>
+		<div class="ld-card">
+			<svg class="triskele" viewBox="-60 -60 120 120" aria-hidden="true">
+				<circle r="56" class="ring" />
+				<circle r="50" class="ring thin" />
+				<g class="arms">
+					<path d="M0,0 C0,-12 9,-20 18,-20 C28,-20 34,-11 33,-1 C32,9 23,15 15,13 C8,11 6,3 11,-1 C14,-4 19,-3 20,1" />
+					<path d="M0,0 C0,-12 9,-20 18,-20 C28,-20 34,-11 33,-1 C32,9 23,15 15,13 C8,11 6,3 11,-1 C14,-4 19,-3 20,1" transform="rotate(120)" />
+					<path d="M0,0 C0,-12 9,-20 18,-20 C28,-20 34,-11 33,-1 C32,9 23,15 15,13 C8,11 6,3 11,-1 C14,-4 19,-3 20,1" transform="rotate(240)" />
+					<circle r="3.2" class="hub" />
+				</g>
+			</svg>
+			<p class="ld-kicker">Anno Domini DCCCXC</p>
+			<h1>Castro do Mar</h1>
+			<p class="ld-sub">Uma vila celta entre montanhas e o lago</p>
+
+			<div class="ld-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+				<div class="ld-fill"></div>
+				<div class="ld-knots"></div>
+			</div>
+			<div class="ld-row">
+				<span id="ld-stage">Acendendo as fogueiras…</span>
+				<span id="ld-pct">0%</span>
+			</div>
+			<ol id="ld-steps"></ol>
+			<p id="ld-tip" class="ld-tip"></p>
+			<button id="ld-enter" class="btn gold" hidden>Entrar no castro</button>
+			<p id="ld-backend" class="ld-backend"></p>
+		</div>
+	</section>
+
+	<!-- ================= HUD ================= -->
+	<section id="hud" hidden>
+		<header class="hud-top">
+			<div class="brand panel">
+				<span class="sigil">◈</span>
+				<div>
+					<strong>Castro do Mar</strong>
+					<small id="hud-place">Vila celta · 890 d.C.</small>
+				</div>
+			</div>
+
+			<div class="compass panel" aria-label="Bússola">
+				<div class="compass-strip" id="compass-strip"></div>
+				<div class="compass-needle"></div>
+			</div>
+
+			<div class="stats panel" id="stats">
+				<span><b id="st-fps">–</b> fps</span>
+				<span id="st-backend">–</span>
+				<span><b id="st-calls">–</b> draws</span>
+				<span><b id="st-tris">–</b> tris</span>
+			</div>
+		</header>
+
+		<aside class="side panel" id="side">
+			<button class="side-toggle" id="side-toggle" title="Painel (H)">☰</button>
+			<div class="side-body">
+				<h3>Vistas</h3>
+				<div class="grid-btn" id="views"></div>
+
+				<h3>Sol & Céu</h3>
+				<label>Elevação <output id="o-elev"></output><input type="range" id="r-elev" min="-4" max="80" step="0.5" /></label>
+				<label>Azimute <output id="o-azi"></output><input type="range" id="r-azi" min="0" max="360" step="1" /></label>
+				<label>Nuvens <output id="o-cloud"></output><input type="range" id="r-cloud" min="0" max="1" step="0.01" /></label>
+				<label>Névoa <output id="o-fog"></output><input type="range" id="r-fog" min="0" max="3" step="0.05" /></label>
+
+				<h3>Camadas</h3>
+				<div class="toggles" id="layers"></div>
+
+				<h3>Qualidade</h3>
+				<label>Resolução <output id="o-res"></output><input type="range" id="r-res" min="0.5" max="2" step="0.05" /></label>
+				<label class="chk"><input type="checkbox" id="c-shadows" checked /> Sombras</label>
+				<label class="chk"><input type="checkbox" id="c-refl" checked /> Reflexo na água</label>
+			</div>
+		</aside>
+
+		<footer class="hud-bottom">
+			<div class="keys panel">
+				<span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> voar</span>
+				<span><kbd>Q</kbd><kbd>E</kbd> descer/subir</span>
+				<span><kbd>Shift</kbd> rápido</span>
+				<span><kbd>Arrastar</kbd> olhar</span>
+				<span><kbd>Roda</kbd> velocidade</span>
+				<span><kbd>1–6</kbd> vistas</span>
+				<span><kbd>H</kbd> painel</span>
+				<span><kbd>P</kbd> foto</span>
+			</div>
+			<div class="coords panel">
+				<span>X <b id="c-x">0</b></span>
+				<span>Z <b id="c-z">0</b></span>
+				<span>Alt <b id="c-y">0</b> m</span>
+				<span>Vel <b id="c-v">0</b></span>
+			</div>
+		</footer>
+		<div id="toast" class="toast"></div>
+	</section>
+
+	<script type="module" src="/src/main.js"></script>
+</body>
+</html>

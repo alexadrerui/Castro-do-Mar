@@ -1,0 +1,201 @@
+import * as THREE from 'three/webgpu';
+import {
+	positionWorld, normalWorld, attribute, vec2, vec3, float, color, mix, smoothstep, clamp, fract,
+	mx_noise_float, mx_fractal_noise_float, mx_worley_noise_vec2
+} from 'three/tsl';
+import { ChunkedInstances } from '../core/chunked.js';
+import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
+import { clearance, sampleMask } from './vegetation.js';
+import { pathDistance, coastX } from './heightfield.js';
+import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
+import { proceduralBump } from './terrain.js';
+
+const nR = makeSimplex( 3131 );
+
+// Granite boulder: rounded block with flattened joint faces (planar cuts)
+// and noisy weathering. Unit size (~1 m), scaled per instance.
+export function boulderGeometry( detail, seed ) {
+	const rnd = mulberry32( seed );
+	const g = new THREE.IcosahedronGeometry( 1, detail );
+	const p = g.attributes.position;
+	const planes = [];
+	for ( let i = 0; i < 5; i ++ ) {
+		const n = new THREE.Vector3( rnd() - 0.5, ( rnd() - 0.3 ) * 0.8, rnd() - 0.5 ).normalize();
+		planes.push( { n, d: 0.62 + rnd() * 0.25 } );
+	}
+	const v = new THREE.Vector3();
+	for ( let i = 0; i < p.count; i ++ ) {
+		v.fromBufferAttribute( p, i );
+		const n1 = nR( v.x * 1.3 + seed, v.z * 1.3 + v.y ) * 0.16 + nR( v.x * 3.1 - seed, v.y * 3.1 + v.z ) * 0.06;
+		v.multiplyScalar( 1 + n1 );
+		// joint faces: clamp to planes
+		for ( const pl of planes ) {
+			const dd = v.dot( pl.n );
+			if ( dd > pl.d ) v.addScaledVector( pl.n, ( pl.d - dd ) * 0.85 );
+		}
+		v.y *= 0.72; // boulders are wider than tall
+		if ( v.y < - 0.35 ) v.y = - 0.35 + ( v.y + 0.35 ) * 0.3; // flat-ish base, buried
+		p.setXYZ( i, v.x, v.y, v.z );
+	}
+	g.deleteAttribute( 'uv' );
+	g.computeVertexNormals();
+	return g;
+}
+
+// Pebble: tiny, low poly.
+function pebbleGeometry( seed ) {
+	const g = boulderGeometry( 0, seed );
+	g.scale( 1, 0.7, 1 );
+	return g;
+}
+
+export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1, jointScale = 0.9 } = {} ) {
+	const mat = new THREE.MeshStandardNodeMaterial();
+	const wp = positionWorld;
+	const tint = ( useTint ? attribute( 'aTint', 'vec3' ) : vec3( 1 ) ).mul( tintScale );
+	const n3 = mx_fractal_noise_float( wp.mul( 0.45 ), 3 ).mul( 0.5 ).add( 0.5 );
+	const nFine = mx_noise_float( wp.mul( 3.5 ) ).mul( 0.5 ).add( 0.5 );
+	// jointed granite: tall vertical joint blocks + gently wavy horizontal sheeting
+	const wv = mx_worley_noise_vec2( vec2( wp.x.add( wp.z ).mul( jointScale ), wp.y.mul( jointScale * 0.3 ) ) );
+	const sheetN = mx_noise_float( wp.mul( 0.12 ) ).mul( 1.4 );
+	const sheet = fract( wp.y.mul( jointScale * 1.2 ).add( sheetN ) );
+	const crackV = smoothstep( 0.0, 0.035, wv.y.sub( wv.x ) );
+	const crackH = smoothstep( 0.0, 0.05, sheet ).mul( smoothstep( 0.95, 1.0, sheet ).oneMinus() );
+	const crack = crackV.mul( crackH ).mul( 0.15 ).add( 0.85 ).mul( mix( 0.9, 1.0, n3 ) );
+	// vertical weathering streaks
+	const streak = mx_noise_float( vec3( wp.x.mul( 0.9 ), wp.y.mul( 0.08 ), wp.z.mul( 0.9 ) ) ).mul( 0.5 ).add( 0.5 );
+	// granite: warm grey with feldspar speckle, darker in joints
+	let col = mix( color( 0x6e675c ), color( 0xb8ae9b ), smoothstep( 0.3, 0.75, n3 ) );
+	col = col.mul( mix( 0.85, 1.12, nFine ) ).mul( crack ).mul( mix( 0.78, 1.08, streak ) );
+	// lichen / moss on the upward faces
+	const up = normalWorld.y.clamp( 0, 1 );
+	const lich = smoothstep( 0.55, 0.9, up.add( n3.sub( 0.5 ).mul( 0.6 ) ) ).mul( lichen );
+	col = mix( col, mix( color( 0x5e6a33 ), color( 0x8f8f58 ), nFine ), lich.mul( 0.55 ) );
+	// dark wet band near the waterline
+	col = col.mul( mix( 0.55, 1.0, smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.9, wp.y ) ) );
+	mat.colorNode = col.mul( tint );
+	mat.roughnessNode = mix( float( 0.9 ), float( 0.55 ), smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.8, wp.y ).oneMinus() );
+	const h = crack.mul( 0.5 ).add( n3.mul( 0.4 ) ).add( nFine.mul( 0.15 ) );
+	mat.normalNode = proceduralBump( h, float( 0.9 ) );
+	return mat;
+}
+
+export function createRocks( app, progress ) {
+	const { hf } = app;
+	const group = new THREE.Group();
+	group.name = 'rocks';
+	const mat = createRockMaterial();
+	app.rockMaterial = mat;
+
+	const variants = [];
+	for ( let v = 0; v < 2; v ++ ) {
+		const s = new ChunkedInstances( { name: 'boulder' + v, hi: boulderGeometry( 2, 100 + v ), lo: boulderGeometry( 0, 100 + v ), material: mat, tile: 200, lodDistance: 90, shadowDistance: 110, layer: 1, reflect: false } );
+		s.addAttribute( 'aTint', 3 );
+		variants.push( s );
+	}
+	const gravel = [];
+	for ( let v = 0; v < 2; v ++ ) {
+		const s = new ChunkedInstances( { name: 'gravel' + v, hi: pebbleGeometry( 200 + v ), material: mat, tile: 60, castShadow: false, layer: 1, maxDistance: 110, reflect: false } );
+		s.addAttribute( 'aTint', 3 );
+		gravel.push( s );
+	}
+
+	const rnd = mulberry32( 77 );
+	const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
+	const tint = () => { const t = 0.85 + rnd() * 0.3; return [ t * ( 0.98 + rnd() * 0.04 ), t, t * ( 0.96 + rnd() * 0.06 ) ]; };
+	const put = ( list, x, z, s, sink = 0.25, squash = 1 ) => {
+		const y = hf.heightAt( x, z );
+		e.set( ( rnd() - 0.5 ) * 0.5, rnd() * Math.PI * 2, ( rnd() - 0.5 ) * 0.5 );
+		q.setFromEuler( e );
+		const sx = s * ( 0.8 + rnd() * 0.5 ), sz = s * ( 0.8 + rnd() * 0.5 ), sy = s * ( 0.6 + rnd() * 0.5 ) * squash;
+		pos.set( x, y - sink * sy, z );
+		sc.set( sx, sy, sz );
+		m.compose( pos, q, sc );
+		list[ Math.floor( rnd() * list.length ) ].add_( m, [ tint() ] );
+	};
+	const counts = { boulders: 0, gravel: 0 };
+
+	// 1) Granite tors on the hills and around the village: clusters.
+	const step = 12;
+	for ( let z = hf.z0 + 20; z < hf.z0 + hf.size - 20; z += step ) {
+		for ( let x = hf.x0 + 20; x < hf.x0 + hf.size - 20; x += step ) {
+			const px = x + ( rnd() - 0.5 ) * step, pz = z + ( rnd() - 0.5 ) * step;
+			const h = hf.heightAt( px, pz );
+			if ( h < 2 || h > 700 ) continue;
+			const slope = hf.slopeAt( px, pz );
+			const outcrop = ss( 0.05, 0.4, fbm( nR, px * 0.012, pz * 0.012, 3 ) );
+			const hill = ss( 30, 60, h );
+			const distV = Math.hypot( px - VILLAGE.x, pz - VILLAGE.z );
+			let p = Math.min( 1, 2 * outcrop * ( 0.25 + 0.75 * hill ) * ( 0.4 + ss( 0.25, 0.7, slope ) ) );
+			if ( distV < 130 ) p = Math.max( p * 0.8, 0.12 * outcrop + 0.04 );
+			if ( rnd() > p * 0.9 ) continue;
+			if ( distV < 380 && clearance( px, pz, app.mask, 2 ) <= 0 ) continue;
+			const k = 1 + Math.floor( rnd() * 5 );
+			const big = 1.5 + rnd() * 5.0 * ( 0.4 + 0.6 * hill );
+			for ( let i = 0; i < k; i ++ ) {
+				const a = rnd() * Math.PI * 2, r = i ? big * ( 0.8 + rnd() * 1.4 ) : 0;
+				const bx = px + Math.cos( a ) * r, bz = pz + Math.sin( a ) * r;
+				if ( distV < 380 && clearance( bx, bz, app.mask, 1 ) <= 0 ) continue;
+				put( variants, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) );
+				counts.boulders ++;
+			}
+		}
+		progress?.( 0.6 * ( z - hf.z0 ) / hf.size );
+	}
+
+	// 2) Rocky shore: boulders along the waterline (both references).
+	for ( let z = hf.z0 + 20; z < hf.z0 + hf.size - 20; z += 3 ) {
+		for ( let x = hf.x0 + 20; x < hf.x0 + hf.size - 20; x += 3 ) {
+			const px = x + ( rnd() - 0.5 ) * 3, pz = z + ( rnd() - 0.5 ) * 3;
+			const h = hf.heightAt( px, pz );
+			if ( h < - 2.2 || h > 5 ) continue;
+			const band = 1 - ss( 1.5, 5, Math.abs( h - 0.8 ) );
+			const n = 0.5 + 0.5 * nR( px * 0.05, pz * 0.05 );
+			if ( rnd() > band * ( 0.12 + 0.35 * n ) ) continue;
+			if ( pathDistance( px, pz ).d < 3 ) continue;
+			put( variants, px, pz, 0.5 + Math.pow( rnd(), 2.2 ) * 3.2, 0.35 );
+			counts.boulders ++;
+		}
+		progress?.( 0.6 + 0.25 * ( z - hf.z0 ) / hf.size );
+	}
+
+	// 2b) Talus of granite blocks along the spine's village-side cliff.
+	for ( let i = 1; i < SPINE.pts.length; i ++ ) {
+		const [ ax, az ] = SPINE.pts[ i - 1 ], [ bx, bz ] = SPINE.pts[ i ];
+		const L = Math.hypot( bx - ax, bz - az ), tx = ( bx - ax ) / L, tz = ( bz - az ) / L;
+		const nx = - tz, nz = tx; // village side
+		for ( let d = 0; d < L; d += 2.2 ) {
+			for ( const off of [ 2 + rnd() * 3, 6 + rnd() * 5 ] ) {
+				const px = ax + tx * d + nx * off + ( rnd() - 0.5 ) * 2, pz = az + tz * d + nz * off + ( rnd() - 0.5 ) * 2;
+				const dx = px - MINE.x, dz = pz - MINE.z;
+				if ( Math.abs( dx * MINE.tx + dz * MINE.tz ) < MINE.width / 2 + 1 && Math.abs( dx * MINE.nx + dz * MINE.nz ) < MINE.depth / 2 + 11 ) continue;
+				if ( pathDistance( px, pz ).d < 3 ) continue;
+				put( variants, px, pz, ( off < 5 ? 2.2 : 1.3 ) + rnd() * 1.8, 0.3 );
+				counts.boulders ++;
+			}
+		}
+	}
+
+	// 3) Gravel: along path edges, at house pads and on the shore near the village.
+	for ( let z = - 260; z < 300; z += 1.3 ) {
+		for ( let x = - 320; x < 260; x += 1.3 ) {
+			const px = x + ( rnd() - 0.5 ) * 1.3, pz = z + ( rnd() - 0.5 ) * 1.3;
+			const h = hf.heightAt( px, pz );
+			if ( h < - 0.5 ) continue;
+			const [ path, dirt ] = sampleMask( app.mask, px, pz );
+			const edge = path > 0.05 && path < 0.85 ? 0.5 : path >= 0.85 ? 0.12 : 0;
+			const shore = h < 3 ? 0.3 : 0;
+			const p = edge + dirt * 0.05 + shore;
+			if ( p <= 0 || rnd() > p ) continue;
+			put( gravel, px, pz, 0.06 + Math.pow( rnd(), 2 ) * 0.28, 0.3 );
+			counts.gravel ++;
+		}
+	}
+
+	for ( const s of [ ...variants, ...gravel ] ) { s.build(); group.add( s ); }
+	app.onFrame.push( () => { for ( const s of [ ...variants, ...gravel ] ) s.update( app.camera ); } );
+	group.userData.counts = counts;
+	progress?.( 1 );
+	void coastX;
+	return group;
+}
