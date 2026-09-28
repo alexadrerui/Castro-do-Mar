@@ -14,6 +14,7 @@ import { SPECIES } from './species.js';
 import { fishGeometry } from './geometry.js';
 import { rayGeometry } from './creatures.js';
 import { createSwimMaterial } from './material.js';
+import { FISH } from './config.js';
 
 // Fish of the coast, simulated on the CPU and drawn in a single render object (SeabedBatch: one
 // indirect draw per model and level of detail) with the procedural fish models (geometry.js,
@@ -29,46 +30,15 @@ import { createSwimMaterial } from './material.js';
 //  - sand: thornback rays gliding low and resting.
 // Everything scatters from the diver, stays in the water (bottom, surface) and is only simulated
 // near the camera. Depths assume the water surface at y = 0 (WATER_LEVEL).
+//
+// WHICH fish live WHERE (behaviours, habitat survey, spawn rules, seed) is data in config.js;
+// this file only interprets it.
 const TAU = Math.PI * 2;
-const CEILING = - 0.7; // fish stay below this (m)
 const FLOOR_CLEARANCE = 0.18; // minimum above the seabed (m)
-const RANGE = 45; // draw distance (m)
-const CELL = 48; // spawn cell (m)
 const SLOTS = 16; // cells alive at once
 const CELL_CAP = 900; // fish per cell
-const SPAWN_R = 70; // cells within this distance of the camera are populated (m)
-const ACTIVE_ABOVE = 15; // no fish when the camera is higher than this above the water (m)
 const GRAVITY = 9.81;
 const LOD_PX = [ 320, 80, 22 ]; // screen length (px) below which the next level of detail takes over
-
-// Behaviour per kind of swimmer (as in Tidewater). model: anatomy (species.js); length range (m);
-// mode (see stepGroup); speeds in body lengths / s (cruise, max, burst when fleeing), steering
-// accel, boids (separation distance and neighbour radius in body lengths, weights); depth:
-// preferred height above the bottom (fraction of the water column above it: 0 on the bottom .. 1
-// at the ceiling); band: water depth range of the homes; flee: reaction distance (m); amp / freq:
-// tail beat amplitude and frequency (Hz at rest, per body length / s).
-const base = {
-	cruise: 1, max: 2.5, burst: 6, accel: 4, sep: 2, nbr: 5, wSep: 5, wAli: 1, wCoh: 0.8, wGoal: 1, flee: 3.5,
-	depth: [ 0.1, 0.5 ], homeRadius: 6, amp: 0.08, freq: [ 1.6, 0.9 ], ceiling: CEILING, minDepth: 1.2, band: [ 1.5, 20 ],
-};
-const BEHAVIOUR = {
-	// open water
-	sardineBall: { model: 'sardine', length: [ 0.13, 0.2 ], mode: 'bait', cruise: 1.8, max: 4, burst: 10, accel: 7, flee: 3, depth: [ 0.35, 0.75 ], amp: 0.1, freq: [ 3, 1.1 ], band: [ 6, 40 ] },
-	sardine: { model: 'sardine', length: [ 0.13, 0.2 ], mode: 'school', cruise: 1.6, max: 3.5, burst: 9, accel: 6, sep: 1.8, nbr: 7, wSep: 7, wAli: 2.6, wCoh: 1.4, wGoal: 0.7, flee: 4.5, depth: [ 0.35, 0.8 ], homeRadius: 18, amp: 0.1, freq: [ 3, 1.1 ], band: [ 4, 40 ] },
-	horseMackerel: { model: 'horseMackerel', length: [ 0.2, 0.35 ], mode: 'patrol', cruise: 1.1, max: 2.6, burst: 5, accel: 3, sep: 2, nbr: 5, wAli: 1.4, wCoh: 0.9, wGoal: 0.9, flee: 4, depth: [ 0.25, 0.6 ], homeRadius: 20, amp: 0.07, freq: [ 1.6, 0.8 ], band: [ 5, 40 ] },
-	mackerel: { model: 'mackerel', length: [ 0.25, 0.38 ], mode: 'school', cruise: 1.3, max: 3, burst: 6, accel: 4, sep: 1.8, nbr: 6, wAli: 2, wCoh: 1, wGoal: 0.8, flee: 5, depth: [ 0.3, 0.75 ], homeRadius: 20, amp: 0.07, freq: [ 1.8, 0.9 ], band: [ 4, 40 ] },
-	garfish: { model: 'garfish', length: [ 0.5, 0.75 ], mode: 'surface', cruise: 0.9, max: 2.5, burst: 6, accel: 3, sep: 3, nbr: 4, wSep: 3, wAli: 1, wCoh: 0.5, wGoal: 0.9, flee: 4, homeRadius: 25, amp: 0.05, freq: [ 1.2, 0.7 ], ceiling: - 0.12, minDepth: 1.0, band: [ 2, 40 ] },
-	// rocky bottoms
-	seabream: { model: 'seabream', length: [ 0.2, 0.35 ], mode: 'mill', cruise: 0.45, max: 1.8, burst: 5, accel: 3, sep: 1.6, nbr: 4, wAli: 1.8, wCoh: 1.0, wGoal: 0.9, depth: [ 0.04, 0.25 ], homeRadius: 2.5, band: [ 2, 18 ] },
-	wrasse: { model: 'wrasse', length: [ 0.25, 0.45 ], mode: 'forage', cruise: 0.5, max: 1.8, burst: 5, accel: 2.5, wAli: 0.3, wCoh: 0.3, wGoal: 1.2, flee: 3, depth: [ 0.02, 0.15 ], homeRadius: 6, amp: 0.06, freq: [ 1.2, 0.7 ], band: [ 1.5, 18 ] },
-	bass: { model: 'bass', length: [ 0.4, 0.7 ], mode: 'solo', cruise: 0.35, max: 1.6, burst: 4, accel: 1.5, sep: 1, nbr: 2, wSep: 1, wAli: 0, wCoh: 0, wGoal: 0.7, flee: 4, depth: [ 0.2, 0.6 ], homeRadius: 12, amp: 0.05, freq: [ 0.8, 0.8 ], band: [ 2, 20 ] },
-	// shallows
-	mullet: { model: 'mullet', length: [ 0.3, 0.45 ], mode: 'jumper', cruise: 0.8, max: 2.2, burst: 5, accel: 3, sep: 1.8, nbr: 5, wAli: 1.5, wCoh: 1, wGoal: 0.8, flee: 4, depth: [ 0.3, 0.9 ], homeRadius: 14, amp: 0.07, freq: [ 1.5, 0.9 ], ceiling: - 0.25, minDepth: 1.2, band: [ 1.8, 5 ] },
-	smelt: { model: 'sandSmelt', length: [ 0.05, 0.08 ], mode: 'fry', cruise: 2, max: 4, burst: 14, accel: 9, sep: 1.6, nbr: 8, wSep: 7, wAli: 2.4, wCoh: 1.6, wGoal: 0.9, flee: 3.2, depth: [ 0.3, 0.8 ], homeRadius: 6, amp: 0.11, freq: [ 3.5, 1.2 ], ceiling: - 0.2, minDepth: 0.5, band: [ 0.6, 3.5 ] },
-	// sand
-	ray: { model: 'ray', length: [ 0.6, 0.9 ], mode: 'glide', cruise: 0.3, max: 0.8, burst: 1.6, accel: 0.8, sep: 1, nbr: 2, wSep: 1, wAli: 0, wCoh: 0, wGoal: 0.8, flee: 3.5, depth: [ 0, 0 ], homeRadius: 14, amp: 0.05, freq: [ 0.9, 0.5 ], band: [ 3, 30 ] },
-};
-for ( const k in BEHAVIOUR ) BEHAVIOUR[ k ] = { name: k, ...base, ...BEHAVIOUR[ k ] };
 
 // models per level of detail (0 nearest .. 3)
 function buildModels( names ) {
@@ -131,9 +101,10 @@ export class FishSchools {
 
 	// hf: HeightField; seabed: Seabed (its habitat() tells rock from sand); sun: DirectionalLight;
 	// getViewHeight(): drawing buffer height in pixels (level of detail by size on screen)
-	constructor( { hf, seabed, sun, sunDir, getViewHeight = () => 900 } ) {
+	constructor( { hf, seabed, sun, sunDir, getViewHeight = () => 900, config = FISH } ) {
 
 		this.hf = hf;
+		this.config = config;
 		this.seabed = seabed;
 		this.sunLight = sun;
 		this.getViewHeight = getViewHeight;
@@ -142,7 +113,7 @@ export class FishSchools {
 		this.group.name = 'fish';
 
 		// ---- models (all species, built once)
-		const models = [ ...new Set( Object.values( BEHAVIOUR ).map( ( b ) => b.model ) ) ];
+		const models = [ ...new Set( Object.values( config.behaviours ).map( ( b ) => b.model ) ) ];
 		const { kinds, first } = buildModels( models );
 		this.modelKind = first;
 
@@ -248,36 +219,41 @@ export class FishSchools {
 
 	}
 
-	// Populates one cell of water by habitat (deterministic: a cell always gets the same fish).
+	// Populates one cell of water by habitat, following the spawn rules of config.js
+	// (deterministic: a cell always gets the same fish).
 	spawnCell( ix, iz ) {
 
+		const C = this.config, CELL = C.cell;
 		const cell = { ix, iz, slot: - 1, groups: [], used: 0 };
 		const cx = ( ix + 0.5 ) * CELL, cz = ( iz + 0.5 ) * CELL;
-		// habitat survey
-		let maxD = 0, shallow = 0, rocky = 0, sandy = 0, deep = 0;
+		// habitat survey: 4 x 4 samples
+		const survey = { maxDepth: 0 };
+		for ( const k in C.survey ) survey[ k ] = 0;
 		for ( let j = 0; j < 4; j ++ ) for ( let i = 0; i < 4; i ++ ) {
 
 			const x = ix * CELL + ( i + 0.5 ) * CELL / 4, z = iz * CELL + ( j + 0.5 ) * CELL / 4;
 			const h = this.seabed.habitat( x, z, _H );
-			const d = h.depth;
-			maxD = Math.max( maxD, d );
-			if ( d > 0.6 && d < 4 ) shallow ++;
-			if ( d > 1.5 && h.rock > 0.5 ) rocky ++;
-			if ( d > 3 && h.rock < 0.3 ) sandy ++;
-			if ( d > 6 ) deep ++;
+			survey.maxDepth = Math.max( survey.maxDepth, h.depth );
+			for ( const [ k, q ] of Object.entries( C.survey ) ) {
+
+				if ( q.depth && ( h.depth < q.depth[ 0 ] || h.depth > q.depth[ 1 ] ) ) continue;
+				if ( q.rock && ( h.rock < q.rock[ 0 ] || h.rock > q.rock[ 1 ] ) ) continue;
+				survey[ k ] ++;
+
+			}
 
 		}
 
-		if ( maxD < 1 ) return cell;
+		if ( survey.maxDepth < 1 ) return cell;
 		const slot = this.freeSlots.pop();
 		if ( slot === undefined ) return null;
 		cell.slot = slot;
-		const rng = mulberry32( ( Math.imul( ix, 2654435761 ) ^ Math.imul( iz, 40503 ) ^ 0xf15 ) >>> 0 );
+		const rng = mulberry32( ( Math.imul( ix, 2654435761 ) ^ Math.imul( iz, 40503 ) ^ C.seed ) >>> 0 );
 		const zone = { x: cx, z: cz, r: CELL / 2 };
 		const homes = [];
 		const place = ( name, count, extra = {} ) => {
 
-			const sp = BEHAVIOUR[ name ];
+			const sp = C.behaviours[ name ];
 			const z = { ...zone, band: sp.band, ...extra };
 			const spot = this.pickSpot( sp, z, homes, rng );
 			if ( ! spot || cell.used + count > CELL_CAP ) return null;
@@ -286,38 +262,35 @@ export class FishSchools {
 			cell.used += count;
 			cell.groups.push( g );
 			this.initGroup( g );
+			if ( sp.mode === 'bait' ) this.baitGroups.push( g );
 			return g;
 
 		};
 
-		const n = ( a, b ) => a + Math.floor( rng() * ( b - a + 1 ) );
-		// rocky bottoms
-		if ( rocky ) {
+		const n = ( [ a, b ] ) => a + Math.floor( rng() * ( b - a + 1 ) );
+		const holds = ( when ) => Object.entries( when || {} ).every( ( [ k, v ] ) => k.split( '+' ).reduce( ( s, f ) => s + ( survey[ f ] ?? 0 ), 0 ) >= v );
+		const taken = new Set();
+		for ( const rule of C.spawn ) {
 
-			for ( let k = 0, m = rocky > 6 ? 2 : 1; k < m; k ++ ) place( 'seabream', n( 6, 12 ), { rock: true } );
-			for ( let k = 0, m = n( 1, 3 ); k < m; k ++ ) place( 'wrasse', 1, { rock: true } );
+			if ( rule.oneOf && taken.has( rule.oneOf ) ) continue;
+			if ( ! holds( rule.when ) ) continue;
+			if ( rng() >= rule.chance ) continue;
+			const extra = rule.zone === 'rock' ? { rock: true } : rule.zone === 'sand' ? { sand: true } : {};
+			let placed = 0;
+			for ( let k = 0, m = n( rule.groups ); k < m; k ++ ) if ( place( rule.behaviour, n( rule.count ), extra ) ) placed ++;
+			if ( placed && rule.oneOf ) taken.add( rule.oneOf );
 
 		}
 
-		if ( rng() < 0.35 ) place( 'bass', n( 1, 2 ) );
-		// shallows
-		if ( shallow && rng() < 0.6 ) place( 'smelt', n( 40, 80 ) );
-		if ( shallow && rng() < 0.45 ) place( 'mullet', n( 6, 10 ) );
-		// open water
-		if ( deep && rng() < 0.22 ) {
-
-			const b = place( 'sardineBall', n( 300, 480 ) );
-			if ( b ) this.baitGroups.push( b );
-
-		} else if ( deep + sandy > 2 && rng() < 0.3 ) place( 'sardine', n( 60, 120 ) );
-		if ( deep && rng() < 0.3 ) place( 'horseMackerel', n( 8, 14 ) );
-		if ( deep + sandy > 2 && rng() < 0.28 ) place( 'mackerel', n( 20, 35 ) );
-		if ( maxD > 2.5 && rng() < 0.25 ) place( 'garfish', n( 2, 4 ) );
-		// sand
-		if ( sandy && rng() < 0.25 ) place( 'ray', 1, { sand: true } );
-
 		this.groups.push( ...cell.groups );
 		return cell;
+
+	}
+
+	// Respawns the fish around the camera (after a change of this.config: rules, behaviours, seed).
+	regenerate() {
+
+		for ( const [ key, cell ] of this.cells ) this.dropCell( key, cell );
 
 	}
 
@@ -467,7 +440,8 @@ export class FishSchools {
 		this.time += dt;
 		this.dt = dt || 1 / 60;
 		const p = camera.position;
-		if ( p.y > ACTIVE_ABOVE ) {
+		const CELL = this.config.cell, SPAWN_R = this.config.spawnRange;
+		if ( p.y > this.config.activeAbove ) {
 
 			this.mesh.visible = false;
 			return;
@@ -1037,7 +1011,7 @@ export class FishSchools {
 		// pixels per metre at 1 m: level of detail by the fish's size on screen
 		const pxScale = camera.projectionMatrix.elements[ 5 ] * this.getViewHeight() * 0.5;
 		// from above the water only the fish close under the surface show
-		const range = cp.y < 0 ? RANGE : Math.max( 0, 30 - cp.y * 2 );
+		const range = cp.y < 0 ? this.config.drawRange : Math.max( 0, 30 - cp.y * 2 );
 		const batch = this.batch, D = batch.data;
 		const P = this.pos, V = this.vel, H = this.head;
 		const kHead = 1 - Math.exp( - dt * 6 ), kRoll = 1 - Math.exp( - dt * 3 );

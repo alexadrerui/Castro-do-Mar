@@ -41,6 +41,11 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - `materials.js`: um material físico com um ramo por `SURFACE`, a ondulação analítica vinda do leste e a translucidez como emissivo.
   - `seabed.js`: distribuição por habitat (profundidade, declive, manchas de ruído → rocha/areia) em tiles de 16 m gerados deterministicamente em volta da câmera (64 slots × 448 instâncias). Fica desligado acima de ~26 m sobre a água.
   - O terreno submerso (`terrain.js`) usa areia/lodo com marcas de ondulação; a rocha da costa só vale na linha d'água.
+- **Regras do fundo e dos peixes são dados**:
+  - `src/world/seabed/config.js`: semente, habitat (rocha/areia, manchas), tipos (modelo, superfície, tamanhos, cores, LOD) e camadas de distribuição. Cada entrada tem peso × janela de profundidade × rocha/areia × mancha × declive.
+  - `src/world/fish/config.js`: semente, comportamentos, levantamento de habitat das células e regras de spawn (`when`, `chance`, `groups`, `count`, `zone`, `oneOf`).
+  - O código (`seabed.js`, `schools.js`) só interpreta essas tabelas. Tudo é determinístico pela semente e pelas coordenadas: a mesma semente dá o mesmo mundo.
+  - Para testar sem recarregar, edite `app.seabed.config` / `app.fish.config` no console e chame `app.seabed.regenerate()` / `app.fish.regenerate()`. Espécie de peixe nova: anatomia em `species.js` e padrão de pele em `material.js`. Organismo novo do fundo: gerador em `geometry.js`, entrada em `MODELS` (`seabed.js`) e ramo de superfície em `materials.js`.
 - **Peixes** (`src/world/fish/`, porte do `Fish.js` do Tidewater, MIT):
   - `geometry.js` e `creatures.js` são cópias (peixe montado pela tabela de anatomia; raia).
   - `species.js`: 10 espécies galegas — peixe-rei, sardinha, chicharro, xarda, muxo, robaliza, sargo, maragota, agulha e raia.
@@ -50,6 +55,13 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - `app.fish.paused = true` congela a simulação (QA). `node tools/fish.mjs [prefixo] [espécies...]` faz um close-up lateral de cada espécie.
   - Limitação: o chão dos peixes é só o heightfield; eles ainda podem atravessar blocos de granito do fundo.
 - Embaixo d'água o `camera.far` cai para 90 m (a névoa esconde o resto). O frame submerso passou de 27,6 para 16,6 ms.
+
+- **Pedras de granito** (`src/world/granite/`, porte do Tidewater, MIT; usadas por `rocks.js`):
+  - `geometry.js`: icosfera cortada por planos de fratura, com cavidade (`ao`) no vértice. Estilos boulder/block/slab/spire mais `tor` (bloco arredondado de granito). A base plana é deslocada para y = −0,35, como nas pedras antigas.
+  - `detail.js`: textura 512² gerada na CPU (~0,26 s) — R placas fraturadas, G solo, B grãos, A fbm.
+  - `shading.js`: `graniteSurface` (3 amostras triplanares; juntas, placas, pintas de feldspato, líquen cinza-verde e laranja perto do mar, musgo, faixa preta de líquen, cracas, algas, crosta coralina submersa, molhado) mais `createGraniteMaterial`, com o contato com o chão lido do `heightTex` do terreno. `lo: true` é a variante barata dos tiles distantes e do cascalho.
+  - Conjuntos por ambiente: `tor*` nas colinas, `shore*` na costa e `talus*` no pé do penhasco. O forte continua com o `createRockMaterial` antigo.
+  - QA: `node tools/rocks.mjs [prefixo]` faz close-ups de uma pedra de cada conjunto.
 
 ## Pendências (backlog)
 ### Câmera
@@ -95,7 +107,7 @@ Próximos passos:
 
 ### Técnico
 - [ ] Fallback WebGL (`?webgl`) não confirmado; o teste headless estourou o tempo.
-- [ ] Pedras: trocar os ruídos por pixel por textura pré-gerada (como no terreno) e usar `materialLo` nos tiles distantes.
+- [x] Pedras: ruídos por pixel trocados por textura pré-gerada (`granite/`) e `materialLo` nos tiles distantes (custo de GPU na vista 0: ~0,24 → ~0,02 ms no headless).
 - [ ] Vegetação detalhada: conjunto "hi" centrado na câmera em vez de tiles, para reduzir draw calls.
 - [ ] Sombra: fazer o snapping no espaço de vista da luz (ainda cintila).
 - [ ] Carregamento de 25–40 s: cachear heightfield, máscara e AO (IndexedDB) ou pré-gerar em `.bin`.
