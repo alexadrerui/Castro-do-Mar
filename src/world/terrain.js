@@ -130,10 +130,15 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	const field = mix( dirtMid.mul( 0.9 ), cropCol, smoothstep( 0.35, 0.65, rows ).mul( 0.85 ) );
 
 	// ---- shore / underwater ----
-	const sand = color( 0xa4977a ), wetSand = color( 0x6f6754 ), seabed = color( 0x5f6b55 );
+	const sand = color( 0xa4977a ), wetSand = color( 0x6f6754 );
 	const shoreM = smoothstep( WATER_LEVEL + 0.6, WATER_LEVEL + 2.6, wp.y ).oneMinus();
 	const underM = smoothstep( WATER_LEVEL - 4, WATER_LEVEL + 0.2, wp.y ).oneMinus();
-	const shoreRock = smoothstep( WATER_LEVEL + 1.5, WATER_LEVEL + 7, wp.y ).oneMinus().mul( smoothstep( 0.35, 0.65, nLarge.add( slope ) ) ).mul( dirtM.oneMinus() );
+	const shoreRock = smoothstep( WATER_LEVEL + 1.5, WATER_LEVEL + 7, wp.y ).oneMinus().mul( smoothstep( 0.35, 0.65, nLarge.add( slope ) ) ).mul( dirtM.oneMinus() )
+		.mul( smoothstep( WATER_LEVEL - 0.6, WATER_LEVEL + 0.2, wp.y ) ); // shore only: the seabed has its own look
+	// seabed: pale sand and olive silt in patches (the seabed life sits on it, see world/seabed)
+	const seabedCol = mix( color( 0x7a725c ), color( 0x56583e ), smoothstep( 0.3, 0.7, nMed ) ).mul( mix( 0.85, 1.1, nFine ) );
+	// sand ripple marks, running across the swell (from the east)
+	const ripples = sin( wp.x.mul( 6.3 ).add( wp.z.mul( 1.4 ) ).add( nMed.mul( 9.0 ) ) ).mul( 0.5 ).add( 0.5 );
 
 	// ---- snow on the highest local peaks ----
 	const snowM = smoothstep( 390, 470, wp.y.add( nLarge.mul( 60 ) ) ).mul( smoothstep( 0.3, 0.55, slope ).oneMinus() );
@@ -147,7 +152,7 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	col = mix( col, rock, rockAll );
 	col = mix( col, mix( sand, rock, rockAll.mul( 0.8 ) ), shoreM.mul( 0.25 ) );
 	col = mix( col, wetSand, smoothstep( WATER_LEVEL, U.wetLine.add( WATER_LEVEL ), wp.y ).oneMinus().mul( 0.6 ) );
-	col = mix( col, mix( seabed, rock.mul( 0.7 ), rockM ), underM );
+	col = mix( col, mix( seabedCol, rock.mul( 0.7 ), rockM ), underM );
 	col = mix( col, color( 0xf2f4f7 ), snowM );
 
 	// baked sky-visibility (heightfield AO) darkens valleys and crevices
@@ -162,7 +167,8 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	const hRock = smoothstep( 0.0, 0.08, cracks ).mul( 0.7 ).add( nRock3.mul( 0.8 ) ).add( smoothstep( 0.0, 0.05, cracksFine ).mul( 0.25 ) );
 	const hGrass = nFine.mul( 0.25 ).add( nMed.mul( 0.3 ) );
 	const hPath = nFine.mul( 0.15 );
-	const hDetail = mix( mix( hGrass, hPath, pathM ), hRock, rockAll ).mul( U.detail );
+	const hSea = mix( nFine.mul( 0.2 ).add( ripples.mul( 0.35 ) ), hRock, rockM );
+	const hDetail = mix( mix( mix( hGrass, hPath, pathM ), hRock, rockAll ), hSea, underM ).mul( U.detail );
 	const bumpFade = smoothstep( 80, 420, viewDist ).oneMinus();
 	mat.normalNode = proceduralBump( hDetail, mix( 0.35, 1.4, rockAll ).mul( nearFade.mul( 0.8 ).add( 0.2 ) ).mul( bumpFade ) );
 

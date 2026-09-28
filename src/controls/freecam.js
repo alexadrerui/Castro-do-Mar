@@ -16,6 +16,8 @@ export class FreeCam {
 		this.damping = opts.damping ?? 0.82;
 		this.groundFn = opts.groundFn || null;   // (x,z) => height
 		this.minClearance = opts.minClearance ?? 1.7;
+		this.waterLevel = opts.waterLevel ?? 0;
+		this.diveClearance = opts.diveClearance ?? 0.6; // m above the bottom when underwater
 		this.enabled = true;
 
 		this.yaw = 0; this.pitch = 0;
@@ -165,7 +167,8 @@ export class FreeCam {
 
 		if ( this.groundFn ) {
 			const g = this.groundFn( cam.position.x, cam.position.z );
-			const minY = Math.max( g, 0 ) + this.minClearance;
+			// over water the camera may dive, down to just above the bottom
+			const minY = g < this.waterLevel ? g + this.diveClearance : g + this.minClearance;
 			if ( cam.position.y < minY ) cam.position.y = minY;
 		}
 	}

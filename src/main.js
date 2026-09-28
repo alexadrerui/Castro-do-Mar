@@ -1,10 +1,15 @@
 import * as THREE from 'three/webgpu';
-import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp } from 'three/tsl';
+import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV } from 'three/tsl';
 
 import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
 import { FreeCam } from './controls/freecam.js';
 import { AutoFocus } from './controls/focus.js';
+import { LensDroplets, discBlur } from './post/lensDroplets.js';
+import { Underwater } from './post/underwater.js';
+import { MarineSnow } from './post/marineSnow.js';
+import { Seabed } from './world/seabed/seabed.js';
+import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
 import { createSky } from './world/sky.js';
@@ -134,6 +139,13 @@ async function main() {
 		await mod.populate( app, p );
 	} );
 
+	// Seabed life, streamed in tiles around the camera (only near / under the water).
+	const seabed = new Seabed( { hf, waterLevel: WATER_LEVEL, sun: sky.sun, sunDir: sky.state.sunDir } );
+	scene.add( seabed.group );
+	app.seabed = seabed;
+	app.layers.seabed = { label: 'Fundo do mar', object: seabed.group };
+	app.onFrame.push( () => seabed.update( camera ) );
+
 	// ---- camera & controls ----
 	const cam = new FreeCam( camera, canvas, { groundFn: ( x, z ) => hf.heightAt( x, z ), moveSpeed: 22 } );
 	app.freecam = cam;
@@ -162,6 +174,9 @@ async function main() {
 		const e = sky.state.elevation;
 		const warm = THREE.MathUtils.smoothstep( e, 0, 22 );
 		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
+		app.underwater?.setDaylight( hazeColor.value );
+		app.snow?.light.value.copy( hazeColor.value );
+		app.seabed?.updateSun( sky.state.sunDir );
 	};
 
 	// Post: scene pass -> tone map / sRGB -> colour grade (late-afternoon look).
@@ -179,8 +194,25 @@ async function main() {
 	} );
 	app.focus = focus;
 
+	// Diving: underwater medium while below the surface, water drops on the lens after surfacing.
+	const underwater = new Underwater( scenePass );
+	const lens = new LensDroplets();
+	const lensFn = lens.build();
+	const blurred = discBlur( scenePass.getTextureNode(), 6 );
+	app.underwater = underwater;
+	app.lens = lens;
+	const snow = new MarineSnow( { waterLevel: WATER_LEVEL } );
+	scene.add( snow.mesh );
+	app.snow = snow;
+	app.onFrame.push( ( dt ) => {
+		underwater.update( camera, WATER_LEVEL );
+		lens.update( dt, underwater.on.value > 0.5 );
+		snow.update( camera, underwater.on.value > 0.5 );
+	} );
+
 	const graded = ( input ) => Fn( () => {
-		const c = renderOutput( input ).toVar();
+		const wetRGB = lensFn( underwater.apply( input.rgb ), blurred, screenUV );
+		const c = renderOutput( vec4( wetRGB, 1.0 ) ).toVar();
 		const rgb = c.rgb.toVar();
 		const luma = dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
 		// saturation, gentle S-curve, split toning (cool shadows, warm highlights)

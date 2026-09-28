@@ -28,6 +28,20 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - A tecla **B** (ou a opção no painel) liga e desliga, trocando o `outputNode` do `RenderPipeline`.
   - A HUD mostra uma retícula central com a distância focada.
 
+- **Mergulho:** sobre a água a câmera pode descer até 0,6 m do fundo (`freecam.js`: `waterLevel`, `diveClearance`).
+  - `src/post/underwater.js`: abaixo de `WATER_LEVEL`, a tela toda passa para o meio aquático (absorção por canal, névoa verde-azulada, escurece com a profundidade). Não há divisão na linha d'água.
+  - `src/post/lensDroplets.js`: gotas na lente ao voltar à superfície, secando em ~9 s. É um porte do Tidewater (MIT, manter o cabeçalho).
+  - Os dois entram em `graded()` no `main.js`, antes do `renderOutput`.
+  - QA: `node tools/dive.mjs [prefixo]` captura a cena submersa, dois pontos do fundo (rocha e areia), a lente molhada e a lente seca.
+  - `underwater.js` reconstrói a posição de cada pixel pela profundidade e absorve a luz no caminho superfície → ponto. O terreno e o fundo escurecem juntos com a profundidade.
+  - `src/post/marineSnow.js`: partículas em suspensão numa caixa de 8 m em volta da câmera, só embaixo d'água. É um porte do Tidewater (MIT).
+- **Fundo do mar** (`src/world/seabed/`, porte parcial do recife do Tidewater, MIT):
+  - `batch.js`: todos os modelos num único mesh e num único pipeline, com uma chamada de desenho indireta por modelo/LOD e instâncias num storage buffer. Só funciona em WebGPU.
+  - `geometry.js`: geradores do Tidewater (pedras, ouriço, anêmona, pradaria, sargaço, estrela, cascalho) mais os nossos (laminária `forest`/`sugar`, alface-do-mar, mexilhões).
+  - `materials.js`: um material físico com um ramo por `SURFACE`, a ondulação analítica vinda do leste e a translucidez como emissivo.
+  - `seabed.js`: distribuição por habitat (profundidade, declive, manchas de ruído → rocha/areia) em tiles de 16 m gerados deterministicamente em volta da câmera (64 slots × 448 instâncias). Fica desligado acima de ~26 m sobre a água.
+  - O terreno submerso (`terrain.js`) usa areia/lodo com marcas de ondulação; a rocha da costa só vale na linha d'água.
+
 ## Pendências (backlog)
 ### Câmera
 - [ ] O foco não é aplicado nas capturas (`app.capture`) quando o loop está pausado; considerar `focus.update` antes de capturar.
