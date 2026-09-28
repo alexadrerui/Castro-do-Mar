@@ -184,6 +184,9 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 			const d = _p.distanceTo( camera.position );
 			const lod = d < 160 ? 0 : d < 420 ? 1 : d < 900 ? 2 : d < 1700 ? 3 : 4;
 			if ( c.lod !== lod ) { c.lod = lod; c.mesh.geometry = c.lods[ lod ]; }
+			// only nearby chunks are worth drawing again in the water reflection
+			// (the far mesh already covers the distant shores)
+			if ( d < 700 ) c.mesh.layers.enable( 2 ); else c.mesh.layers.disable( 2 );
 		}
 	};
 

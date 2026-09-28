@@ -89,13 +89,13 @@ export function createRocks( app, progress ) {
 
 	const variants = [];
 	for ( let v = 0; v < 2; v ++ ) {
-		const s = new ChunkedInstances( { name: 'boulder' + v, hi: boulderGeometry( 2, 100 + v ), lo: boulderGeometry( 0, 100 + v ), material: mat, tile: 200, lodDistance: 90, shadowDistance: 110, layer: 1, reflect: false } );
+		const s = new ChunkedInstances( { name: 'boulder' + v, hi: boulderGeometry( 2, 100 + v ), lo: boulderGeometry( 0, 100 + v ), material: mat, tile: 260, lodDistance: 100, shadowDistance: 110, layer: 1, reflect: false } );
 		s.addAttribute( 'aTint', 3 );
 		variants.push( s );
 	}
 	const gravel = [];
 	for ( let v = 0; v < 2; v ++ ) {
-		const s = new ChunkedInstances( { name: 'gravel' + v, hi: pebbleGeometry( 200 + v ), material: mat, tile: 60, castShadow: false, layer: 1, maxDistance: 110, reflect: false } );
+		const s = new ChunkedInstances( { name: 'gravel' + v, hi: pebbleGeometry( 200 + v ), material: mat, tile: 120, castShadow: false, layer: 1, maxDistance: 110, reflect: false } );
 		s.addAttribute( 'aTint', 3 );
 		gravel.push( s );
 	}

@@ -122,12 +122,12 @@ export function createVegetation( app, progress ) {
 	app.foliageMaterial = material;
 
 	const species = {
-		oak: new ChunkedInstances( { name: 'oak', hi: oakGeometry( 0, 11 ), lo: oakGeometry( 1, 11 ), material, tile: 200, lodDistance: 140, shadowDistance: 130 } ),
-		pine: new ChunkedInstances( { name: 'pine', hi: pineGeometry( 0, 12 ), lo: pineGeometry( 1, 12 ), material, tile: 200, lodDistance: 140, shadowDistance: 130 } ),
-		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 200, lodDistance: 140, shadowDistance: 130 } ),
-		bush: new ChunkedInstances( { name: 'bush', hi: bushGeometry( 0, 14 ), lo: bushGeometry( 1, 14 ), material, tile: 200, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } )
+		oak: new ChunkedInstances( { name: 'oak', hi: oakGeometry( 0, 11 ), lo: oakGeometry( 1, 11 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
+		pine: new ChunkedInstances( { name: 'pine', hi: pineGeometry( 0, 12 ), lo: pineGeometry( 1, 12 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
+		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
+		bush: new ChunkedInstances( { name: 'bush', hi: bushGeometry( 0, 14 ), lo: bushGeometry( 1, 14 ), material, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } )
 	};
-	species.grass = new ChunkedInstances( { name: 'grass', hi: grassTuftGeometry(), material, tile: 48, castShadow: false, layer: 1, maxDistance: 70, reflect: false } );
+	species.grass = new ChunkedInstances( { name: 'grass', hi: grassTuftGeometry(), material, tile: 64, castShadow: false, layer: 1, maxDistance: 70, reflect: false } );
 	for ( const s of Object.values( species ) ) s.addAttribute( 'aTint', 3 );
 
 	const PAL = {

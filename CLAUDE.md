@@ -46,6 +46,30 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - [ ] Nuvens: camada de cúmulos e bancos de névoa nos vales distantes.
 - [ ] Vila mais compacta, com mais tecido vermelho e cercas nas vielas.
 
+### Performance (em andamento)
+Ferramentas: `tools/perf.mjs` (tempo de GPU por camada, via timestamp com `?perf`), `tools/cpuprof.mjs` (perfil de CPU do loop),
+`tools/leak.mjs` (cresce shader/pipeline?), `tools/resprobe.mjs` (frame × resolução × recursos) e `tools/fps.mjs` (janela real;
+falha se a janela ficar atrás de outras, porque o Edge pausa o rAF).
+
+Feito:
+- [x] **Causa principal:** instâncias com ≤ 1024 matrizes usavam o caminho de uniform buffer, que dá nome único por objeto e
+      gerava um shader e um pipeline por tile (437 vertex shaders; `setPipeline` = 54% da CPU). A capacidade subiu para 2048
+      (caminho de atributo instanciado), ficando 50 shaders e ~80 pipelines.
+- [x] Draw calls: de 814 para ~555 (tiles maiores; no reflexo, só o LOD baixo das árvores e chunks de terreno a < 700 m).
+- [x] Matrizes estáticas congeladas (`matrixAutoUpdate`/`matrixWorldAutoUpdate` = false). A CPU do loop fica ~80% ociosa.
+
+Medições no headless (vista 0, 1600×900, ms/frame; valores absolutos do headless não representam a janela real):
+`full 151.6 | 800×450 84.4 | sem DOF 138.7 | + sem reflexo 125.2 | + sem sombras 112.6`. O gargalo agora é **GPU/preenchimento**.
+
+Próximos passos:
+- [ ] Pipelines ainda crescem devagar (+2 a cada 20 frames): investigar quais variantes surgem (sombra? LOD?).
+- [ ] DOF: rodar em meia resolução ou desligar sozinho quando `amount` ≈ 0 (hoje sempre roda com o foco ligado).
+- [ ] Reflexo da água: `resolutionScale` 0.45 → 0.3 e/ou atualizar a cada 2 frames.
+- [ ] Sombras: mapa 4096 → 2048 ou `CSMShadowNode` com 2 cascatas; menos casters.
+- [ ] Shaders pesados por pixel: pedras (Worley + fbm), casas (pedra/colmo procedurais) e terreno. Pré-gerar em texturas como no terreno.
+- [ ] Resolução dinâmica: reduz a `pixelRatio` e realoca os render targets; trocar por escala do pass.
+- [ ] Medir na janela real (painel do app visível ou Edge em primeiro plano) para confirmar o FPS.
+
 ### Técnico
 - [ ] Fallback WebGL (`?webgl`) não confirmado; o teste headless estourou o tempo.
 - [ ] Pedras: trocar os ruídos por pixel por textura pré-gerada (como no terreno) e usar `materialLo` nos tiles distantes.

@@ -57,7 +57,7 @@ async function main() {
 	let renderer, scene, camera, hf, terrain;
 
 	await loader.run( 'gpu', async () => {
-		renderer = new THREE.WebGPURenderer( { canvas, antialias: false, forceWebGL: FORCE_WEBGL, powerPreference: 'high-performance' } );
+		renderer = new THREE.WebGPURenderer( { canvas, antialias: false, forceWebGL: FORCE_WEBGL, powerPreference: 'high-performance', trackTimestamp: params.has( 'perf' ) } );
 		renderer.setPixelRatio( app.pixelRatio );
 		renderer.setSize( innerWidth, innerHeight );
 		renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -208,6 +208,20 @@ async function main() {
 	app.post = post;
 	app.renderFrame = () => post.render();
 
+	// GPU time per frame (needs ?perf for timestamp queries), at a fixed size.
+	app.gpuProfile = async ( frames = 30, w = 1600, h = 900 ) => {
+		renderer.setPixelRatio( 1 ); renderer.setSize( w, h, false );
+		camera.aspect = w / h; camera.updateProjectionMatrix();
+		for ( let k = 0; k < 3; k ++ ) { sky.sun.shadow.needsUpdate = true; app.renderFrame(); }
+		await renderer.resolveTimestampsAsync( 'render' );
+		const t0 = performance.now();
+		for ( let k = 0; k < frames; k ++ ) { sky.sun.shadow.needsUpdate = true; app.renderFrame(); }
+		const gpu = await renderer.resolveTimestampsAsync( 'render' );
+		const cpu = ( performance.now() - t0 ) / frames;
+		const i = renderer.info.render;
+		return { gpuMs: +( gpu / frames ).toFixed( 2 ), cpuMs: +cpu.toFixed( 2 ), tris: i.triangles, calls: i.drawCalls };
+	};
+
 	app.capture = async ( name = 'shot', w = 1600, h = 900 ) => {
 		const prev = { w: innerWidth, h: innerHeight, pr: renderer.getPixelRatio() };
 		renderer.setPixelRatio( 1 ); renderer.setSize( w, h, false );
@@ -234,6 +248,16 @@ async function main() {
 		}
 		return out;
 	};
+
+	// Static world: compute matrices once, then skip them every frame.
+	for ( const root of [ terrain.mesh, ...Object.values( app.layers ).map( ( l ) => l.object ) ] ) {
+		if ( root === app.smoke?.mesh ) continue;
+		root.updateMatrixWorld( true );
+		root.traverse( ( o ) => { o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; } );
+	}
+	// the reflector target lives under the water mesh and must keep updating
+	app.water.mesh.matrixWorldAutoUpdate = true;
+	app.water.mesh.traverse( ( o ) => { o.matrixWorldAutoUpdate = true; } );
 
 	await loader.run( 'compile', async () => {
 		sky.buildEnv();

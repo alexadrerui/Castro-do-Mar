@@ -6,7 +6,12 @@ import * as THREE from 'three/webgpu';
 //  - geometry buffers are shared by all tiles (no per-tile copies);
 //  - every batch has the same fixed capacity, so the instance-matrix uniform
 //    array has one size and all tiles of a species share ONE shader/pipeline.
-const CAPACITY = 256;
+// Above 1024 matrices (64 KB) three.js feeds instance matrices through an
+// instanced vertex attribute instead of a per-object uniform array. The
+// uniform path bakes a uniquely named buffer into every object's vertex
+// shader (one pipeline per tile!); the attribute path shares ONE shader and
+// pipeline across all tiles of a species.
+const CAPACITY = 2048;
 
 export class ChunkedInstances extends THREE.Group {
 
@@ -81,6 +86,8 @@ export class ChunkedInstances extends THREE.Group {
 		};
 		const hi = make( this.hiGeo, this.material );
 		const lo = this.loGeo ? make( this.loGeo, this.materialLo ) : null;
+		// the low-res water reflection only needs the cheap LOD
+		if ( lo ) hi.layers.disable( 2 );
 		if ( lo ) { lo.castShadow = false; lo.visible = false; }
 		this.add( hi ); if ( lo ) this.add( lo );
 		this.tiles.push( { hi, lo, center, radius: box.getSize( p ).length() * 0.5 } );
