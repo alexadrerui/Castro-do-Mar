@@ -87,6 +87,7 @@
 				<label>Resolução <output id="o-res"></output><input type="range" id="r-res" min="0.5" max="2" step="0.05" /></label>
 				<label class="chk"><input type="checkbox" id="c-shadows" checked /> Sombras</label>
 				<label class="chk"><input type="checkbox" id="c-refl" checked /> Reflexo na água</label>
+				<label class="chk"><input type="checkbox" id="c-focus" checked /> Foco automático <kbd>B</kbd></label>
 			</div>
 		</aside>
 
@@ -98,6 +99,7 @@
 				<span><kbd>Arrastar</kbd> olhar</span>
 				<span><kbd>Roda</kbd> velocidade</span>
 				<span><kbd>1–6</kbd> vistas</span>
+				<span><kbd>B</kbd> foco</span>
 				<span><kbd>H</kbd> painel</span>
 				<span><kbd>P</kbd> foto</span>
 			</div>
@@ -109,6 +111,10 @@
 			</div>
 		</footer>
 		<div id="toast" class="toast"></div>
+		<div id="focus-reticle" class="focus-reticle" aria-hidden="true">
+			<i></i><i></i><i></i><i></i>
+			<span id="focus-dist"></span>
+		</div>
 	</section>
 
 	<script type="module" src="/src/main.js"></script>

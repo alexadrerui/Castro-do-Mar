@@ -104,3 +104,13 @@ body.clean #hud { display: none; }
 	.side { width: 220px; }
 }
 .triskele .hub { fill: var(--gold-2); }
+
+/* auto-focus reticle: four corner brackets that close in while focusing */
+.focus-reticle { --k: 1; position: absolute; left: 50%; top: 50%; width: 56px; height: 40px; transform: translate(-50%, -50%) scale(var(--k)); pointer-events: none; transition: opacity .25s; }
+.focus-reticle i { position: absolute; width: 10px; height: 10px; border: 1.5px solid var(--gold-2); opacity: .9; }
+.focus-reticle i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+.focus-reticle i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+.focus-reticle i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+.focus-reticle i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+.focus-reticle span { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px) scale(calc(1 / var(--k))); font: 600 10.5px Inter, sans-serif; color: var(--gold-2); text-shadow: 0 1px 3px rgba(0,0,0,.7); white-space: nowrap; }
+.focus-reticle.off i { border-color: rgba(239,230,210,.35); }

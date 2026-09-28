@@ -37,6 +37,7 @@ export class HUD {
 		this._range( 'r-res', 'o-res', app.pixelRatio, ( v ) => app.setPixelRatio( v ), ( v ) => v.toFixed( 2 ) + '×' );
 		$( 'c-shadows' ).onchange = ( e ) => app.setShadows( e.target.checked );
 		$( 'c-refl' ).onchange = ( e ) => app.setReflections( e.target.checked );
+		$( 'c-focus' ).onchange = ( e ) => this.setFocus( e.target.checked );
 
 		$( 'side-toggle' ).onclick = () => $( 'side' ).classList.toggle( 'collapsed' );
 		window.addEventListener( 'keydown', ( e ) => {
@@ -44,6 +45,7 @@ export class HUD {
 			if ( e.code === 'KeyH' ) $( 'side' ).classList.toggle( 'collapsed' );
 			if ( e.code === 'KeyP' ) app.capture( 'foto_' + Date.now() ).then( () => this.toast( 'Foto salva em shots/' ) );
 			if ( e.code === 'KeyU' ) document.body.classList.toggle( 'clean' );
+			if ( e.code === 'KeyB' ) this.setFocus( ! app.focus.enabled );
 			const n = parseInt( e.key, 10 );
 			if ( n >= 1 && n <= app.views.length ) app.goView( n - 1 );
 		} );
@@ -51,6 +53,23 @@ export class HUD {
 	}
 
 	show() { this.root.hidden = false; }
+
+	setFocus( on ) {
+		this.app.setFocus( on );
+		$( 'c-focus' ).checked = on;
+		this.toast( on ? 'Foco automático ligado' : 'Foco automático desligado' );
+	}
+
+	// Centre reticle: tightens and shows the focal distance while the
+	// background is being blurred.
+	updateFocus( f ) {
+		const r = this._ret || ( this._ret = $( 'focus-reticle' ) );
+		const a = f.enabled ? f.amount : 0;
+		r.style.opacity = ( 0.15 + 0.85 * a ).toFixed( 2 );
+		r.classList.toggle( 'off', ! f.enabled );
+		r.style.setProperty( '--k', ( 1 - 0.35 * a ).toFixed( 3 ) );
+		if ( ( this._ft = ( this._ft || 0 ) + 1 ) % 6 === 0 ) $( 'focus-dist' ).textContent = a > 0.05 ? f.focusDistance.value.toFixed( 1 ) + ' m' : '';
+	}
 
 	toast( msg ) {
 		const t = $( 'toast' );

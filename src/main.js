@@ -4,6 +4,7 @@ import { fog, uniform, positionWorld, positionView, length, float, exp, color, m
 import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
 import { FreeCam } from './controls/freecam.js';
+import { AutoFocus } from './controls/focus.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
 import { createSky } from './world/sky.js';
@@ -31,7 +32,7 @@ const STEPS = [
 
 const app = {
 	views: [
-		{ label: 'Panorâmica', pos: [ - 45, 68, 95 ], target: [ 30, 30, - 45 ] },
+		{ label: 'Panorâmica', pos: [ - 45, 68, 95 ], target: [ 30, 52, - 45 ] },
 		{ label: 'Aérea', pos: [ 0, 195, 38 ], target: [ 0, 26, - 2 ] },
 		{ label: 'Vila', pos: [ - 42, 38, 62 ], target: [ - 5, 28, 5 ] },
 		{ label: 'Minas', pos: [ 18, 31, - 14 ], target: [ 46, 29, - 34 ] },
@@ -125,7 +126,7 @@ async function main() {
 		const dens = float( 0.00013 ).mul( app.fogScale );
 		const f = float( 1 ).sub( exp( d.mul( dens ).negate() ) );
 		const altitude = exp( max( positionWorld.y, 0 ).div( 2200 ).negate() );
-		return f.mul( altitude.mul( 0.55 ).add( 0.45 ) ).mul( 0.9 );
+		return f.mul( altitude.mul( 0.55 ).add( 0.45 ) ).mul( 0.72 );
 	} )() );
 
 	await loader.run( 'world', async ( p ) => {
@@ -160,7 +161,7 @@ async function main() {
 		app._envT = setTimeout( () => sky.buildEnv(), 250 );
 		const e = sky.state.elevation;
 		const warm = THREE.MathUtils.smoothstep( e, 0, 22 );
-		hazeColor.value.setRGB( 0.58 + 0.04 * warm, 0.64 + 0.1 * warm, 0.72 + 0.14 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
+		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
 	};
 
 	// Post: scene pass -> tone map / sRGB -> colour grade (late-afternoon look).
@@ -169,8 +170,17 @@ async function main() {
 	const scenePass = pass( scene, camera, { samples: 4 } );
 	const grade = uniform( 1.0 );
 	app.grade = grade;
-	post.outputNode = Fn( () => {
-		const c = renderOutput( scenePass ).toVar();
+
+	// Auto-focus depth of field on top of the scene pass (toggle: B).
+	const focus = new AutoFocus( {
+		camera, hf, scenePass,
+		targets: [ app.layers.buildings.object, app.layers.fort.object ],
+		instanced: [ app.layers.vegetation.object, app.layers.rocks.object ]
+	} );
+	app.focus = focus;
+
+	const graded = ( input ) => Fn( () => {
+		const c = renderOutput( input ).toVar();
 		const rgb = c.rgb.toVar();
 		const luma = dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
 		// saturation, gentle S-curve, split toning (cool shadows, warm highlights)
@@ -187,6 +197,14 @@ async function main() {
 		rgb.mulAssign( smoothstep( 0.35, 0.85, v ).oneMinus().mul( 0.22 ).add( 0.78 ) );
 		return vec4( mix( c.rgb, clamp( rgb, 0.0, 1.0 ), grade ), 1.0 );
 	} )();
+	const outSharp = graded( scenePass );
+	const outFocus = graded( focus.node );
+	post.outputNode = outFocus;
+	app.setFocus = ( on ) => {
+		focus.enabled = on;
+		post.outputNode = on ? outFocus : outSharp;
+		post.needsUpdate = true;
+	};
 	app.post = post;
 	app.renderFrame = () => post.render();
 
@@ -243,6 +261,8 @@ async function main() {
 		cam.update( dt );
 		terrain.update( camera );
 		for ( const f of app.onFrame ) f( dt );
+		focus.update( dt );
+		hud.updateFocus( focus );
 		// keep the shadow frustum centred ahead of the camera
 		const fwd = camera.getWorldDirection( tmpV ).setY( 0 ).normalize();
 		const c = tmpC.copy( camera.position ).addScaledVector( fwd, 80 );

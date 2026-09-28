@@ -112,6 +112,28 @@ function spineCoord( x, z ) {
 	return { s: bs, t: bt, d: best };
 }
 
+// Crest line of the big granite massif: [x, z, crest height]. The summit
+// sits NNW of the village; the ridge falls to the lake valley eastwards.
+const MASSIF = [
+	[ - 1800, - 800, 300 ], [ - 1400, - 1250, 420 ], [ - 950, - 1650, 520 ],
+	[ - 500, - 1950, 580 ], [ - 120, - 2000, 480 ], [ 220, - 1980, 320 ], [ 500, - 1950, 150 ]
+];
+const LOOKOUT_KNOLL = [ - 170, - 230 ];
+
+function massifCoord( x, z ) {
+	let best = 1e9, crest = 0;
+	for ( let i = 1; i < MASSIF.length; i ++ ) {
+		const [ ax, az, ah ] = MASSIF[ i - 1 ], [ bx, bz, bh ] = MASSIF[ i ];
+		const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+		const t = clamp( ( ( x - ax ) * dx + ( z - az ) * dz ) / l2, 0, 1 );
+		const d = Math.hypot( ax + dx * t - x, az + dz * t - z );
+		if ( d < best ) { best = d; crest = ah + ( bh - ah ) * t; }
+	}
+	// wander the crest height a little so the skyline is not a straight line
+	crest *= 0.88 + 0.24 * ( 0.5 + 0.5 * nD( x * 0.0025, z * 0.0025 ) );
+	return { d: best, crest };
+}
+
 // ---------------------------------------------------------------------------
 // Analytic height function. Built from layers so each landmark can be tuned.
 // ---------------------------------------------------------------------------
@@ -142,18 +164,29 @@ export function rawHeight( x, z ) {
 	const dist = Math.sqrt( mx * mx + mz * mz );
 	const dirW = clamp( ( - mx * 0.72 - mz * 0.69 ) / Math.max( dist, 1 ), - 1, 1 ); // 1 toward NW
 
-	// --- great granite massif, 1.2 - 1.8 km WNW ---
-	const mMask = smoothstep( 650, 1300, dist ) * smoothstep( - 0.55, 0.55, dirW ) * smoothstep( 60, 240, d );
-	if ( mMask > 0 ) {
-		const r = ridged( nC, x * 0.0016 + 3.1, z * 0.0016 - 1.7, 4 );
-		const f = 0.5 + 0.5 * fbm( nB, x * 0.0011 - 4, z * 0.0011 + 2, 3 );
-		let mh = mMask * 900 * ( 0.35 * f + 0.65 * Math.pow( r, 1.6 ) );
-		mh = lerp( mh, Math.round( mh / 16 ) * 16, 0.2 ); // jointed-granite ledges
-		h += mh;
+	// --- the great granite massif (upper left of the perspective reference):
+	// a crest line NNW of the village, highest ~1.2 km away, falling towards
+	// the lake valley on the right. Flanks ~35-40 deg, jagged crags on top.
+	const mr = massifCoord( x, z );
+	let massif = 0;
+	if ( mr.d < mr.crest * 0.9 ) {
+		// concave flank: gentle green foot, abrupt granite summit with crags
+		const flank = Math.pow( 1 - smoothstep( 0, mr.crest * 0.78, mr.d ), 1.6 );
+		const crag = ridged( nC, x * 0.0035 + 3.1, z * 0.0035 - 1.7, 4 );
+		const body = 0.5 + 0.5 * fbm( nB, x * 0.0022 - 4, z * 0.0022 + 2, 3 );
+		massif = mr.crest * flank * ( 0.7 + 0.2 * body ) + flank * flank * mr.crest * 0.38 * Math.pow( crag, 1.2 );
+		massif = lerp( massif, Math.round( massif / 14 ) * 14, 0.18 ); // jointed-granite ledges
+		massif *= smoothstep( 30, 200, d );
 	}
-	// --- rolling rocky hills out to ~600 m (the lookout hill on the left) ---
-	const hillMask = smoothstep( 120, 600, dist ) * smoothstep( 40, 200, d ) * ( 1 - mMask * 0.6 );
-	h += hillMask * ( 60 * ( 0.5 + 0.5 * fbm( nB, x * 0.004 + 11, z * 0.004, 4 ) ) + 70 * Math.pow( ridged( nA, x * 0.005, z * 0.005, 3 ), 1.3 ) );
+	// --- green rocky foothills rising gradually from the village (left of
+	// the reference), with the knoll that carries the far lookout tower ---
+	const westness = smoothstep( - 0.35, 0.8, dirW );
+	const hillMask = smoothstep( 130, 700, dist ) * smoothstep( 40, 200, d );
+	let hills = hillMask * ( ( 45 + 120 * westness ) * ( 0.55 + 0.45 * fbm( nB, x * 0.003 + 11, z * 0.003, 4 ) )
+		+ 45 * Math.pow( ridged( nA, x * 0.006, z * 0.006, 3 ), 1.4 ) );
+	const kx = x - LOOKOUT_KNOLL[ 0 ], kz = z - LOOKOUT_KNOLL[ 1 ];
+	hills += 55 * Math.exp( - ( kx * kx + kz * kz ) / ( 2 * 70 * 70 ) ) * smoothstep( 40, 200, d );
+	h += Math.max( hills, massif ) + 0.25 * Math.min( hills, massif );
 
 	// --- small-scale granite roughness (stronger on hills and shore) ---
 	const rough = fbm( nD, x * 0.045, z * 0.045, 3 );

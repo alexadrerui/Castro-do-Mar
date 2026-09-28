@@ -19,37 +19,34 @@ export function farHeight( x, z ) {
 	// the lake runs away to the north-north-east: keep that corridor open
 	const corridor = Math.abs( Math.atan2( Math.sin( ang - 0.35 ), Math.cos( ang - 0.35 ) ) );
 	const open = ss( 0.18, 0.55, corridor );
-	// higher massifs to the north-west / west, lower across the lake (east)
-	const bias = 0.55 + 0.45 * Math.cos( ang + 0.9 );
+	// the whole horizon is alpine in the reference; a bit lower to the south
+	const bias = 0.78 + 0.22 * Math.cos( ang + 0.4 );
 
 	// domain warp for natural, non-grid ridgelines
 	const wx = x + 1600 * fbm( nJ, x * 0.00025, z * 0.00025, 3 );
 	const wz = z + 1600 * fbm( nJ, x * 0.00025 + 7.3, z * 0.00025 - 2.1, 3 );
 
-	// great ranges: 3.5 - 12 km
-	const m = ss( 3200, 6200, r ) * ( open + ( 1 - open ) * ss( 9000, 14000, r ) );
+	// great snowy ranges: 2.8 - 12 km (the lake corridor opens them from 7 km)
+	const m = ss( 2800, 5200, r ) * ( open + ( 1 - open ) * ss( 6500, 9500, r ) );
 	if ( m > 0 ) {
-		// broad massif body + rounded crests + a little ridged detail
-		const body = Math.pow( ss( - 0.35, 0.75, fbm( nJ, wx * 0.00022, wz * 0.00022, 4 ) ), 1.6 );
-		const crest = Math.pow( ridgedSoft( nH, wx * 0.00045, wz * 0.00045, 5 ), 2.2 );
-		const env = 0.5 + 0.5 * ss( - 0.3, 0.6, fbm( nJ, x * 0.00012, z * 0.00012, 3 ) );
-		const peak = 2200 * env * bias * ( 0.55 * body * ( 0.6 + 0.4 * crest ) + 0.45 * crest * ( 0.4 + 0.6 * body ) );
+		// massif bodies with sharp, jagged alpine crests (ridged) on top
+		const body = Math.pow( ss( - 0.4, 0.7, fbm( nJ, wx * 0.0002, wz * 0.0002, 4 ) ), 1.3 );
+		const sharp = ridged( nH, wx * 0.00026, wz * 0.00026, 4 );
+		const env = 0.7 + 0.3 * ss( - 0.3, 0.6, fbm( nJ, x * 0.00012, z * 0.00012, 3 ) );
+		const peak = 2100 * env * bias * ( 0.2 + 0.35 * body + 0.6 * sharp * ( 0.5 + 0.5 * body ) );
 		h = Math.max( h, - 20 + m * peak );
 	}
-	// forested foothills & far shore: 1.6 - 5 km, not inside the lake corridor
-	const mid = ss( 1500, 2600, r ) * open * ( 1 - ss( 5000, 7000, r ) );
+	// forested mountains across the lake, descending to the water (right of
+	// the reference): 1.8 - 5 km, outside the corridor
+	// the far end of the lake: forested foothills so the great ranges rise
+	// from land, not straight out of the water
+	const shore = ( 1 - open ) * ss( 5200, 6800, r );
+	if ( shore > 0 ) h = Math.max( h, - 15 + shore * ( 140 + 180 * ( 0.5 + 0.5 * fbm( nH, x * 0.0007, z * 0.0007, 3 ) ) ) );
+	const mid = ss( 1700, 2800, r ) * open * ( 1 - ss( 5500, 7500, r ) );
 	if ( mid > 0 ) {
-		const hills = Math.pow( ridgedSoft( nJ, wx * 0.0011, wz * 0.0011, 4 ), 2.0 ) * 380 * ( 0.4 + 0.6 * fbm( nH, x * 0.0005, z * 0.0005, 3 ) + 0.3 );
-		h = Math.max( h, - 25 + mid * hills );
-	}
-	// receding promontories inside the lake corridor (layered depth)
-	const prom = ( 1 - open ) * ss( 1400, 2200, r ) * ss( 0.25, 0.6, fbm( nH, x * 7e-4, z * 7e-4, 3 ) );
-	if ( prom > 0 ) h = Math.max( h, - 10 + prom * ( 120 + 60 * ridged( nJ, x * 0.002, z * 0.002, 3 ) ) );
-	// the western massif continues past the terrain edge (1.3 - 3.5 km WNW)
-	const west = ss( - 2.6, - 2.2, ang ) * ( 1 - ss( - 1.0, - 0.8, ang ) ) * ss( 1100, 1500, r ) * ( 1 - ss( 3200, 4200, r ) );
-	if ( west > 0 ) {
-		const rw = ridgedSoft( nH, wx * 0.0012, wz * 0.0012, 4 );
-		h = Math.max( h, west * ( 500 + 900 * Math.pow( rw, 1.5 ) ) );
+		const hills = Math.pow( ridgedSoft( nJ, wx * 0.0009, wz * 0.0009, 4 ), 1.8 ) * 650 * ( 0.45 + 0.55 * fbm( nH, x * 0.0005, z * 0.0005, 3 ) + 0.25 );
+		// a forested base under every range so none rises straight from water
+		h = Math.max( h, - 25 + mid * ( 70 + hills ) );
 	}
 	return h;
 }
@@ -92,7 +89,7 @@ export async function createHorizon( onProgress ) {
 	const n2 = mx_fractal_noise_float( wp.mul( 0.006 ), 3 ).mul( 0.5 ).add( 0.5 );
 	const forest = mix( color( 0x223619 ), color( 0x3b5226 ), n1 );
 	const rock = mix( color( 0x4c4d52 ), color( 0x7f7f84 ), n2 );
-	const snowLine = float( 420 ).add( n1.mul( 200 ) ).add( slope.mul( 180 ) );
+	const snowLine = float( 1150 ).add( n1.mul( 350 ) ).add( slope.mul( 250 ) );
 	let col = mix( forest, rock, smoothstep( 0.3, 0.6, slope.add( n2.mul( 0.2 ) ) ).max( smoothstep( 550, 1000, wp.y.add( n1.mul( 200 ) ) ) ) );
 	col = mix( col, color( 0xf4f6fa ), smoothstep( snowLine, snowLine.add( 160 ), wp.y ).mul( smoothstep( 0.7, 0.95, slope ).oneMinus() ) );
 	// aerial perspective planes: far ranges fade into blue haze

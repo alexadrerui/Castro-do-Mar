@@ -5,10 +5,10 @@
 export const WATER_LEVEL = 0;
 
 export const TERRAIN = {
-	size: 2200,           // metres, square
-	segments: 880,        // 2.5 m cells
+	size: 2800,           // metres, square (covers the whole granite massif)
+	segments: 1120,       // 2.5 m cells, 14 x 14 LOD chunks of 80
 	centerX: - 250,
-	centerZ: - 300
+	centerZ: - 650
 };
 
 // Area covered by the high-resolution splat mask (paths, dirt, fields).
@@ -150,10 +150,10 @@ export const ISLANDS = [
 	{ x: 175, z: - 200, r: 36, h: 9, e: 2.2, rot: 0.35 },
 	{ x: 150, z: - 330, r: 14, h: 5, e: 1.8, rot: 0.3 },
 	{ x: 230, z: 40, r: 22, h: 7, e: 2.0, rot: 0.4 },
-	{ x: 330, z: - 150, r: 55, h: 15, e: 2.4, rot: 0.35 },
-	{ x: 290, z: - 470, r: 80, h: 20, e: 2.6, rot: 0.3 },
-	{ x: 520, z: - 330, r: 95, h: 22, e: 2.2, rot: 0.4 },
-	{ x: 470, z: - 700, r: 130, h: 22, e: 2.8, rot: 0.35 },
+	{ x: 330, z: - 150, r: 30, h: 8, e: 2.2, rot: 0.35 },
+	{ x: 300, z: - 470, r: 40, h: 10, e: 2.4, rot: 0.3 },
+	{ x: 560, z: - 300, r: 45, h: 11, e: 2.2, rot: 0.4 },
+	{ x: 520, z: - 760, r: 55, h: 12, e: 2.6, rot: 0.35 },
 	{ x: 210, z: - 620, r: 40, h: 12, e: 2.0, rot: 0.3 },
 	{ x: 380, z: 160, r: 18, h: 5, e: 1.8, rot: 0.45 },
 	{ x: 610, z: 20, r: 70, h: 18, e: 2.3, rot: 0.35 },
@@ -167,10 +167,10 @@ export const ISLANDS = [
 	{ x: 140, z: 42, r: 6, h: 2, e: 1.8, rot: 0.3 },
 	{ x: 98, z: 76, r: 5, h: 1.5, e: 1.6, rot: 0.5 },
 	// the lake corridor to the north (beyond the detailed terrain, far mesh)
-	{ x: 650, z: - 1150, r: 110, h: 18, e: 2.4, rot: 0.35 },
-	{ x: 900, z: - 1500, r: 160, h: 24, e: 2.6, rot: 0.3 },
-	{ x: 560, z: - 1650, r: 60, h: 12, e: 2.0, rot: 0.4 },
-	{ x: 1250, z: - 1900, r: 220, h: 25, e: 2.2, rot: 0.35 },
+	{ x: 650, z: - 1150, r: 50, h: 12, e: 2.4, rot: 0.35 },
+	{ x: 900, z: - 1500, r: 80, h: 16, e: 2.6, rot: 0.3 },
+	{ x: 560, z: - 1650, r: 35, h: 9, e: 2.0, rot: 0.4 },
+	{ x: 1250, z: - 1900, r: 130, h: 22, e: 2.2, rot: 0.35 },
 	{ x: 800, z: - 2150, r: 90, h: 14, e: 2.4, rot: 0.3 },
 	{ x: 1100, z: - 2500, r: 180, h: 22, e: 2.6, rot: 0.4 },
 	{ x: 700, z: - 2800, r: 120, h: 16, e: 2.2, rot: 0.35 },
