@@ -8,6 +8,7 @@ import { AutoFocus } from './controls/focus.js';
 import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
+import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
 import { WATER_LEVEL } from './world/layout.js';
@@ -182,6 +183,8 @@ async function main() {
 		const warm = THREE.MathUtils.smoothstep( e, 0, 22 );
 		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
 		app.underwater?.setDaylight( hazeColor.value );
+		app.underwater?.setSun( sky.state.sunDir, sky.sun.intensity / 5.4 );
+		app.underside?.setDaylight( hazeColor.value, sky.state.sunDir, sky.sun, app.underwater?.murk.value );
 		app.snow?.light.value.copy( hazeColor.value );
 		app.seabed?.updateSun( sky.state.sunDir );
 		app.fish?.updateSun( sky.state.sunDir );
@@ -212,10 +215,15 @@ async function main() {
 	const snow = new MarineSnow( { waterLevel: WATER_LEVEL } );
 	scene.add( snow.mesh );
 	app.snow = snow;
+	// the water surface seen from below (Snell's window, total internal reflection)
+	const underside = createWaterUnderside( { waterLevel: WATER_LEVEL } );
+	scene.add( underside.mesh );
+	app.underside = underside;
 	app.onFrame.push( ( dt ) => {
 		underwater.update( camera, WATER_LEVEL );
 		lens.update( dt, underwater.on.value > 0.5 );
 		snow.update( camera, underwater.on.value > 0.5 );
+		underside.update( underwater.on.value > 0.5 );
 	} );
 
 	const graded = ( input ) => Fn( () => {

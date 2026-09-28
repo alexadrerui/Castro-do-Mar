@@ -44,6 +44,23 @@ const out = await page.evaluate( async ( prefix ) => {
 	await sleep( 2500 ); // let the seabed tiles stream in
 	res.under = { on: a.underwater.on.value, depth: +a.underwater.depth.value.toFixed( 2 ), seabed: { ...a.seabed.stats } };
 	await a.capture( prefix + '_under' );
+	// looking up at the surface from below (Snell's window), then at shallow sand (caustics)
+	a.setFocus?.( false );
+	view( [ x, - 3, z ], [ x - 2, 6, z + 1 ] );
+	await sleep( 800 );
+	await a.capture( prefix + '_up' );
+	{
+		// shallow, flat sand 2 - 3.5 m deep near the spot (the depth of field off for a sharp look)
+		let sx = x, sz = z;
+		for ( let k = 0; k < 6000; k ++ ) { const tx = x - 250 + Math.random() * 500, tz = z - 250 + Math.random() * 500; const h = a.hf.heightAt( tx, tz ); if ( h > - 3.5 && h < - 2 && a.hf.slopeAt( tx, tz ) < 0.1 ) { sx = tx; sz = tz; break; } }
+		a.setFocus?.( false );
+		const gs = a.hf.heightAt( sx, sz );
+		view( [ sx + 3, gs + 1.6, sz ], [ sx - 2, gs, sz ] );
+		await sleep( 800 );
+		res.caustics = { at: [ +sx.toFixed( 1 ), +gs.toFixed( 1 ) ] };
+		await a.capture( prefix + '_caust' );
+		a.setFocus?.( true );
+	}
 	// close to the bottom, looking down and ahead (seabed life)
 	for ( const [ i, [ bx, bz ] ] of spots.entries() ) {
 		const gb = a.hf.heightAt( bx, bz );

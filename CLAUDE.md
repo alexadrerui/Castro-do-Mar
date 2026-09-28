@@ -34,6 +34,8 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Os dois entram em `graded()` no `main.js`, antes do `renderOutput`.
   - QA: `node tools/dive.mjs [prefixo]` captura a cena submersa, dois pontos do fundo (rocha e areia), a lente molhada e a lente seca.
   - `underwater.js` reconstrói a posição de cada pixel pela profundidade e absorve a luz no caminho superfície → ponto. O terreno e o fundo escurecem juntos com a profundidade.
+  - Cáusticas (`underwater.js`): padrão procedural de cáustica ("Tileable Water Caustic" do Dave Hoskins), só nas superfícies viradas para cima. A normal vem das derivadas da posição reconstruída. O padrão é deslocado pelo sol refratado e perde nitidez e força com a profundidade. `app.underwater.debug` = 1 mostra o fator das cáusticas, 2 a máscara "para cima", 3 a profundidade.
+  - `src/world/waterUnderside.js`: a superfície vista de baixo — plano com `BackSide`, visível só embaixo d'água. Tem a janela de Snell (céu refratado com nuvens suaves e o brilho do sol), reflexão total fora dela, aro escuro na borda e ondas analíticas que quebram a janela.
   - `src/post/marineSnow.js`: partículas em suspensão numa caixa de 8 m em volta da câmera, só embaixo d'água. É um porte do Tidewater (MIT).
 - **Fundo do mar** (`src/world/seabed/`, porte parcial do recife do Tidewater, MIT):
   - `batch.js`: todos os modelos num único mesh e num único pipeline, com uma chamada de desenho indireta por modelo/LOD e instâncias num storage buffer. Só funciona em WebGPU.
