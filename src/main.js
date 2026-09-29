@@ -5,6 +5,7 @@ import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
 import { FreeCam } from './controls/freecam.js';
 import { AutoFocus } from './controls/focus.js';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
@@ -161,10 +162,12 @@ async function main() {
 	cam.jumpTo( new THREE.Vector3( ...v0.pos ), new THREE.Vector3( ...v0.target ) );
 
 	app.goView = ( i ) => {
+		app.focus?.release();
 		const v = app.views[ i ];
 		cam.flyTo( new THREE.Vector3( ...v.pos ), new THREE.Vector3( ...v.target ), 2.4 );
 	};
 	app.setView = ( i ) => {
+		app.focus?.release();
 		const v = app.views[ i ];
 		cam.jumpTo( new THREE.Vector3( ...v.pos ), new THREE.Vector3( ...v.target ) );
 	};
@@ -204,6 +207,21 @@ async function main() {
 		instanced: [ app.layers.vegetation.object, app.layers.rocks.object ]
 	} );
 	app.focus = focus;
+	// click to focus: a press and release without dragging focuses on the point under the
+	// cursor; a click on the sky goes back to the automatic focus at the screen centre
+	{
+		let down = null;
+		canvas.addEventListener( 'pointerdown', ( e ) => { if ( e.button === 0 ) down = { x: e.clientX, y: e.clientY, t: performance.now() }; } );
+		canvas.addEventListener( 'pointerup', ( e ) => {
+			if ( e.button !== 0 || ! down ) return;
+			const moved = Math.hypot( e.clientX - down.x, e.clientY - down.y ), dt = performance.now() - down.t;
+			down = null;
+			if ( moved > 5 || dt > 350 || ! focus.enabled ) return;
+			const r = canvas.getBoundingClientRect();
+			const hit = focus.focusAt( ( e.clientX - r.left ) / r.width * 2 - 1, - ( ( e.clientY - r.top ) / r.height ) * 2 + 1 );
+			app.hud?.toast( hit ? `Foco em ${ focus.hit.toFixed( 1 ) } m` : 'Foco automático no centro' );
+		} );
+	}
 
 	// Diving: underwater medium while below the surface, water drops on the lens after surfacing.
 	const underwater = new Underwater( scenePass );
@@ -226,8 +244,16 @@ async function main() {
 		underside.update( underwater.on.value > 0.5 );
 	} );
 
-	const graded = ( input ) => Fn( () => {
-		const wetRGB = lensFn( underwater.apply( input.rgb ), blurred, screenUV );
+	// Bloom (as in three's ocean example): a soft glow around what is brighter than white in the
+	// HDR scene (the sun's glitter on the water, the sun-lit sky near the horizon), from the scene
+	// pass at half resolution. Toggled in the panel; when off the output is rebuilt without it.
+	const bloomPass = bloom( scenePass.getTextureNode(), 0.16, 0.35, 1.05 );
+	app.bloom = bloomPass;
+	let bloomOn = true;
+
+	const graded = ( input, withBloom ) => Fn( () => {
+		const src = withBloom ? input.rgb.add( bloomPass.rgb ) : input.rgb;
+		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV );
 		const c = renderOutput( vec4( wetRGB, 1.0 ) ).toVar();
 		const rgb = c.rgb.toVar();
 		const luma = dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
@@ -245,12 +271,21 @@ async function main() {
 		rgb.mulAssign( smoothstep( 0.35, 0.85, v ).oneMinus().mul( 0.22 ).add( 0.78 ) );
 		return vec4( mix( c.rgb, clamp( rgb, 0.0, 1.0 ), grade ), 1.0 );
 	} )();
-	const outSharp = graded( scenePass );
-	const outFocus = graded( focus.node );
-	post.outputNode = outFocus;
+	// the four outputs: with / without depth of field, with / without bloom
+	const outputs = {};
+	const output = () => {
+		const key = ( focus.enabled ? 'f' : 's' ) + ( bloomOn ? 'b' : '' );
+		return outputs[ key ] || ( outputs[ key ] = graded( focus.enabled ? focus.node : scenePass, bloomOn ) );
+	};
+	post.outputNode = output();
 	app.setFocus = ( on ) => {
 		focus.enabled = on;
-		post.outputNode = on ? outFocus : outSharp;
+		post.outputNode = output();
+		post.needsUpdate = true;
+	};
+	app.setBloom = ( on ) => {
+		bloomOn = on;
+		post.outputNode = output();
 		post.needsUpdate = true;
 	};
 	app.post = post;
@@ -316,6 +351,7 @@ async function main() {
 		app.water.reflector.reflector.getVirtualCamera( camera ).layers.set( 2 );
 		sky.sun.shadow.camera.layers.enable( 1 );
 	} );
+
 
 	const hud = new HUD( app );
 	app.hud = hud;

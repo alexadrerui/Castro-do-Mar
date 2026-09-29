@@ -38,6 +38,7 @@ export class HUD {
 		$( 'c-shadows' ).onchange = ( e ) => app.setShadows( e.target.checked );
 		$( 'c-refl' ).onchange = ( e ) => app.setReflections( e.target.checked );
 		$( 'c-focus' ).onchange = ( e ) => this.setFocus( e.target.checked );
+		$( 'c-bloom' ).onchange = ( e ) => { app.setBloom( e.target.checked ); this.toast( e.target.checked ? 'Brilho ligado' : 'Brilho desligado' ); };
 
 		$( 'side-toggle' ).onclick = () => $( 'side' ).classList.toggle( 'collapsed' );
 		window.addEventListener( 'keydown', ( e ) => {
@@ -60,11 +61,16 @@ export class HUD {
 		this.toast( on ? 'Foco automático ligado' : 'Foco automático desligado' );
 	}
 
-	// Centre reticle: tightens and shows the focal distance while the
-	// background is being blurred.
+	// Focus reticle: tightens and shows the focal distance while the
+	// background is being blurred; at the screen centre, or on the clicked
+	// point when the focus is locked (click to focus).
 	updateFocus( f ) {
 		const r = this._ret || ( this._ret = $( 'focus-reticle' ) );
-		const a = f.enabled ? f.amount : 0;
+		const p = f.lockNDC?.( this._fp || ( this._fp = f.camera.position.clone() ) );
+		r.style.left = p ? ( ( p.x * 0.5 + 0.5 ) * 100 ).toFixed( 2 ) + '%' : '50%';
+		r.style.top = p ? ( ( 0.5 - p.y * 0.5 ) * 100 ).toFixed( 2 ) + '%' : '50%';
+		r.classList.toggle( 'locked', !! p );
+		const a = f.enabled ? ( p ? Math.max( f.amount, 0.6 ) : f.amount ) : 0;
 		r.style.opacity = ( 0.15 + 0.85 * a ).toFixed( 2 );
 		r.classList.toggle( 'off', ! f.enabled );
 		r.style.setProperty( '--k', ( 1 - 0.35 * a ).toFixed( 3 ) );

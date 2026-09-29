@@ -6,6 +6,10 @@ import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 // Auto-focus depth of field: whatever is under the screen centre becomes the
 // focal plane. When the camera gets close to something (< NEAR m) the
 // background falls out of focus; far away the image stays sharp.
+// Click to focus: focusAt( ndc ) casts the same ray through a point of the
+// screen and locks the focus on the world point it hits (the lens keeps
+// that point sharp while the camera moves); a click on the sky, a point that
+// leaves the view or release() go back to the screen centre.
 const NEAR = 45;          // start of the effect (m)
 const FULL = 22;          // full effect at this distance or closer (m)
 const MAX_RAY = 140;
@@ -38,12 +42,14 @@ export class AutoFocus {
 		this.amount = 0;             // 0..1 effect strength (smoothed)
 		this._t = 0;
 		this._v = new THREE.Vector3();
+		this.lock = null;            // locked world point (click to focus) or null
+		this._ndc = new THREE.Vector2();
 	}
 
-	// Distance to the first surface under the screen centre.
-	measure() {
+	// Distance to the first surface under the screen point ndc (default: the centre).
+	measure( ndc = this._ndc.set( 0, 0 ) ) {
 		const cam = this.camera;
-		this.ray.setFromCamera( new THREE.Vector2( 0, 0 ), cam );
+		this.ray.setFromCamera( ndc, cam );
 		let best = MAX_RAY;
 		let hits = this.ray.intersectObjects( this.targets, false );
 		if ( hits.length ) best = hits[ 0 ].distance;
@@ -67,9 +73,36 @@ export class AutoFocus {
 		return best;
 	}
 
+	// Click to focus: lock on the surface under the screen point ndc (x, y in -1..1).
+	// Returns the locked point, or null (nothing within reach: back to the centre).
+	focusAt( x, y ) {
+		const d = this.measure( this._ndc.set( x, y ) );
+		if ( d >= MAX_RAY ) { this.release(); return null; }
+		this.lock = this.ray.ray.origin.clone().addScaledVector( this.ray.ray.direction, d );
+		this.hit = d;
+		return this.lock;
+	}
+
+	release() {
+		this.lock = null;
+		this._t = 1; // measure the centre right away
+	}
+
+	// the locked point in normalized device coordinates (null if none or behind the camera)
+	lockNDC( out = new THREE.Vector3() ) {
+		if ( ! this.lock ) return null;
+		out.copy( this.lock ).project( this.camera );
+		return out.z < 1 && Math.abs( out.x ) <= 1.05 && Math.abs( out.y ) <= 1.05 ? out : null;
+	}
+
 	update( dt ) {
 		this._t += dt;
-		if ( this._t > 0.08 ) { this._t = 0; this.hit = this.measure(); }
+		if ( this.lock ) {
+			// the locked point leaves the view: back to the screen centre
+			if ( ! this.lockNDC( this._v ) ) this.release();
+			else this.hit = Math.min( MAX_RAY, this.camera.position.distanceTo( this.lock ) );
+		}
+		if ( ! this.lock && this._t > 0.08 ) { this._t = 0; this.hit = this.measure(); }
 		const target = this.enabled ? 1 - THREE.MathUtils.smoothstep( this.hit, FULL, NEAR ) : 0;
 		this.amount += ( target - this.amount ) * Math.min( 1, dt * 4 );
 		// rack focus smoothly, like a lens

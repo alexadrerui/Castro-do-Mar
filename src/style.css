@@ -114,3 +114,4 @@ body.clean #hud { display: none; }
 .focus-reticle i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; }
 .focus-reticle span { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px) scale(calc(1 / var(--k))); font: 600 10.5px Inter, sans-serif; color: var(--gold-2); text-shadow: 0 1px 3px rgba(0,0,0,.7); white-space: nowrap; }
 .focus-reticle.off i { border-color: rgba(239,230,210,.35); }
+.focus-reticle.locked i { border-width: 2px; }

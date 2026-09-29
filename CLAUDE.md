@@ -65,10 +65,18 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Conjuntos por ambiente: `tor*` nas colinas, `shore*` na costa e `talus*` no pé do penhasco. O forte continua com o `createRockMaterial` antigo.
   - QA: `node tools/rocks.mjs [prefixo]` faz close-ups de uma pedra de cada conjunto.
 
+- **Foco pelo clique** (`focus.js` `focusAt`/`release`, `main.js`): um clique sem arrastar (< 5 px e < 350 ms) trava o foco no ponto clicado e a retícula da HUD acompanha esse ponto. Clicar no céu (nada a menos de 140 m), trocar de vista ou o ponto sair da tela devolvem o foco ao centro.
+- **Água** (`water.js`):
+  - Zonas de vento com ruído de baixa frequência (~420 m e ~140 m): espelho calmo alterna com água encrespada, atuando na refletividade e na distorção do reflexo. Há também uma oitava longa de ondulação (~160 m) contra a repetição.
+  - Sombra do sol na água: camada fina `ShadowNodeMaterial` (`water.shadowMesh`) 2 cm acima do plano, que escurece só onde cai a sombra, usando o mesmo mapa de sombra do terreno. Tentativas que não funcionaram: um lighting model próprio (o `MeshBasic` descarta o resultado que ele produz) e ler o mapa de sombra na mão (a comparação de profundidade falhava).
+  - Um plano casa sombra só se o material for de dupla face; o passe de sombra desenha as faces de trás.
+- **Bloom** (`main.js`): `BloomNode` do three sobre a cena HDR (força 0,16, raio 0,35, limiar 1,05, meia resolução), liga/desliga no painel ("Brilho"). As 4 saídas (com/sem DOF × com/sem bloom) são montadas sob demanda.
+- No headless, o `?perf` / `gpuProfile` hoje devolve tempos irreais (~0,2 ms por frame): não serve para medir custo de GPU.
+
 ## Pendências (backlog)
 ### Câmera
 - [ ] O foco não é aplicado nas capturas (`app.capture`) quando o loop está pausado; considerar `focus.update` antes de capturar.
-- [ ] Opcional: foco pelo clique (clicar num ponto para focar) e aberture/bokeh ajustáveis no painel.
+- [x] Foco pelo clique. (Abertura/bokeh ajustáveis no painel continuam opcionais.)
 
 ### Relevo e montanhas (em andamento)
 - [ ] Remover o escalonamento em degraus de 14 m do maciço em `heightfield.js`
