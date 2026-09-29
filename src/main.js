@@ -18,6 +18,12 @@ import { createTerrain } from './world/terrain.js';
 import { createSky } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { createHorizon } from './world/horizon.js';
+import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
+// the generated fields depend only on this code: its hash is the cache key
+import srcHeight from './world/heightfield.js?raw';
+import srcLayout from './world/layout.js?raw';
+import srcNoise from './core/noise.js?raw';
+import srcWorker from './world/gen.worker.js?raw';
 
 const params = new URLSearchParams( location.search );
 const FORCE_WEBGL = params.has( 'webgl' );
@@ -82,21 +88,35 @@ async function main() {
 		app.renderer = renderer; app.scene = scene; app.camera = camera;
 	} );
 
+	// Heightfield, splat mask, AO and macro noise: from the IndexedDB cache when
+	// the generator code is unchanged, otherwise baked in the worker and stored.
 	hf = new HeightField();
-	const worker = new Worker( new URL( './world/gen.worker.js', import.meta.url ), { type: 'module' } );
-	const job = ( cmd, p ) => new Promise( ( resolve, reject ) => {
-		worker.onmessage = ( e ) => e.data.type === 'progress' ? p( e.data.p ) : resolve( e.data.data );
-		worker.onerror = reject;
-		worker.postMessage( { cmd } );
-	} );
-	await loader.run( 'height', async ( p ) => { hf.data = await job( 'height', p ); } );
+	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker );
+	app.clearCache = cacheClear;
+	const cached = await cacheGet( genKey );
+	let mask, ao, macro;
+	if ( cached && cached.height?.length === hf.data.length ) {
+		console.info( 'fields: from cache', genKey );
+		for ( const id of [ 'height', 'mask', 'ao', 'macro' ] ) await loader.run( id, async () => {} );
+		( { mask, ao, macro } = cached );
+		hf.data = cached.height;
+	} else {
+		const worker = new Worker( new URL( './world/gen.worker.js', import.meta.url ), { type: 'module' } );
+		const job = ( cmd, p ) => new Promise( ( resolve, reject ) => {
+			worker.onmessage = ( e ) => e.data.type === 'progress' ? p( e.data.p ) : resolve( e.data.data );
+			worker.onerror = reject;
+			worker.postMessage( { cmd } );
+		} );
+		await loader.run( 'height', async ( p ) => { hf.data = await job( 'height', p ); } );
+		mask = await loader.run( 'mask', ( p ) => job( 'mask', p ) );
+		ao = await loader.run( 'ao', ( p ) => job( 'ao', p ) );
+		macro = await loader.run( 'macro', ( p ) => job( 'macro', p ) );
+		worker.terminate();
+		// store in the background (structured clone copies the arrays)
+		cachePut( genKey, { height: hf.data, mask, ao, macro }, 'fields:' ).then( () => console.info( 'fields: cached', genKey ) );
+	}
 	app.hf = hf;
-
-	const mask = await loader.run( 'mask', ( p ) => job( 'mask', p ) );
 	app.mask = mask;
-	const ao = await loader.run( 'ao', ( p ) => job( 'ao', p ) );
-	const macro = await loader.run( 'macro', ( p ) => job( 'macro', p ) );
-	worker.terminate();
 
 	let sky;
 	await loader.run( 'sky', async () => {
@@ -345,10 +365,63 @@ async function main() {
 	await loader.run( 'compile', async () => {
 		sky.buildEnv();
 		app.onSunChanged();
-		// precompile, but never block the loader forever (hidden tabs throttle the GPU queue)
-		await Promise.race( [ renderer.compileAsync( scene, camera ), new Promise( ( r ) => setTimeout( r, 12000 ) ) ] );
 		// reflection sees only layer 2 (sky, horizon, terrain, buildings, trees)
-		app.water.reflector.reflector.getVirtualCamera( camera ).layers.set( 2 );
+		const reflector = app.water.reflector.reflector;
+		const reflCam = reflector.getVirtualCamera( camera );
+		reflCam.layers.set( 2 );
+		// Precompile in the render contexts the frame really uses. The shader cache key of a
+		// render object includes its render context, keyed by render target, MRT and call
+		// depth (how deeply the render() is nested: the scene pass runs inside post.render(),
+		// the water reflection inside the scene pass). compileAsync() always uses depth 0, so
+		// a plain compileAsync( scene, camera ) built variants no frame ever used and the
+		// first frame rebuilt every shader again (~6 s of freeze after the loader).
+		// 1. probe frame with an empty scene (only the water, so the reflection runs too):
+		//    records the call depth of each render target.
+		const contexts = renderer._renderContexts, getContext = contexts.get; // three.js r186 internals
+		const depthOf = new Map();
+		const hidden = scene.children.filter( ( o ) => o.visible && ! o.isLight && o !== app.water.mesh );
+		hidden.forEach( ( o ) => { o.visible = false; } );
+		contexts.get = ( t, m, d ) => { if ( t && ! depthOf.has( t ) ) depthOf.set( t, d ); return getContext.call( contexts, t, m, d ); };
+		try { app.renderFrame(); } finally {
+			contexts.get = getContext;
+			hidden.forEach( ( o ) => { o.visible = true; } );
+		}
+		// 2. compile the scene for the scene pass and for the reflection, at those depths
+		const compileFor = ( cam, rt, mrt ) => {
+			const depth = depthOf.get( rt );
+			if ( depth === undefined ) console.warn( 'precompile: render target not seen in the probe frame' );
+			const prevRT = renderer.getRenderTarget(), prevMRT = renderer.getMRT();
+			contexts.get = ( t, m, d ) => getContext.call( contexts, t, m, depth ?? d );
+			renderer.setRenderTarget( rt ); renderer.setMRT( mrt );
+			// the lights / environment / fog key is cached per render call (info.calls), which
+			// compileAsync() does not advance: without this, the second compile reused the key
+			// of the first (the reflection camera sees no lights) and built the wrong variants
+			renderer.info.calls ++;
+			try {
+				return renderer.compileAsync( scene, cam ); // the render context is taken synchronously
+			} finally {
+				contexts.get = getContext;
+				renderer.setRenderTarget( prevRT ); renderer.setMRT( prevMRT );
+			}
+		};
+		// the reflection's render target (the reflector keys it by the virtual camera)
+		const reflRT = reflector.renderTargets.get( reflCam );
+		// One after the other, in the order of a real frame (scene pass, then the reflection
+		// nested in it). Concurrent compiles share the scene's lights node, and the reflection
+		// camera (layer 2 only) sees no lights, so it would clear them while the scene compile
+		// still builds; compiling the reflection first left the main sky white.
+		const compiles = async () => {
+			await compileFor( camera, scenePass.renderTarget, scenePass.getMRT() );
+			if ( ! reflRT ) return;
+			app.water.mesh.visible = false; // the reflection pass hides the water itself
+			const refl = compileFor( reflCam, reflRT, null );
+			app.water.mesh.visible = true;
+			await refl;
+		};
+		// never block the loader forever (hidden tabs throttle the GPU queue)
+		const t0 = performance.now();
+		const all = compiles().then( () => console.info( 'precompile done (ms)', Math.round( performance.now() - t0 ) ) );
+		await Promise.race( [ all, new Promise( ( r ) => setTimeout( r, 12000 ) ) ] );
 		sky.sun.shadow.camera.layers.enable( 1 );
 	} );
 
@@ -363,6 +436,7 @@ async function main() {
 	} );
 
 	const timer = new THREE.Timer();
+	let firstFrame = true;
 	renderer.setAnimationLoop( () => {
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 0.1 );
@@ -377,7 +451,9 @@ async function main() {
 		c.y = hf.heightAt( c.x, c.z );
 		snapShadow( sky.sun, c );
 		sky.sun.shadow.needsUpdate = true;
+		const tf = firstFrame ? performance.now() : 0;
 		app.renderFrame();
+		if ( firstFrame ) { firstFrame = false; console.info( 'first frame (ms)', Math.round( performance.now() - tf ) ); }
 		hud.update( dt, camera, renderer.info, cam.moveSpeed );
 		adaptResolution( dt );
 	} );

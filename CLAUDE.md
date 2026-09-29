@@ -9,12 +9,25 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   Use `--cam=x,y,z,tx,ty,tz` para uma câmera avulsa. Capturas de várias vistas podem passar de 7 min.
 - `node tools/profile.mjs [--from=x,z] [rumos]`: perfil de alturas do relevo por rumo da bússola.
 - `node tools/ring.mjs`: altura máxima e média do horizonte por setor.
+- `node tools/loadtime.mjs [n]`: tempo de cada etapa do loader e do primeiro frame, a frio (IndexedDB limpo) e com cache.
 - O painel do navegador do app pausa o render quando está oculto; prefira o `shoot.mjs`.
 
 ## Convenções
 - Eixos: +X leste (mar), +Z sul, +Y cima; 1 unidade = 1 m. O layout fica em `src/world/layout.js`.
 - **Relevo:** lógica em `heightfield.js`, calculada no worker (`gen.worker.js`). O horizonte distante (`horizon.js`) reutiliza `rawHeight`.
-- **Instâncias:** `src/core/chunked.js`, com lotes de capacidade fixa 256 para manter um único shader por espécie.
+  - Relevo, máscara, AO e macro ficam em cache no IndexedDB (`src/core/cache.js`). A chave é o hash do código de `heightfield.js`, `layout.js`, `noise.js` e `gen.worker.js`: editar esses arquivos invalida o cache sozinho.
+  - `?nocache` ignora o cache; `app.clearCache()` apaga.
+- **Instâncias:** `src/core/chunked.js`. Os tiles são `Mesh` com `InstancedBufferGeometry`, **não** `InstancedMesh`.
+  - A matriz de cada instância vem dos atributos `iM0..iM3` (um buffer intercalado, que ocupa um slot de vertex buffer) e é aplicada no `positionNode` do material, antes do `positionNode` original. O passe de sombra copia o `positionNode`, então a sombra acompanha.
+  - Motivo: o three indexa o shader de um `InstancedMesh` pelo `uuid` do objeto, e cada tile montava o próprio grafo TSL (~12 ms × ~830 tiles). Agora todos os tiles de um material compartilham um único build.
+  - Raycast por instância em `mesh.raycast`; os dados ficam em `mesh.userData.instances` (`src`, `matrices`, `count`).
+  - Materiais passados ao `ChunkedInstances` não podem ser usados em meshes comuns (eles exigem os atributos `iM*`).
+- **Pré-compilação** (etapa `compile` no `main.js`):
+  - O shader de um objeto é indexado pelo render context (render target, MRT e profundidade da chamada `render()` aninhada). Um `compileAsync( scene, camera )` simples compila variantes que nenhum frame usa.
+  - Por isso roda antes um frame de sonda com a cena vazia (só luzes e água), que registra a profundidade de cada render target.
+  - Depois compila para o pass da cena e em seguida para o reflexo, nessa ordem (a ordem inversa deixou o céu branco). As duas compilações não podem rodar ao mesmo tempo, porque compartilham o `lightsNode`.
+  - `renderer.info.calls ++` antes de cada compilação: a chave de luzes/ambiente/névoa fica em cache por `info.calls`.
+  - Usa internos do r186 (`renderer._renderContexts.get`); conferir ao atualizar o three. O console mostra `first frame (ms)`: se voltar a passar de ~0,5 s, a pré-compilação deixou de bater.
 - **Layers:** 1 = props que não entram no reflexo; 2 = objetos que o reflexo da água vê.
 - **Limite do WebGPU:** 8 vertex buffers por pipeline; empacote atributos (ex.: `aux` vec4 na vegetação).
 - **TSL:** nunca somar número JS com node (`0 + uniform` vira string). Use `smoothstep(a, b, x)` com a < b e `.oneMinus()` para inverter.
@@ -120,7 +133,11 @@ Próximos passos:
 - [x] Pedras: ruídos por pixel trocados por textura pré-gerada (`granite/`) e `materialLo` nos tiles distantes (custo de GPU na vista 0: ~0,24 → ~0,02 ms no headless).
 - [ ] Vegetação detalhada: conjunto "hi" centrado na câmera em vez de tiles, para reduzir draw calls.
 - [ ] Sombra: fazer o snapping no espaço de vista da luz (ainda cintila).
-- [ ] Carregamento de 25–40 s: cachear heightfield, máscara e AO (IndexedDB) ou pré-gerar em `.bin`.
+- [x] Carregamento: cache de relevo/máscara/AO/macro no IndexedDB, um build TSL por material nos tiles e pré-compilação nos contextos reais.
+      Com cache, ~8 s até o primeiro frame (antes ~16 s mais ~6 s de travada no primeiro frame). O primeiro frame caiu de ~6 s para ~0,1 s.
+- [ ] Primeira visita (sem cache de shaders do navegador): a compilação dos pipelines na GPU passa de 12 s e bate no limite do `compile`.
+- [ ] O horizonte (~1 s) e a vegetação/pedras (~1,1 s) ainda são gerados a cada carga; dá para cachear como o relevo.
+- [ ] Objetos que só aparecem embaixo d'água (superfície vista de baixo, neve marinha, fundo, peixes) ainda compilam no primeiro mergulho.
 
 ## Git
 - Remoto: https://github.com/alexadrerui/Castro-do-Mar (branch `main`).

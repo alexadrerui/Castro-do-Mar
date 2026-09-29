@@ -35,9 +35,9 @@ const out = await page.evaluate( async ( prefix ) => {
 		for ( const chunk of root.children ) {
 			if ( ! chunk.name.startsWith( set ) ) continue;
 			for ( const tile of chunk.tiles ) {
-				const im = tile.hi;
-				for ( let i = 0; i < im.count; i ++ ) {
-					im.getMatrixAt( i, m );
+				const { matrices, count } = tile.hi.userData.instances; // core/chunked.js
+				for ( let i = 0; i < count; i ++ ) {
+					m.fromArray( matrices, i * 16 );
 					m.decompose( p, q, s );
 					if ( s.x < smin || s.x > smax ) continue;
 					const d = Math.hypot( p.x + 15, p.z - 5 );

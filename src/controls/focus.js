@@ -30,13 +30,14 @@ export class AutoFocus {
 		// BVH-accelerated picking on the big merged meshes (houses, fort, rock)
 		this.targets = [];
 		for ( const root of targets ) root.traverse( ( o ) => {
-			if ( ! o.isMesh || o.isInstancedMesh || ! o.geometry?.attributes.position ) return;
+			if ( ! o.isMesh || o.isInstancedMesh || o.userData.instances || ! o.geometry?.attributes.position ) return;
 			o.geometry.boundsTree = new MeshBVH( o.geometry );
 			o.raycast = acceleratedRaycast;
 			this.targets.push( o );
 		} );
 		this.ray = new THREE.Raycaster();
 		this.ray.firstHitOnly = true;
+		this.ray.layers.enable( 1 ); // the boulders are layer-1 props
 		this.ray.far = MAX_RAY;
 		this.hit = MAX_RAY;          // last measured distance
 		this.amount = 0;             // 0..1 effect strength (smoothed)
@@ -56,9 +57,11 @@ export class AutoFocus {
 		// instanced trees / boulders: only visible tiles close to the camera
 		const near = this._near; near.length = 0;
 		for ( const root of this.instancedRoots ) root.traverse( ( o ) => {
-			if ( ! o.isInstancedMesh || ! o.visible || ! o.boundingSphere ) return;
+			// chunked tiles (core/chunked.js): meshes with per-instance raycast
+			if ( ! o.userData.instances || ! o.visible ) return;
 			if ( /^(grass|gravel)/.test( o.parent?.name || '' ) ) return; // ground clutter never takes focus
-			if ( o.boundingSphere.center.distanceTo( cam.position ) - o.boundingSphere.radius < 80 ) near.push( o );
+			const bs = o.geometry.boundingSphere;
+			if ( bs.center.distanceTo( cam.position ) - bs.radius < 80 ) near.push( o );
 		} );
 		this.ray.far = best;
 		hits = this.ray.intersectObjects( near, false );

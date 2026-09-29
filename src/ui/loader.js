@@ -40,7 +40,13 @@ export class Loader {
 		it.li.classList.add( 'active' );
 		this.stageEl.textContent = it.s.label + '…';
 		await frame();
+		const t0 = performance.now();
+		// time spent outside the steps (module import, code between steps)
+		const gap = Math.round( t0 - ( this.lastEnd ?? 0 ) );
+		if ( gap > 50 ) ( this.times = this.times || {} )[ '(antes de ' + id + ')' ] = gap;
 		const result = await fn( ( p ) => this._set( this.done + it.s.weight * Math.min( 1, p ) ) );
+		( this.times = this.times || {} )[ id ] = Math.round( performance.now() - t0 );
+		this.lastEnd = performance.now();
 		this.done += it.s.weight;
 		this._set( this.done );
 		it.li.classList.remove( 'active' );
@@ -58,6 +64,10 @@ export class Loader {
 
 	finish( onEnter, auto = false ) {
 		this.stageEl.textContent = 'O castro aguarda.';
+		const gap = Math.round( performance.now() - this.lastEnd );
+		if ( gap > 50 ) this.times[ '(após compile)' ] = gap;
+		this.times.total = Math.round( performance.now() );
+		console.info( 'load times (ms)', JSON.stringify( this.times ) );
 		const btn = document.getElementById( 'ld-enter' );
 		const go = () => { clearInterval( this.tipTimer ); this.el.classList.add( 'done' ); onEnter(); };
 		if ( auto ) return go();
