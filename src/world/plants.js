@@ -164,28 +164,6 @@ export function birchGeometry( lod = 0, seed = 3 ) {
 	return geo;
 }
 
-// Grass tuft: three crossed blade cards.
-export function grassTuftGeometry() {
-	const pos = [], nor = [], uv = [];
-	const [ u0, v0 ] = TILE.grass;
-	for ( let k = 0; k < 3; k ++ ) {
-		const a = k / 3 * Math.PI;
-		const cx = Math.cos( a ) * 0.5, cz = Math.sin( a ) * 0.5;
-		const P = [ [ - cx, 0, - cz ], [ cx, 0, cz ], [ cx, 1, cz ], [ - cx, 1, - cz ] ];
-		const U = [ [ 0, 0 ], [ 0.5, 0 ], [ 0.5, 0.5 ], [ 0, 0.5 ] ];
-		for ( const i of [ 0, 1, 2, 0, 2, 3 ] ) {
-			pos.push( ...P[ i ] );
-			nor.push( 0, 1, 0 );
-			uv.push( u0 + U[ i ][ 0 ], v0 + U[ i ][ 1 ] );
-		}
-	}
-	const g = new THREE.BufferGeometry();
-	g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
-	g.setAttribute( 'normal', new THREE.Float32BufferAttribute( nor, 3 ) );
-	g.setAttribute( 'uv', new THREE.Float32BufferAttribute( uv, 2 ) );
-	return finalize( g, new THREE.Color( 1, 1, 1 ), 1, ( x, y ) => y * y, ( x, y ) => 0.55 + 0.45 * y, 1 );
-}
-
 function stripUV( g ) {
 	return g;
 }

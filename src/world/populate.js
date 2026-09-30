@@ -1,4 +1,5 @@
 import { createVegetation } from './vegetation.js';
+import { GrassField } from './grass.js';
 import { createRocks, createRockMaterial } from './rocks.js';
 import { createBuildingMaterials } from './materials.js';
 import { createBuildings } from './buildings.js';
@@ -11,6 +12,12 @@ export async function populate( app, progress ) {
 	app.scene.add( veg );
 	app.layers.vegetation = { label: 'Vegetação', object: veg };
 	console.info( 'vegetation', veg.userData.counts );
+	// meadow and dune grass in cells around the camera (Tidewater's GrassField)
+	const grass = new GrassField( app );
+	app.scene.add( grass.group );
+	app.grass = grass;
+	app.layers.grass = { label: 'Grama', object: grass.group };
+	app.onFrame.push( () => grass.update( app.camera ) );
 	const rocks = createRocks( app, ( p ) => progress( 0.5 + p * 0.3 ) );
 	app.scene.add( rocks );
 	app.layers.rocks = { label: 'Pedras', object: rocks };

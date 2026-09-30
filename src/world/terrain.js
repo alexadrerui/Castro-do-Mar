@@ -21,6 +21,22 @@ export const proceduralBump = Fn( ( [ h, strength ] ) => {
 	return normalize( max( abs( det ), 1e-6 ).mul( N ).sub( grad ) );
 } );
 
+// Meadow colour from the baked macro noise (nMacro, nLarge, nMed: macroTex r, g, b) and the sun
+// exposure of the slope (sunFace = N . sunDir, 0..1). Shared by the terrain and the grass blades
+// (grass.js), so the sward and the ground under it are the same green. Returns { tone, dry, lush }
+// (dry: sun-bleached share, lush: deep / mossy share).
+export function meadowTone( nMacro, nLarge, nMed, sunFace ) {
+	const gDeep = color( 0x3a4a1f ), gMid = color( 0x5d6a30 ), gSun = color( 0x7b7f3c ), gDry = color( 0x8f8450 ), gMoss = color( 0x2c3a1a );
+	const deep = smoothstep( 0.25, 0.7, nLarge );
+	let tone = mix( gDeep, gMid, deep );
+	tone = mix( tone, gSun, smoothstep( 0.55, 0.85, nMacro ).mul( 0.7 ) );
+	const dry = smoothstep( 0.55, 0.9, sunFace.add( nMed.sub( 0.5 ).mul( 0.5 ) ) ).mul( 0.3 ).add( smoothstep( 0.7, 0.9, nMed ).mul( 0.12 ) );
+	tone = mix( tone, gDry, dry );
+	const moss = smoothstep( 0.2, 0.45, nMed ).oneMinus().mul( 0.4 );
+	tone = mix( tone, gMoss, moss );
+	return { tone, dry, lush: moss.add( deep.oneMinus().mul( 0.5 ) ) };
+}
+
 export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 
 	// ---------- geometry: full-res normals, then LOD chunks ----------
@@ -93,13 +109,9 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	const ao = attribute( 'ao', 'float' );
 
 	// ---- grass ----
-	const gDeep = color( 0x3a4a1f ), gMid = color( 0x5d6a30 ), gSun = color( 0x7b7f3c ), gDry = color( 0x8f8450 ), gMoss = color( 0x2c3a1a );
-	let grass = mix( gDeep, gMid, smoothstep( 0.25, 0.7, nLarge ) );
-	grass = mix( grass, gSun, smoothstep( 0.55, 0.85, nMacro ).mul( 0.7 ) );
 	// sun-bleached on sun-facing slopes
 	const sunFace = dot( normalWorld, normalize( U.sunDir ) ).clamp( 0, 1 );
-	grass = mix( grass, gDry, smoothstep( 0.55, 0.9, sunFace.add( nMed.sub( 0.5 ).mul( 0.5 ) ) ).mul( 0.3 ).add( smoothstep( 0.7, 0.9, nMed ).mul( 0.12 ) ) );
-	grass = mix( grass, gMoss, smoothstep( 0.2, 0.45, nMed ).oneMinus().mul( 0.4 ) );
+	let grass = meadowTone( nMacro, nLarge, nMed, sunFace ).tone;
 	grass = grass.mul( mix( 0.7, 1.25, nFine.mul( nearFade ).add( float( 0.5 ).mul( nearFade.oneMinus() ) ) ) );
 
 	// ---- granite rock ----
@@ -200,7 +212,7 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 		}
 	};
 
-	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, detailTex, update };
+	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, macroTex, detailTex, update };
 }
 
 function computeGridNormals( hf ) {

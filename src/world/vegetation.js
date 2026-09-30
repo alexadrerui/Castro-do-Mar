@@ -5,7 +5,7 @@ import {
 } from 'three/tsl';
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
-import { pineGeometry, birchGeometry, grassTuftGeometry } from './plants.js';
+import { pineGeometry, birchGeometry } from './plants.js';
 import { oakTree, shrubBush, bracken, OAK_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
@@ -171,7 +171,6 @@ export function createVegetation( app, progress ) {
 		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } )
 	};
-	species.grass = new ChunkedInstances( { name: 'grass', hi: grassTuftGeometry(), material, tile: 64, castShadow: false, layer: 1, maxDistance: 70, reflect: false } );
 	for ( const s of Object.values( species ) ) s.addAttribute( 'aTint', 3 );
 
 	const PAL = {
@@ -179,8 +178,7 @@ export function createVegetation( app, progress ) {
 		pine: [ 0x2f4424, 0x37502a, 0x2a3e20, 0x40582e ],
 		birch: [ 0x5f7231, 0x6b7c36, 0x76833c, 0x5a6a2f ],
 		bush: [ 0x34482a, 0x3c5026, 0x48562a, 0x303f22 ], // gorse / broom: dark, dense greens
-		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ], // bracken: fresh green, some yellowing
-		grass: [ 0x5f7431, 0x6f7f36, 0x8a8744, 0x53692c, 0x9a8f50 ]
+		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ] // bracken: fresh green, some yellowing
 	};
 	const tmpC = new THREE.Color();
 	const tint = ( sp, rnd ) => {
@@ -207,7 +205,7 @@ export function createVegetation( app, progress ) {
 	// Jittered-grid scatter over the whole terrain.
 	const step = 9;
 	const x0 = hf.x0 + 10, x1 = hf.x0 + hf.size - 10, z0 = hf.z0 + 10, z1 = hf.z0 + hf.size - 10;
-	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, fern: 0, grass: 0 };
+	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, fern: 0 };
 	// understory: bracken in the woodland patches and the lowlands, gorse / broom on the high open hills
 	const shrub = ( x, z, s, patch, h ) => {
 		const fernP = ( 0.25 + 0.45 * patch ) * ( 1 - ss( 90, 220, h ) );
@@ -263,23 +261,6 @@ export function createVegetation( app, progress ) {
 		[ 'gold', - 62, 58, 0.9 ], [ 'oak', 72, 22, 0.9 ], [ 'pine', - 95, - 40, 1.1 ], [ 'oak', - 5, 30, 0.8 ]
 	];
 	for ( const [ sp, x, z, s ] of featured ) { place( sp, x, z, s ); counts[ sp === 'gold' ? 'birch' : sp ] ++; }
-
-	// Grass tufts around the village and on the near hills (drawn only close to the camera).
-	for ( let z = - 300; z < 320; z += 1.6 ) {
-		for ( let x = - 330; x < 280; x += 1.6 ) {
-			const px = x + ( rnd() - 0.5 ) * 1.6, pz = z + ( rnd() - 0.5 ) * 1.6;
-			const h = hf.heightAt( px, pz );
-			if ( h < 1.5 ) continue;
-			const [ path, dirt, field ] = sampleMask( app.mask, px, pz );
-			if ( path > 0.3 || field > 0.3 ) continue;
-			const slope = hf.slopeAt( px, pz );
-			const dens = ( 1 - ss( 0.2, 0.7, dirt ) ) * ( 1 - ss( 0.5, 1.0, slope ) ) * ( 0.45 + 0.55 * ss( - 0.2, 0.4, fbm( nV, px * 0.05, pz * 0.05, 2 ) ) );
-			if ( rnd() > dens * 0.85 ) continue;
-			if ( clearance( px, pz, app.mask, - 1.2 ) <= 0 && dirt < 0.2 ) continue;
-			place( 'grass', px, pz, 0.35 + rnd() * 0.45, 0.6 );
-			counts.grass ++;
-		}
-	}
 
 	for ( const s of Object.values( species ) ) { s.build(); group.add( s ); }
 	app.onFrame.push( () => { for ( const s of Object.values( species ) ) s.update( app.camera ); } );

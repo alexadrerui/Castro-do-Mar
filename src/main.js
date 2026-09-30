@@ -118,6 +118,7 @@ async function main() {
 	}
 	app.hf = hf;
 	app.mask = mask;
+	app.macro = macro; // baked macro noise (CPU copy), for the grass density mask
 
 	let sky;
 	await loader.run( 'sky', async () => {

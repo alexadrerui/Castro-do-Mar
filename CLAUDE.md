@@ -79,6 +79,12 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Material de folhagem: `MeshPhysicalNodeMaterial` com `specularIntensity` 0,2 (com o especular padrão, o Fresnel em ângulo rasante deixava grama e frondes brancas/cinza). Cartões e frondes usam `normalViewGeometry` sem a inversão do `DoubleSide` (a face de baixo ficava preta); troncos e cones mantêm a inversão.
   - QA: `node tools/trees.mjs [prefixo] [espécie] [--imp] [--solo]` enquadra a planta mais próxima da vila (a pé, de longe e do alto), com a câmera do lado do sol; `--imp` força os impostores a qualquer distância e `--solo` esconde pedras e outras plantas.
 
+- **Grama** (`src/world/grass.js`, porte do `GrassField.js` do Tidewater, MIT):
+  - Células de 8 m em volta da câmera (até 88 m), cada uma com um remendo fixo de 384 touceiras × 7 lâminas; três níveis (perto < 18 m, meio < 46 m, longe) com as mesmas lâminas, que afinam e somem por camada enquanto as restantes alargam. Vento em rajadas vindas do sudoeste, com brilho das lâminas dobradas.
+  - Máscara de densidade RGBA gerada na carga (4 m por texel sobre o terreno): G campo (sem rocha, trilha, terra, roça nem casas; `clearance` perto da vila), R duna (margens baixas e suaves), B estorno (*Ammophila*, no lugar da aveia-da-praia) e A correola-marinha (*Calystegia soldanella*, flor rosa).
+  - A cor vem do `meadowTone` exportado por `terrain.js`, o mesmo do chão, e a altura do `heightTex` do terreno. Layer 1 (fora do reflexo), sem sombra própria.
+  - Substituiu os antigos tufos de cartão (`grassTuftGeometry`). QA: `node tools/grass.mjs [prefixo]` acha um trecho de campo e um de duna e captura na altura dos olhos e de 12 m.
+
 - **Gaivotas** (`src/world/birds/`, porte do Tidewater, MIT):
   - `shapes.js` é cópia do `BirdShapes.js` (modelo de ave com corpo, pescoço, bico, cauda em leque e asas de três ossos).
   - `gulls.js`: gaivotas-patiamarelas (26) circulando sobre a baía, acima do relevo sob cada círculo. Alternam planeio (asa em "M") e batidas; inclinam nas curvas. Tudo no vertex shader, com relógio próprio (`app.gulls.time`); `app.gulls.paused = true` congela o voo.
