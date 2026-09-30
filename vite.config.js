@@ -31,5 +31,5 @@ export default defineConfig( {
 	resolve: { alias: [ { find: /^three$/, replacement: 'three/webgpu' } ] },
 	server: { port: 5190, strictPort: true },
 	build: { target: 'esnext' },
-	optimizeDeps: { esbuildOptions: { target: 'esnext' } }
+	optimizeDeps: { rolldownOptions: { transform: { target: 'esnext' } } }
 } );
