@@ -2,8 +2,8 @@ import * as THREE from 'three/webgpu';
 import * as THREE_CORE from 'three';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { GeoBuilder, box, post, beam, ringWall, coneRoof, gableRoof, straightWall } from '../core/builder.js';
-import { makeSimplex, mulberry32 } from '../core/noise.js';
+import { GeoBuilder, box, post, beam, ringWall, coneRoof, straightWall } from '../core/builder.js';
+import { makeSimplex } from '../core/noise.js';
 import { FORT, WALLS, TOWER, MINE } from './layout.js';
 
 const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
@@ -19,7 +19,7 @@ function topAt( hf, x, z ) {
 }
 
 // ---------------------------------------------------------------- ring fort
-function ringFort( B, hf ) {
+function ringFort( B ) {
 	const y = FORT.ground - 0.6;
 	const R = FORT.radius, H = FORT.wallHeight, T = 2.6;
 	const gate = FORT.gateAngle;
@@ -62,7 +62,6 @@ function ringFort( B, hf ) {
 		const rr = R - T - 0.35;
 		B.add( 'stoneDark', box( 1.0, 0.18, 0.5 ), M( FORT.x + Math.cos( a ) * rr, y + 0.25 + k * 0.25, FORT.z + Math.sin( a ) * rr, Math.PI / 2 - a ) );
 	}
-	void hf;
 }
 
 // ------------------------------------------------------------- north wall
@@ -158,7 +157,6 @@ function rockBlockGeometry() {
 	const m = mergeVertices( g, 1e-4 );
 	m.computeVertexNormals();
 	const p = m.attributes.position, n = m.attributes.normal;
-	const c = V( 0, ( y0 + y1 ) / 2, - D / 2 );
 	for ( let i = 0; i < p.count; i ++ ) {
 		const x = p.getX( i ), y = p.getY( i ), z = p.getZ( i );
 		// jointed granite: layered horizontal ledges + blocky vertical joints
@@ -173,7 +171,6 @@ function rockBlockGeometry() {
 		const side = Math.abs( x ) / ( W / 2 );
 		const bulge = side > 0.8 ? ( side - 0.8 ) * 6 : 0;
 		p.setXYZ( i, x + nx * d * k - Math.sign( x ) * bulge * 0.5, y + ny * d * k * 0.5, z + nz * d * k + ( z > - 0.5 ? - bulge : 0 ) );
-		void c;
 	}
 	m.computeVertexNormals();
 	const uv = new Float32Array( p.count * 2 );
@@ -302,7 +299,7 @@ function mineTimber( B ) {
 export function createFort( app, mats, rockMat ) {
 	const { hf } = app;
 	const B = new GeoBuilder();
-	ringFort( B, hf );
+	ringFort( B );
 	northWalls( B, hf );
 	watchtower( B, hf );
 	mineTimber( B );
@@ -326,6 +323,5 @@ export function createFort( app, mats, rockMat ) {
 	block.name = 'mineBlock';
 	block.layers.enable( 2 );
 	group.add( block );
-	void mulberry32;
 	return group;
 }

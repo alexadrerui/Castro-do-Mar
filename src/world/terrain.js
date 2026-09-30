@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, normalWorld, positionView, normalView, faceDirection,
-	vec2, vec3, float, color, mix, smoothstep, clamp, max, min, abs, sin, cross, dot, normalize, length,
-	mx_noise_float, mx_fractal_noise_float, mx_worley_noise_vec2, attribute, fwidth
+	vec2, vec3, float, color, mix, smoothstep, clamp, max, abs, sin, cross, dot, normalize, length,
+	attribute, fwidth
 } from 'three/tsl';
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';

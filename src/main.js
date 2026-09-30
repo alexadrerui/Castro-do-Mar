@@ -12,6 +12,7 @@ import { MarineSnow } from './post/marineSnow.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
+import { Gulls } from './world/birds/gulls.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
@@ -174,6 +175,12 @@ async function main() {
 	app.fish = fish;
 	app.layers.fish = { label: 'Peixes', object: fish.group };
 	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
+	// Gulls soaring over the bay (animated in the vertex shader).
+	const gulls = new Gulls( { hf, waterLevel: WATER_LEVEL } );
+	scene.add( gulls.mesh );
+	app.gulls = gulls;
+	app.layers.gulls = { label: 'Gaivotas', object: gulls.mesh };
+	app.onFrame.push( ( dt ) => gulls.update( dt ) );
 
 	// ---- camera & controls ----
 	const cam = new FreeCam( camera, canvas, { groundFn: ( x, z ) => hf.heightAt( x, z ), moveSpeed: 22 } );

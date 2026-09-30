@@ -31,3 +31,7 @@ Abra http://localhost:5190 (`?auto` pula o botão de entrada).
 - `src/world/vegetation.js`, `plants.js`, `rocks.js` — vegetação e pedras instanciadas em tiles com LOD (`src/core/chunked.js`).
 - `src/world/buildings.js`, `fort.js`, `materials.js` — vila, forte e minas escavadas por CSG, com materiais TSL.
 - `tools/shoot.mjs` — captura headless (Edge + WebGPU) usada no loop de QA.
+
+## Créditos
+
+- **[Tidewater](https://github.com/dgreenheck/tidewater)** (MIT, Copyright (c) 2026 DRG Software Solutions LLC): peixes, fundo do mar, pedras de granito, gaivotas, árvore/arbusto/fento, atlas de folhas, impostores, gotas na lente e neve marinha, adaptados (cada arquivo portado traz o cabeçalho de origem).

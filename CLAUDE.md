@@ -9,7 +9,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   Use `--cam=x,y,z,tx,ty,tz` para uma câmera avulsa. Capturas de várias vistas podem passar de 7 min.
 - `node tools/profile.mjs [--from=x,z] [rumos]`: perfil de alturas do relevo por rumo da bússola.
 - `node tools/ring.mjs`: altura máxima e média do horizonte por setor.
-- `node tools/loadtime.mjs [n]`: tempo de cada etapa do loader e do primeiro frame, a frio (IndexedDB limpo) e com cache.
+- `node tools/loadtime.mjs [n] [parâmetros]`: tempo de cada etapa do loader e do primeiro frame, a frio (IndexedDB limpo) e com cache; o segundo argumento vai para a URL (ex.: `nocache`).
 - O painel do navegador do app pausa o render quando está oculto; prefira o `shoot.mjs`.
 
 ## Convenções
@@ -71,6 +71,20 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - O chão dos peixes é `seabed.floorAt(x, z)`: terreno ou topo das pedras do fundo (cada pedra é um domo sobre a base, numa grade de 4 m mantida pelos tiles carregados). Os peixes passam por cima das pedras em vez de atravessá-las.
 - Embaixo d'água o `camera.far` cai para 90 m (a névoa esconde o resto). O frame submerso passou de 27,6 para 16,6 ms.
 
+- **Carvalhos** (`src/world/trees.js` e `src/world/leafAtlas.js`, porte do Tidewater, MIT):
+  - `trees.js` (`oakTree(lod, seed)`): tronco com a base alargada, bifurcação baixa, ramos curvos (Bézier) e 8 lóbulos de copa, cada um com aglomerados de cartões cruzados e vazios entre eles. Normais volumétricas e exposição (`ao`) por cartão. Gera o nosso formato de vértice (`color`, `aux`, `uv`); LOD 1 com menos aglomerados e cartões maiores.
+  - `leafAtlas.js`: atlas 2×2 de rosetas de folhas gerado uma vez na GPU (R cobertura, G brilho, B variação por folha). O carvalho usa o bloco 0 com um material próprio (`createFoliageMaterial( sunDir, { clusters } )`, `app.canopyMaterial`); pinheiro, bétula, arbustos e grama seguem no atlas de canvas.
+  - Impostores octaédricos (`src/world/impostors.js`, porte do `Impostors.js`): o carvalho de perto é renderizado de 6×6 direções em dois atlas na carga (~10 ms). Cada árvore distante vira um quad virado para a câmera, que reprojeta o raio no quadro mais próximo. Terceiro nível do `ChunkedInstances` (`impostor`, `impostorDistance` = 320 m para o carvalho); a troca é por tile, sem fade.
+  - Sub-bosque (`trees.js`): `shrubBush` (tojo/giesta: lóbulos de cartões com o bloco de folhas estreitas do atlas, material de aglomerados) e `bracken` (fento: frondes do Tidewater com haste nua e lâmina triangular; os folíolos são recortados pela `uv` em `createFoliageMaterial( sunDir, { fern: true } )`). O fento predomina nas manchas de mata e nas partes baixas; o tojo, nas encostas altas.
+  - Material de folhagem: `MeshPhysicalNodeMaterial` com `specularIntensity` 0,2 (com o especular padrão, o Fresnel em ângulo rasante deixava grama e frondes brancas/cinza). Cartões e frondes usam `normalViewGeometry` sem a inversão do `DoubleSide` (a face de baixo ficava preta); troncos e cones mantêm a inversão.
+  - QA: `node tools/trees.mjs [prefixo] [espécie] [--imp] [--solo]` enquadra a planta mais próxima da vila (a pé, de longe e do alto), com a câmera do lado do sol; `--imp` força os impostores a qualquer distância e `--solo` esconde pedras e outras plantas.
+
+- **Gaivotas** (`src/world/birds/`, porte do Tidewater, MIT):
+  - `shapes.js` é cópia do `BirdShapes.js` (modelo de ave com corpo, pescoço, bico, cauda em leque e asas de três ossos).
+  - `gulls.js`: gaivotas-patiamarelas (26) circulando sobre a baía, acima do relevo sob cada círculo. Alternam planeio (asa em "M") e batidas; inclinam nas curvas. Tudo no vertex shader, com relógio próprio (`app.gulls.time`); `app.gulls.paused = true` congela o voo.
+  - Cores do padrão em sRGB (`srgb()`); os `smoothstep` invertidos do Tidewater foram trocados pela forma com `.oneMinus()`.
+  - QA: `node tools/gulls.mjs [prefixo] [índice]` faz close-ups de lado, de baixo e de cima e uma vista geral.
+
 - **Pedras de granito** (`src/world/granite/`, porte do Tidewater, MIT; usadas por `rocks.js`):
   - `geometry.js`: icosfera cortada por planos de fratura, com cavidade (`ao`) no vértice. Estilos boulder/block/slab/spire mais `tor` (bloco arredondado de granito). A base plana é deslocada para y = −0,35, como nas pedras antigas.
   - `detail.js`: textura 512² gerada na CPU (~0,26 s) — R placas fraturadas, G solo, B grãos, A fbm.
@@ -99,7 +113,10 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 
 ### Arte (dos relatórios de QA)
 - [ ] Face do penhasco da mina: deslocar a geometria (~1,5 m) com 2–3 saliências, vegetação nas saliências e fissuras só no normal.
-- [ ] Copas das árvores ainda "bolhosas": mais aglomerados de cartões de folha com vazios, troncos e galhos visíveis.
+- [x] Copas dos carvalhos "bolhosas": trocadas pela árvore do Tidewater (ramos visíveis, aglomerados com vazios, atlas de folhas na GPU). Pinheiro e bétula ainda são os antigos.
+- [x] Pinheiros pretos: não era o modelo, e sim a tonalidade de toda a vegetação convertida duas vezes para linear (`Color.set( hex )` já converte; havia um `.convertSRGBToLinear()` a mais em `vegetation.js`). Paletas de arbusto e fento reajustadas.
+- [ ] Pinheiro ainda é o modelo antigo de cones (`plants.js`); dá para refazer no estilo dos carvalhos (o Tidewater não tem conífera).
+- Tentativa descartada: árvores do pacote "Low Poly Trees Free" (Sketchfab, CC BY 4.0). Ficaram boas visualmente, mas somavam ~150 chamadas de desenho e faziam o pré-compile passar do limite de 12 s mesmo com cache (carga de ~8 s para ~20 s). Se voltar a elas: juntar as 3 variantes numa espécie só e investigar os pipelines novos.
 - [ ] Nuvens: camada de cúmulos e bancos de névoa nos vales distantes.
 - [ ] Vila mais compacta, com mais tecido vermelho e cercas nas vielas.
 

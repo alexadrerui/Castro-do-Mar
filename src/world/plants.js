@@ -31,7 +31,7 @@ function finalize( geo, col, leaf, sway, ao, card = 0 ) {
 }
 
 // Atlas tiles (u0, v0) of core/texgen.js makeFoliageAtlas (flipY).
-export const TILE = { oak: [ 0, 0.5 ], pine: [ 0.5, 0.5 ], round: [ 0, 0 ], grass: [ 0.5, 0 ] };
+const TILE = { oak: [ 0, 0.5 ], pine: [ 0.5, 0.5 ], round: [ 0, 0 ], grass: [ 0.5, 0 ] };
 
 // Leaf cards scattered over a crown ellipsoid. Normals point away from the
 // crown centre (soft, volumetric lighting); cards face outward with jitter.
@@ -98,55 +98,8 @@ function trunk( r0, r1, h, seg = 7, lean = [ 0, 0 ] ) {
 	return g;
 }
 
-function branch( from, to, r0, r1 ) {
-	const dir = new THREE.Vector3().subVectors( to, from );
-	const len = dir.length();
-	const g = new THREE.CylinderGeometry( r1, r0, len, 5, 1, true );
-	g.translate( 0, len / 2, 0 );
-	g.applyQuaternion( new THREE.Quaternion().setFromUnitVectors( new THREE.Vector3( 0, 1, 0 ), dir.normalize() ) );
-	g.translate( from.x, from.y, from.z );
-	return g;
-}
-
-const BARK = new THREE.Color( 0x4a3a2b );
 const BARK_PINE = new THREE.Color( 0x5a4232 );
 const BARK_BIRCH = new THREE.Color( 0xb8b0a0 );
-
-// Broadleaf (oak / chestnut): rounded, lumpy crown. Height ~ 1 unit * scale 8.
-export function oakGeometry( lod = 0, seed = 1 ) {
-	const rnd = mulberry32( seed );
-	const H = 8;
-	const parts = [];
-	const tr = trunk( 0.42, 0.26, 4.2, lod ? 5 : 8, [ ( rnd() - 0.5 ) * 0.6, ( rnd() - 0.5 ) * 0.6 ] );
-	parts.push( finalize( tr, BARK, 0, ( x, y ) => Math.max( 0, y / H ) ** 2 * 0.3, 0.55 ) );
-	if ( lod === 0 ) {
-		for ( let b = 0; b < 4; b ++ ) {
-			const a = b / 4 * Math.PI * 2 + rnd();
-			const from = new THREE.Vector3( 0, 2.8 + rnd() * 1.2, 0 );
-			const to = new THREE.Vector3( Math.cos( a ) * 2.0, 4.8 + rnd(), Math.sin( a ) * 2.0 );
-			parts.push( finalize( branch( from, to, 0.18, 0.08 ), BARK, 0, ( x, y ) => ( y / H ) ** 2 * 0.5, 0.5 ) );
-		}
-	}
-	const clumps = lod ? 4 : 7;
-	const leafCol = new THREE.Color( 1, 1, 1 );
-	for ( let i = 0; i < clumps; i ++ ) {
-		const a = i / clumps * Math.PI * 2 + rnd() * 0.8;
-		const rr = i === 0 ? 0 : 1.2 + rnd() * 1.3;
-		const cy = i === 0 ? 6.0 : 4.6 + rnd() * 2.2;
-		const r = ( i === 0 ? 2.4 : 1.5 + rnd() * 0.9 ) * ( lod ? 1.25 : 1 );
-		const cx = Math.cos( a ) * rr, cz = Math.sin( a ) * rr;
-		if ( lod === 0 ) parts.push( leafCards( i === 0 ? 46 : 26, cx, cy, cz, r * 1.15, r * 1.0, r * 1.15, 1.35, 'oak', rnd, H, { inner: 0.45 } ) );
-		const g = blob( r * ( lod ? 1 : 0.66 ), lod ? 0 : 1, cx, cy, cz, 0.82, seed * 10 + i );
-		parts.push( finalize( g, leafCol, 1, ( x, y ) => Math.min( 1, ( y / H ) ** 1.5 ), ( x, y, z ) => {
-			// darker toward the crown core and underside
-			const dc = Math.hypot( x, ( y - 5.6 ) * 1.3, z ) / 3.4;
-			return Math.min( 1, 0.35 + 0.65 * dc ) * ( 0.6 + 0.4 * Math.min( 1, ( y - 3.5 ) / 3.5 ) );
-		} ) );
-	}
-	const geo = mergeGeometries( parts.map( stripUV ) );
-	geo.computeBoundingSphere();
-	return geo;
-}
 
 // Conifer (pine / fir): stacked drooping cones.
 export function pineGeometry( lod = 0, seed = 2 ) {
@@ -205,24 +158,6 @@ export function birchGeometry( lod = 0, seed = 3 ) {
 		if ( lod === 0 ) parts.push( leafCards( 20, Math.cos( a ) * 0.8, 4.2 + t * 5, Math.sin( a ) * 0.8, br * 1.2, br * 1.35, br * 1.2, 1.0, 'round', rnd, H, { inner: 0.45 } ) );
 		const g = blob( br * ( lod ? 1 : 0.65 ), lod ? 0 : 1, Math.cos( a ) * 0.8, 4.2 + t * 5, Math.sin( a ) * 0.8, 1.15, seed * 7 + i );
 		parts.push( finalize( g, leafCol, 1, ( x, y ) => Math.min( 1, ( y / H ) ** 1.3 ), ( x, y, z ) => 0.55 + 0.45 * Math.min( 1, Math.hypot( x, z ) / 1.5 ) ) );
-	}
-	const geo = mergeGeometries( parts.map( stripUV ) );
-	geo.computeBoundingSphere();
-	return geo;
-}
-
-// Low shrub / gorse / broom clump.
-export function bushGeometry( lod = 0, seed = 4 ) {
-	const rnd = mulberry32( seed );
-	const parts = [];
-	const n = lod ? 2 : 3;
-	const leafCol = new THREE.Color( 1, 1, 1 );
-	for ( let i = 0; i < n; i ++ ) {
-		const a = rnd() * Math.PI * 2, rr = i ? 0.5 + rnd() * 0.4 : 0;
-		const r = 0.75 + rnd() * 0.35;
-		const cx = Math.cos( a ) * rr, cz = Math.sin( a ) * rr;
-		if ( lod === 0 ) parts.push( leafCards( 10, cx, r * 0.55, cz, r * 1.1, r * 0.8, r * 1.1, 0.7, 'round', rnd, 1.6, { inner: 0.5 } ) );
-		parts.push( finalize( blob( r * ( lod ? 1 : 0.85 ), lod ? 0 : 1, cx, r * 0.55, cz, 0.7, seed * 3 + i ), leafCol, 1, ( x, y ) => Math.min( 1, y / 1.6 ) * 0.5, ( x, y ) => 0.45 + 0.55 * Math.min( 1, y / 1.3 ) ) );
 	}
 	const geo = mergeGeometries( parts.map( stripUV ) );
 	geo.computeBoundingSphere();

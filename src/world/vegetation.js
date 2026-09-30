@@ -1,11 +1,14 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, attribute, uniform, positionLocal, positionWorld, normalWorld, time, vec3, float, color, mix, smoothstep,
-	sin, dot, max, normalize, mx_noise_float, instanceIndex, hash, texture, uv
+	sin, dot, max, min, abs, sqrt, floor, fract, fwidth, select, normalize, mx_noise_float, instanceIndex, hash, texture, uv, normalViewGeometry, faceDirection
 } from 'three/tsl';
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
-import { oakGeometry, pineGeometry, birchGeometry, bushGeometry, grassTuftGeometry } from './plants.js';
+import { pineGeometry, birchGeometry, grassTuftGeometry } from './plants.js';
+import { oakTree, shrubBush, bracken, OAK_BARK } from './trees.js';
+import { LeafAtlas } from './leafAtlas.js';
+import { ImpostorAtlas } from './impostors.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
 import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER } from './layout.js';
@@ -28,13 +31,19 @@ export function foliageAtlas() {
 	return ATLAS;
 }
 
-export function createFoliageMaterial( sunDir, palette ) {
+// clusters: the leaf-cluster atlas of leafAtlas.js (R coverage, G brightness, B per-leaf random)
+// instead of the canvas atlas (A coverage, R luminance); fern: fronds of trees.js bracken(), the
+// pinnae cut out from the frond uv (s along, t across the leaflet strip)
+export function createFoliageMaterial( sunDir, { clusters = null, fern = false } = {} ) {
 	const U = { wind: uniform( 1.0 ), sunDir: uniform( sunDir ) };
-	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
+	// low specular: at grazing angles (fronds seen from below, the upright grass cards) the Fresnel
+	// reflection of the bright sky washed the green out to grey / white
+	const mat = new THREE.MeshPhysicalNodeMaterial( { side: THREE.DoubleSide, specularIntensity: 0.2 } );
 	mat.alphaTest = 0.45;
 	mat.alphaToCoverage = true;
-	const card = attribute( 'aux', 'vec4' ).w;
-	const tex = texture( foliageAtlas(), uv() );
+	const card = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w;
+	const tex = texture( clusters ?? foliageAtlas(), uv() );
+	const cover = clusters ? tex.r : tex.a;
 	const aux = attribute( 'aux', 'vec4' );
 	const leaf = aux.x, sway = aux.y, ao = aux.z;
 	const baseCol = attribute( 'color', 'vec3' );
@@ -55,12 +64,33 @@ export function createFoliageMaterial( sunDir, palette ) {
 
 	const n = mx_noise_float( positionWorld.mul( 0.9 ) ).mul( 0.5 ).add( 0.5 ).toVertexStage();
 	const nBig = mx_noise_float( positionWorld.mul( 0.25 ) ).mul( 0.5 ).add( 0.5 ).toVertexStage();
-	const cardLum = mix( float( 1 ), tex.r.mul( 1.35 ).add( 0.15 ), card );
-	const leafCol = tint.mul( mix( 0.72, 1.18, n ) ).mul( mix( 0.85, 1.1, nBig ) ).mul( cardLum );
-	mat.opacityNode = mix( float( 1 ), tex.a, card );
+	// per-leaf brightness; with the clusters a slight per-leaf shift towards yellow-green
+	const lum = clusters ? tex.g.mul( 1.4 ) : tex.r.mul( 1.35 ).add( 0.15 );
+	const cardLum = mix( float( 1 ), lum, card );
+	let leafCol = tint.mul( mix( 0.72, 1.18, n ) ).mul( mix( 0.85, 1.1, nBig ) ).mul( cardLum );
+	if ( clusters ) leafCol = leafCol.mul( mix( vec3( 0.9, 0.95, 1.05 ), vec3( 1.1, 1.06, 0.85 ), tex.b.mul( card ) ) );
+	mat.opacityNode = mix( float( 1 ), cover, card );
 	// cards: cut empty texels before shading, and in the shadow pass
-	mat.maskNode = card.lessThan( 0.5 ).or( tex.a.greaterThan( 0.2 ) );
-	mat.maskShadowNode = card.lessThan( 0.5 ).or( tex.a.greaterThan( 0.45 ) );
+	mat.maskNode = card.lessThan( 0.5 ).or( cover.greaterThan( 0.2 ) );
+	mat.maskShadowNode = card.lessThan( 0.5 ).or( cover.greaterThan( 0.45 ) );
+	if ( fern ) {
+		// Tidewater's fern pinnae (VegMaterials.js): rounded leaflets along the frond; sub-pixel
+		// leaflets widen instead of aliasing (the fronds turn solid in the distance)
+		const st = uv(), fs = st.x, ft = st.y;
+		const fwS = fwidth( fs );
+		const N = 24;
+		const x = fs.mul( N );
+		const k = floor( x );
+		const fx = fract( x ).sub( 0.5 );
+		const tt = ft.div( mix( 0.8, 1.0, hash( k.add( 7.1 ) ) ) );
+		const hw = sqrt( max( tt.mul( tt ).oneMinus(), 0 ) ).mul( 0.36 );
+		const hwE = max( hw, min( fwS.mul( N * 0.6 ), 0.5 ).mul( select( tt.lessThan( 1 ), 1, 0 ) ) );
+		const pinna = abs( fx ).lessThan( hwE ).and( tt.lessThan( 1 ) ).and( fs.greaterThan( 0.3 ) );
+		// rachis: a thin line along the frond, the whole strip on the bare stalk
+		mat.maskNode = pinna.or( ft.lessThan( 0.06 ) ).or( fs.lessThan( 0.3 ).and( ft.lessThan( 0.5 ) ) );
+		mat.maskShadowNode = mat.maskNode;
+		mat.opacityNode = float( 1 );
+	}
 	const bark = baseCol.mul( mix( 0.75, 1.1, n ) );
 	mat.colorNode = mix( bark, leafCol, leaf ).mul( mix( 0.55, 1.0, ao ) );
 
@@ -68,7 +98,10 @@ export function createFoliageMaterial( sunDir, palette ) {
 	const back = max( dot( normalWorld, normalize( U.sunDir ) ).negate(), 0.0 );
 	mat.emissiveNode = leafCol.mul( back.mul( 0.08 ) ).mul( leaf ).mul( ao );
 	mat.roughnessNode = mix( float( 0.9 ), float( 0.75 ), leaf );
-	void palette;
+	// both faces of the thin cards and fronds keep the same soft (bent-up / volumetric) normal:
+	// DoubleSide would flip it on the back faces, and the undersides seen from below turned black;
+	// solid parts (trunks, the pine cones) keep the usual flip
+	mat.normalNode = fern ? normalViewGeometry : normalViewGeometry.mul( select( card.greaterThan( 0.5 ), float( 1 ), faceDirection ) );
 	return { material: mat, uniforms: U };
 }
 
@@ -120,12 +153,23 @@ export function createVegetation( app, progress ) {
 
 	const { material } = createFoliageMaterial( sunDir );
 	app.foliageMaterial = material;
-
+	// broadleaf crowns: leaf clusters baked on the GPU (Tidewater's atlas)
+	const leafAtlas = new LeafAtlas().bake( app.renderer );
+	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture } );
+	app.canopyMaterial = canopy;
+	const { material: fernMat } = createFoliageMaterial( sunDir, { fern: true } );
+	// far oaks: octahedral impostors baked from the near tree
+	const oakHi = oakTree( 0, 11 );
+	const oakAtlas = new ImpostorAtlas( oakHi, leafAtlas.texture ).bake( app.renderer );
+	const oakImpostor = oakAtlas.createMaterial( { bark: OAK_BARK } );
+	app.oakImpostors = oakAtlas;
+	console.info( 'oak impostors baked in', Math.round( oakAtlas.bakeMs ), 'ms' );
 	const species = {
-		oak: new ChunkedInstances( { name: 'oak', hi: oakGeometry( 0, 11 ), lo: oakGeometry( 1, 11 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
+		oak: new ChunkedInstances( { name: 'oak', hi: oakHi, lo: oakTree( 1, 11 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: 140, impostor: oakImpostor, impostorDistance: 320 } ),
 		pine: new ChunkedInstances( { name: 'pine', hi: pineGeometry( 0, 12 ), lo: pineGeometry( 1, 12 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
 		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
-		bush: new ChunkedInstances( { name: 'bush', hi: bushGeometry( 0, 14 ), lo: bushGeometry( 1, 14 ), material, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } )
+		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
+		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } )
 	};
 	species.grass = new ChunkedInstances( { name: 'grass', hi: grassTuftGeometry(), material, tile: 64, castShadow: false, layer: 1, maxDistance: 70, reflect: false } );
 	for ( const s of Object.values( species ) ) s.addAttribute( 'aTint', 3 );
@@ -134,13 +178,14 @@ export function createVegetation( app, progress ) {
 		oak: [ 0x3d4f24, 0x4b5f2b, 0x5b6b2e, 0x455a27 ],
 		pine: [ 0x2f4424, 0x37502a, 0x2a3e20, 0x40582e ],
 		birch: [ 0x5f7231, 0x6b7c36, 0x76833c, 0x5a6a2f ],
-		bush: [ 0x44582a, 0x51642e, 0x5f6a33, 0x3d5026 ],
+		bush: [ 0x34482a, 0x3c5026, 0x48562a, 0x303f22 ], // gorse / broom: dark, dense greens
+		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ], // bracken: fresh green, some yellowing
 		grass: [ 0x5f7431, 0x6f7f36, 0x8a8744, 0x53692c, 0x9a8f50 ]
 	};
 	const tmpC = new THREE.Color();
 	const tint = ( sp, rnd ) => {
 		const pal = PAL[ sp ];
-		tmpC.set( pal[ Math.floor( rnd() * pal.length ) ] ).convertSRGBToLinear();
+		tmpC.set( pal[ Math.floor( rnd() * pal.length ) ] ); // hex is sRGB: set() already converts to linear
 		const v = 0.9 + rnd() * 0.2;
 		return [ tmpC.r * v, tmpC.g * v, tmpC.b * v ];
 	};
@@ -162,7 +207,12 @@ export function createVegetation( app, progress ) {
 	// Jittered-grid scatter over the whole terrain.
 	const step = 9;
 	const x0 = hf.x0 + 10, x1 = hf.x0 + hf.size - 10, z0 = hf.z0 + 10, z1 = hf.z0 + hf.size - 10;
-	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, grass: 0 };
+	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, fern: 0, grass: 0 };
+	// understory: bracken in the woodland patches and the lowlands, gorse / broom on the high open hills
+	const shrub = ( x, z, s, patch, h ) => {
+		const fernP = ( 0.25 + 0.45 * patch ) * ( 1 - ss( 90, 220, h ) );
+		if ( rnd() < fernP ) { place( 'fern', x, z, 0.8 + rnd() * 0.5, 0.3 ); counts.fern ++; } else { place( 'bush', x, z, s, 0.5 ); counts.bush ++; }
+	};
 	for ( let z = z0; z < z1; z += step ) {
 		for ( let x = x0; x < x1; x += step ) {
 			const px = x + ( rnd() - 0.5 ) * step, pz = z + ( rnd() - 0.5 ) * step;
@@ -195,12 +245,11 @@ export function createVegetation( app, progress ) {
 				place( sp, px, pz, s );
 				counts[ sp ] ++;
 			} else if ( r < dens * 0.72 + ( 0.3 + 0.5 * patch ) * steep * altitude * c * 0.9 ) {
-				place( 'bush', px, pz, 0.6 + rnd() * 0.9, 0.5 );
-				counts.bush ++;
+				shrub( px, pz, 0.6 + rnd() * 0.9, patch, h );
 			}
 			// extra shrub clumps (gorse / broom / bracken) on the open hills
 			if ( ! nearVillage && h > 3 && rnd() < 0.9 * steep * altitude ) {
-				for ( let k = 0; k < 2; k ++ ) { place( 'bush', px + ( rnd() - 0.5 ) * step, pz + ( rnd() - 0.5 ) * step, 0.5 + rnd() * 0.8, 0.5 ); counts.bush ++; }
+				for ( let k = 0; k < 2; k ++ ) shrub( px + ( rnd() - 0.5 ) * step, pz + ( rnd() - 0.5 ) * step, 0.5 + rnd() * 0.8, patch, h );
 			}
 		}
 		progress?.( ( z - z0 ) / ( z1 - z0 ) * 0.9 );

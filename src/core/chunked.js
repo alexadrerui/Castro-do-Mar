@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { Fn, attribute, mat4, vec4, positionLocal, normalLocal, transformNormal } from 'three/tsl';
+import { impostorQuad } from '../world/impostors.js';
 
 // Spatially chunked instancing with two LOD levels.
 //  - every tile owns a hi and a lo mesh sharing the same instance data,
@@ -13,6 +14,8 @@ import { Fn, attribute, mat4, vec4, positionLocal, normalLocal, transformNormal 
 //    is a named geometry attribute (iM0..iM3, one interleaved buffer = one
 //    vertex buffer slot) applied in the material's positionNode, so all tiles
 //    of a material share ONE build, shader and pipeline.
+//  - optional third level: beyond impostorDistance a tile draws its plants as octahedral
+//    impostors (world/impostors.js), one camera-facing quad per plant.
 
 const patched = new WeakSet();
 
@@ -31,7 +34,7 @@ function useGeometryInstancing( material ) {
 	} )();
 }
 
-const _m = new THREE.Matrix4(), _hits = [], _sphere = new THREE.Sphere();
+const _hits = [], _sphere = new THREE.Sphere();
 const _probe = new THREE.Mesh();
 
 // Per-instance raycast (like InstancedMesh.raycast), for the focus picking.
@@ -51,7 +54,7 @@ function raycastInstances( raycaster, intersects ) {
 
 export class ChunkedInstances extends THREE.Group {
 
-	constructor( { name, hi, lo = null, material, materialLo = null, tile = 220, lodDistance = 320, castShadow = true, receiveShadow = true, shadowDistance = 260, layer = 0, maxDistance = Infinity, reflect = true } ) {
+	constructor( { name, hi, lo = null, material, materialLo = null, tile = 220, lodDistance = 320, castShadow = true, receiveShadow = true, shadowDistance = 260, layer = 0, maxDistance = Infinity, reflect = true, impostor = null, impostorDistance = Infinity } ) {
 		super();
 		this.name = name;
 		this.layerId = layer;
@@ -62,6 +65,8 @@ export class ChunkedInstances extends THREE.Group {
 		useGeometryInstancing( this.materialLo );
 		this.tileSize = tile;
 		this.lodDistance = lodDistance;
+		this.impostor = impostor; // runtime material of an ImpostorAtlas (needs an aTint attribute)
+		this.impostorDistance = impostorDistance;
 		this.shadowDistance = shadowDistance;
 		this.cast = castShadow; this.receive = receiveShadow;
 		this.reflect = reflect;
@@ -139,7 +144,32 @@ export class ChunkedInstances extends THREE.Group {
 		if ( lo ) hi.layers.disable( 2 );
 		if ( lo ) { lo.castShadow = false; lo.visible = false; }
 		this.add( hi ); if ( lo ) this.add( lo );
-		this.tiles.push( { hi, lo, center, radius: box.getSize( p ).length() * 0.5 } );
+		let imp = null;
+		if ( this.impostor ) {
+			// per plant: iPos (position, scale), iDat (yaw, height stretch, 0, seed)
+			const iPos = new Float32Array( n * 4 ), iDat = new Float32Array( n * 4 );
+			const q = new THREE.Quaternion(), sc = new THREE.Vector3(), ax = new THREE.Vector3();
+			list.forEach( ( it, i ) => {
+				it.m.decompose( p, q, sc );
+				ax.set( 1, 0, 0 ).applyQuaternion( q );
+				iPos.set( [ p.x, p.y, p.z, sc.x ], i * 4 );
+				iDat.set( [ Math.atan2( - ax.z, ax.x ), sc.y / sc.x, 0, ( i * 0.618034 ) % 1 ], i * 4 );
+			} );
+			const geo = impostorQuad();
+			geo.setAttribute( 'iPos', new THREE.InstancedBufferAttribute( iPos, 4 ) );
+			geo.setAttribute( 'iDat', new THREE.InstancedBufferAttribute( iDat, 4 ) );
+			geo.setAttribute( 'aTint', extras[ this.extraAttrs.findIndex( ( a ) => a.name === 'aTint' ) ] );
+			geo.instanceCount = n;
+			geo.boundingSphere = hi.geometry.boundingSphere;
+			imp = new THREE.Mesh( geo, this.impostor );
+			imp.castShadow = false;
+			imp.receiveShadow = this.receive;
+			if ( this.layerId ) imp.layers.set( this.layerId );
+			if ( this.reflect ) imp.layers.enable( 2 );
+			imp.visible = false;
+			this.add( imp );
+		}
+		this.tiles.push( { hi, lo, imp, center, radius: box.getSize( p ).length() * 0.5 } );
 	}
 
 	update( camera ) {
@@ -149,7 +179,9 @@ export class ChunkedInstances extends THREE.Group {
 			const d = Math.max( 0, dc - t.radius );
 			const near = dc < this.lodDistance;
 			const alive = d < this.maxDistance;
-			if ( t.lo ) { t.hi.visible = near && alive; t.lo.visible = ! near && alive; } else t.hi.visible = alive;
+			const far = dc > this.impostorDistance;
+			if ( t.imp ) t.imp.visible = far && alive;
+			if ( t.lo ) { t.hi.visible = near && alive; t.lo.visible = ! near && ! ( far && t.imp ) && alive; } else t.hi.visible = alive && ! ( far && t.imp );
 			t.hi.castShadow = this.cast && dc < this.shadowDistance;
 		}
 	}

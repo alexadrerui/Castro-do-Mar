@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import {
-	positionWorld, normalWorld, attribute, vec2, vec3, float, color, mix, smoothstep, clamp, fract,
+	positionWorld, normalWorld, attribute, vec2, vec3, float, color, mix, smoothstep, fract,
 	mx_noise_float, mx_fractal_noise_float, mx_worley_noise_vec2
 } from 'three/tsl';
 import { ChunkedInstances } from '../core/chunked.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { clearance, sampleMask } from './vegetation.js';
-import { pathDistance, coastX } from './heightfield.js';
+import { pathDistance } from './heightfield.js';
 import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
 import { proceduralBump } from './terrain.js';
 import { buildRockGeometry, ROCK_STYLES } from './granite/geometry.js';
@@ -191,6 +191,5 @@ export function createRocks( app, progress ) {
 	app.onFrame.push( () => { for ( const s of [ ...variants, ...gravel ] ) s.update( app.camera ); } );
 	group.userData.counts = counts;
 	progress?.( 1 );
-	void coastX;
 	return group;
 }

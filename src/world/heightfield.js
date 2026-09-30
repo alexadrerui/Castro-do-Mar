@@ -1,5 +1,5 @@
 import { makeSimplex, fbm, ridged, smoothstep, lerp, clamp } from '../core/noise.js';
-import { TERRAIN, MASK, VILLAGE, FORT, MINE, TOWER, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS, WALLS } from './layout.js';
+import { TERRAIN, MASK, VILLAGE, FORT, MINE, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS } from './layout.js';
 
 const nA = makeSimplex( 890 );
 const nB = makeSimplex( 31 );
@@ -502,4 +502,3 @@ export function buildMask( onProgress ) {
 }
 
 export { pathDistance, segDist, spineCoord };
-export const _debug = { WALLS };

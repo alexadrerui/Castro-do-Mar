@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-	Fn, uv, positionWorld, normalWorld, float, vec2, vec3, color, mix, smoothstep, floor, fract, min, max, abs, sin,
+	Fn, uv, positionWorld, normalWorld, float, vec2, vec3, color, mix, smoothstep, floor, fract, max, abs, sin,
 	hash, mx_noise_float, mx_fractal_noise_float, mx_worley_noise_vec2, texture, clamp, fwidth, length
 } from 'three/tsl';
 import { proceduralBump } from './terrain.js';
@@ -9,15 +9,13 @@ import { proceduralBump } from './terrain.js';
 // Colours are tuned against the references: warm grey granite, grey-olive
 // weathered thatch with moss, dark oak timber, madder-red cloth.
 
-const h2 = ( v ) => hash( v.x.mul( 127.1 ).add( v.y.mul( 311.7 ) ) );
-
 // Pixel footprint of the metric UVs: used to fade out procedural detail that
 // is finer than a pixel (prevents moire/sparkle at distance).
 const footprint = ( st ) => length( fwidth( st ) );
 const aa = ( st, lo, hi ) => smoothstep( lo, hi, footprint( st ) );
 
 // Dry-stone masonry (no mortar): irregular courses of granite blocks.
-export function stoneMaterial( { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB = 0xb0a692, moss = 0.6, detailTex = null } = {} ) {
+export function stoneMaterial( { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB = 0xb0a692, moss = 0.6 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
 	const st = uv();
 	// irregular, rounded-polygonal granite rubble (Worley cells, lightly coursed)
@@ -43,7 +41,6 @@ export function stoneMaterial( { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB
 	// pillowed stone faces
 	const bumpH = smoothstep( 0.0, 0.07, edge ).mul( 0.8 ).add( n.mul( 0.25 ) );
 	mat.normalNode = proceduralBump( bumpH, far.oneMinus().mul( 1.6 ) );
-	void detailTex;
 	return mat;
 }
 

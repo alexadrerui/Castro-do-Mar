@@ -48,6 +48,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1210; col
 #ld-steps li.ok::before { content: "●"; color: var(--gold); }
 .ld-tip { margin: 20px 0 0; min-height: 34px; font-size: 12.5px; color: var(--ink-dim); font-style: italic; }
 .ld-backend { font-size: 11px; color: #7f8b7d; margin: 10px 0 0; letter-spacing: .08em; }
+.ld-credits { font-size: 10px; color: #6d786b; margin: 6px 0 0; line-height: 1.5; }
+.ld-credits a { color: #93a08f; }
 .btn { font: 600 13px Inter, sans-serif; letter-spacing: .08em; text-transform: uppercase; padding: 12px 26px; border-radius: 6px; cursor: pointer; border: 1px solid var(--gold); background: transparent; color: var(--gold-2); }
 .btn.gold { margin-top: 16px; background: linear-gradient(#b48c45, #7d5f2a); color: #1a140a; border-color: #e6c987; box-shadow: 0 6px 24px rgba(201,164,92,.35); }
 .btn.gold:hover { filter: brightness(1.1); }

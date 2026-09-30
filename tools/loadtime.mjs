@@ -1,5 +1,5 @@
 // Load time per loader step, cold (empty cache) then warm (cache filled by the
-// first load), up to the first frame drawn: node tools/loadtime.mjs [loads=2]
+// first load), up to the first frame drawn: node tools/loadtime.mjs [loads=2] [extra url params]
 import puppeteer from 'puppeteer-core';
 
 const loads = Number( process.argv[ 2 ] ) || 2;
@@ -15,13 +15,13 @@ const browser = await puppeteer.launch( {
 const page = await browser.newPage();
 page.on( 'console', ( m ) => {
 	const t = m.text();
-	if ( [ 'error', 'warn' ].includes( m.type() ) || /^(load times|fields:|first frame|precompile)/.test( t ) ) console.log( '[page]', t.slice( 0, 400 ) );
+	if ( [ 'error', 'warn' ].includes( m.type() ) || /^(load times|fields:|first frame|precompile|oak impostors)/.test( t ) ) console.log( '[page]', t.slice( 0, 400 ) );
 } );
 page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e.stack || e ).slice( 0, 900 ) ) );
 
 for ( let i = 0; i < loads; i ++ ) {
 	const t0 = Date.now();
-	await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
+	await page.goto( 'http://localhost:5190/?auto' + ( process.argv[ 3 ] ? '&' + process.argv[ 3 ] : '' ), { waitUntil: 'domcontentloaded' } );
 	if ( i === 0 ) await page.evaluate( () => new Promise( ( r ) => { const q = indexedDB.deleteDatabase( 'castro-do-mar' ); q.onsuccess = q.onerror = q.onblocked = r; } ) ).then( () => page.reload( { waitUntil: 'domcontentloaded' } ) );
 	const first = new Promise( ( r ) => { const f = ( m ) => { if ( m.text().startsWith( 'first frame' ) ) { page.off( 'console', f ); r(); } }; page.on( 'console', f ); } );
 	await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 250 } );
