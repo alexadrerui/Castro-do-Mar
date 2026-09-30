@@ -1,14 +1,16 @@
 import * as THREE from 'three/webgpu';
-import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV } from 'three/tsl';
+import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2 } from 'three/tsl';
 
 import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
 import { FreeCam } from './controls/freecam.js';
 import { AutoFocus } from './controls/focus.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
+import { Mist } from './post/mist.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
@@ -153,13 +155,14 @@ async function main() {
 	const hazeColor = uniform( new THREE.Color( 0x9db6d6 ) );
 	app.hazeColor = hazeColor;
 	const hazeFar = uniform( new THREE.Color( 0x8fa9cc ) );
-	scene.fogNode = fog( mix( hazeColor, hazeFar, smoothstep( 4000, 14000, length( positionView ) ) ), Fn( () => {
-		const d = length( positionView );
+	// haze amount at view distance d and world height y (also weights the scattering blur below)
+	const hazeAmount = ( d, y ) => {
 		const dens = float( 0.00013 ).mul( app.fogScale );
 		const f = float( 1 ).sub( exp( d.mul( dens ).negate() ) );
-		const altitude = exp( max( positionWorld.y, 0 ).div( 2200 ).negate() );
+		const altitude = exp( max( y, 0 ).div( 2200 ).negate() );
 		return f.mul( altitude.mul( 0.55 ).add( 0.45 ) ).mul( 0.72 );
-	} )() );
+	};
+	scene.fogNode = fog( mix( hazeColor, hazeFar, smoothstep( 4000, 14000, length( positionView ) ) ), hazeAmount( length( positionView ), positionWorld.y ) );
 
 	await loader.run( 'world', async ( p ) => {
 		const mod = await import( './world/populate.js' );
@@ -304,8 +307,33 @@ async function main() {
 	app.bloom = bloomPass;
 	let bloomOn = true;
 
+	// Low mist over the water and the valleys (volumetric, raymarched at reduced resolution).
+	const mist = params.get( 'mist' ) === '0' ? null : new Mist( { scenePass, camera, waterLevel: WATER_LEVEL } );
+	app.mist = mist;
+	if ( mist ) app.onFrame.push( ( dt ) => {
+		mist.update( dt );
+		mist.color.value.copy( hazeColor.value ).multiplyScalar( 1.25 ); // lit like the haze
+		mist.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1; // not under the water
+	} );
+
+	// Fog scattering (three's webgpu_custom_fog_scattering): light scattered by the humid air
+	// softens what lies deep in the haze. A half-resolution blur of the scene is mixed in by the
+	// haze amount of each pixel (distance and height rebuilt from the depth); the sky is left sharp.
+	const scatter = uniform( 1.6 ); // strength (app.scatter.value); ?scatter=0 leaves the pass out
+	app.scatter = scatter;
+	const sceneBlur = gaussianBlur( scenePass.getTextureNode( 'output' ), vec2( 2 ), 4, { resolutionScale: 0.5 } );
+	const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse );
+	const scattered = params.get( 'scatter' ) === '0' ? ( src ) => src : ( src ) => {
+		const depth = scenePass.getTextureNode( 'depth' ).sample( screenUV ).r;
+		const vp = getViewPosition( screenUV, depth, camProjInv );
+		const wy = camWorld.mul( vec4( vp, 1 ) ).y;
+		const k = hazeAmount( length( vp ), wy ).mul( scatter ).mul( depth.lessThan( 0.99999 ).select( 1, 0 ) ).clamp( 0, 1 );
+		return mix( src, sceneBlur.rgb, k );
+	};
+
 	const graded = ( input, withBloom ) => Fn( () => {
-		const src = withBloom ? input.rgb.add( bloomPass.rgb ) : input.rgb;
+		const src0 = mist ? mist.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const src = withBloom ? src0.add( bloomPass.rgb ) : src0;
 		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV );
 		const c = renderOutput( vec4( wetRGB, 1.0 ) ).toVar();
 		const rgb = c.rgb.toVar();
