@@ -132,7 +132,8 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - [x] Pinheiros pretos: não era o modelo, e sim a tonalidade de toda a vegetação convertida duas vezes para linear (`Color.set( hex )` já converte; havia um `.convertSRGBToLinear()` a mais em `vegetation.js`). Paletas de arbusto e fento reajustadas.
 - [ ] Pinheiro ainda é o modelo antigo de cones (`plants.js`); dá para refazer no estilo dos carvalhos (o Tidewater não tem conífera).
 - Tentativa descartada: árvores do pacote "Low Poly Trees Free" (Sketchfab, CC BY 4.0). Ficaram boas visualmente, mas somavam ~150 chamadas de desenho e faziam o pré-compile passar do limite de 12 s mesmo com cache (carga de ~8 s para ~20 s). Se voltar a elas: juntar as 3 variantes numa espécie só e investigar os pipelines novos.
-- [ ] Nuvens: camada de cúmulos e bancos de névoa nos vales distantes.
+- [ ] Nuvens: poucos cúmulos volumétricos distantes (exemplo `webgpu_volume_cloud`: raymarch numa textura 3D; faltaria iluminação pelo sol). A brétema baixa já existe (`src/post/mist.js`).
+- [ ] Pinheiro novo com o `TreeGenerator` da r186 (`three/addons/generators/TreeGenerator.js`, usado no exemplo `webgpu_custom_fog_scattering`) no lugar dos cones de `plants.js`.
 - [ ] Vila mais compacta, com mais tecido vermelho e cercas nas vielas.
 
 ### Performance (em andamento)
