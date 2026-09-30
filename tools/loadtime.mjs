@@ -15,7 +15,7 @@ const browser = await puppeteer.launch( {
 const page = await browser.newPage();
 page.on( 'console', ( m ) => {
 	const t = m.text();
-	if ( [ 'error', 'warn' ].includes( m.type() ) || /^(load times|fields:|first frame|precompile|oak impostors)/.test( t ) ) console.log( '[page]', t.slice( 0, 400 ) );
+	if ( [ 'error', 'warn' ].includes( m.type() ) || /^(load times|fields:|first frame|precompile|bakes:)/.test( t ) ) console.log( '[page]', t.slice( 0, 400 ) );
 } );
 page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e.stack || e ).slice( 0, 900 ) ) );
 
@@ -27,6 +27,6 @@ for ( let i = 0; i < loads; i ++ ) {
 	await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 250 } );
 	await first;
 	console.log( `load ${ i + 1 }${ i === 0 ? ' (cold)' : ' (warm)' }: first frame after ${ ( ( Date.now() - t0 ) / 1000 ).toFixed( 1 ) } s` );
-	await new Promise( ( r ) => setTimeout( r, 1500 ) ); // let the background cache write finish
+	await new Promise( ( r ) => setTimeout( r, Number( process.env.WAIT || 1500 ) ) ); // let the background cache write finish
 }
 await browser.close();

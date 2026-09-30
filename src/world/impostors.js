@@ -6,8 +6,9 @@
 // core/chunked.js switch whole tiles hi -> lo -> impostor); the dominant frame only (the
 // impostors start far away); colours from the per-instance tint like the near canopy.
 import * as THREE from 'three/webgpu';
+import { bakeTarget, textureFromData, readTarget } from '../core/bakeCache.js';
 import {
-	Fn, float, vec2, vec3, vec4, attribute, texture, uv, positionGeometry, normalGeometry, positionWorld, cameraPosition, property,
+	Fn, float, uniform, vec2, vec3, vec4, attribute, texture, uv, positionGeometry, normalGeometry, positionWorld, cameraPosition, property,
 	normalize, cross, dot, abs, max, mix, floor, clamp, select, sin, cos, color, cameraViewMatrix, positionViewDirection, mx_noise_float
 } from 'three/tsl';
 
@@ -49,10 +50,9 @@ const octEncodeT = ( d ) => {
 
 export class ImpostorAtlas {
 
-	// geometry: the near plant (foliage layout); leafTexture: the leaf-cluster atlas its cards use
-	constructor( geometry, leafTexture ) {
+	// geometry: the near plant (foliage layout)
+	constructor( geometry ) {
 		this.geometry = geometry;
-		this.leafTexture = leafTexture;
 		// frame: a sphere around the plant axis holding every vertex
 		geometry.computeBoundingBox();
 		const bb = geometry.boundingBox;
@@ -67,17 +67,20 @@ export class ImpostorAtlas {
 		this.radius = R * 1.02;
 		this.rh = rh * 1.02;
 		this.hv = ( bb.max.y - bb.min.y ) / 2 * 1.02;
-		const make = ( name ) => {
-			const rt = new THREE.RenderTarget( OCT_N * FRAME_PX, OCT_N * FRAME_PX, {
-				type: THREE.UnsignedByteType, depthBuffer: true, generateMipmaps: true,
-				minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
-			} );
-			rt.texture.name = name;
-			rt.texture.colorSpace = THREE.NoColorSpace;
-			return rt;
-		};
-		this.rtA = make( 'impostorA' );
-		this.rtB = make( 'impostorB' );
+		this.rtA = this.rtB = null;
+		this.textureA = this.textureB = null;
+		this.bakeMs = 0;
+	}
+
+	// from cached texels (see read) instead of baking
+	load( { a, b } ) {
+		this.textureA = textureFromData( a, OCT_N * FRAME_PX, 'impostorA' );
+		this.textureB = textureFromData( b, OCT_N * FRAME_PX, 'impostorB' );
+		return this;
+	}
+
+	async read( renderer ) {
+		return { a: await readTarget( renderer, this.rtA ), b: await readTarget( renderer, this.rtB ) };
 	}
 
 	// frame transforms: local plant -> atlas plane (cell centre), frame (i, j)
@@ -115,8 +118,14 @@ export class ImpostorAtlas {
 		};
 	}
 
-	bake( renderer ) {
+	// leafTexture: the leaf-cluster (or needle) texture the plant's cards use
+	bake( renderer, leafTexture ) {
+		this.leafTexture = leafTexture;
 		const t0 = performance.now();
+		this.rtA = bakeTarget( OCT_N * FRAME_PX, 'impostorA', { depthBuffer: true } );
+		this.rtB = bakeTarget( OCT_N * FRAME_PX, 'impostorB', { depthBuffer: true } );
+		this.textureA = this.rtA.texture;
+		this.textureB = this.rtB.texture;
 		const mats = this._bakeMaterials();
 		const scene = new THREE.Scene();
 		const prevTarget = renderer.getRenderTarget();
@@ -158,7 +167,8 @@ export class ImpostorAtlas {
 		const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
 		mat.name = 'impostor';
 		const iPos = attribute( 'iPos', 'vec4' ), iDat = attribute( 'iDat', 'vec4' ), tint = attribute( 'aTint', 'vec3' );
-		const R = float( this.radius ), Rh = float( this.rh ), Hv = float( this.hv ), Cy = float( this.center.y );
+		// uniforms, not constants: the impostors of every species share one shader (and pipeline)
+		const R = uniform( this.radius ), Rh = uniform( this.rh ), Hv = uniform( this.hv ), Cy = uniform( this.center.y );
 
 		// ---- vertex: camera-facing quad fitted to the plant's projected extent
 		mat.positionNode = Fn( () => {
@@ -177,7 +187,7 @@ export class ImpostorAtlas {
 
 		// ---- fragment: frame selection + re-projection (shared by mask, colour and normal)
 		const vA = property( 'vec4', 'impA' ), vB = property( 'vec4', 'impB' );
-		const atlasA = texture( this.rtA.texture ), atlasB = texture( this.rtB.texture );
+		const atlasA = texture( this.textureA ), atlasB = texture( this.textureB );
 		mat.maskNode = Fn( () => {
 			const s = iPos.w, sy = iDat.y, yaw = iDat.x;
 			const cyw = cos( yaw ), syw = sin( yaw );
@@ -213,7 +223,7 @@ export class ImpostorAtlas {
 			const bright = vA.x.div( cov ), leaf = vA.y.div( cov ), cr = vA.z.div( cov ), ex = vB.w.div( cov );
 			const n = mx_noise_float( iPos.xyz.mul( 0.9 ) ).mul( 0.5 ).add( 0.5 );
 			const leafCol = tint.mul( mix( 0.8, 1.1, n ) ).mul( bright.mul( 1.4 ) ).mul( mix( vec3( 0.9, 0.95, 1.05 ), vec3( 1.1, 1.06, 0.85 ), cr ) );
-			return select( leaf.greaterThan( 0.5 ), leafCol, color( bark ) ).mul( mix( 0.55, 1.0, ex ) );
+			return select( leaf.greaterThan( 0.5 ), leafCol, uniform( bark ) ).mul( mix( 0.55, 1.0, ex ) );
 		} )();
 
 		mat.normalNode = Fn( () => {

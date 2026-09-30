@@ -4,16 +4,18 @@
 // Solutions LLC. Changes: reversed smoothstep edges rewritten with oneMinus() (undefined in
 // WGSL); tileUV() helper for this project's card UVs.
 import * as THREE from 'three/webgpu';
+import { bakeTarget, textureFromData, readTarget } from '../core/bakeCache.js';
 import { Fn, float, vec2, vec3, vec4, uv, floor, fract, abs, cos, sin, atan, pow, max, clamp, mix, length, smoothstep, select, dot } from 'three/tsl';
 
 // A 2 x 2 atlas of tiles, each tile a card of many small twig-end leaf whorls on a jittered grid
 // with empty cells, in two offset layers: clumps with sky holes, no regular pattern. 4x
 // supersampled, mipmapped.
 //   R coverage, G brightness structure (leaf tip lightening, midrib) / 1.4, B per-leaf random
-// Tiles: 0 tree, broad leaves   1 tree, narrow leaves   2 shrub, round leaves   3 shrub, narrow leaves
+// Tiles: 0 tree, broad leaves   1 pine needles (tufts of thin needles)   2 shrub, round leaves
+//        3 shrub, narrow leaves
 export const LEAF_TILES = [
 	{ grid: 4, leaves: 6, width: 0.34 },
-	{ grid: 4, leaves: 8, width: 0.2 },
+	{ grid: 5, leaves: 30, width: 0.05, needle: true },
 	{ grid: 3, leaves: 6, width: 0.45 },
 	{ grid: 3, leaves: 8, width: 0.22 },
 ];
@@ -28,7 +30,7 @@ const hash12 = /*@__PURE__*/ Fn( ( [ p ] ) => {
 // leaf rosettes tiled G x G over a card: each cell holds one rosette with its own rotation /
 // size; leaves have a short petiole gap at the centre. Returns { d: signed distance to the leaf
 // edge (in rosette units, > 0 inside), bright, cell }.
-const rosette = ( st, G, nLeaves, width, rot ) => {
+const rosette = ( st, G, nLeaves, width, rot, needle = false ) => {
 	const cuv = st.mul( G );
 	const cell = floor( cuv );
 	const h1 = hash12( cell.add( rot.mul( 17.3 ) ) );
@@ -54,7 +56,9 @@ const rosette = ( st, G, nLeaves, width, rot ) => {
 	const x = along.div( L );
 	const bx = clamp( x.sub( 0.18 ).div( 0.82 ), 0, 1 ); // blade after a short petiole
 	// obovate (widest beyond the middle) with a short pointed tip
-	const shape = pow( max( sin( pow( bx, 0.62 ).mul( 3.14159 ) ), 0 ), 0.8 ).mul( smoothstep( 0.86, 1.0, bx ).oneMinus().mul( 0.25 ).add( 0.75 ) );
+	// needles: an even width from the sheath to a sharp tip
+	const shape = needle ? smoothstep( 0.0, 0.08, bx ).mul( smoothstep( 0.7, 1.0, bx ).oneMinus() ) :
+		pow( max( sin( pow( bx, 0.62 ).mul( 3.14159 ) ), 0 ), 0.8 ).mul( smoothstep( 0.86, 1.0, bx ).oneMinus().mul( 0.25 ).add( 0.75 ) );
 	const hw = shape.mul( width ).mul( L );
 	const inBlade = x.greaterThan( 0.16 ).and( x.lessThan( 1 ) );
 	const dBlade = select( inBlade, hw.sub( across ), float( - 1 ) );
@@ -68,18 +72,24 @@ const rosette = ( st, G, nLeaves, width, rot ) => {
 export class LeafAtlas {
 
 	constructor() {
-		this.rt = new THREE.RenderTarget( SIZE, SIZE, {
-			type: THREE.UnsignedByteType, depthBuffer: false, generateMipmaps: true,
-			minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
-		} );
-		this.rt.texture.name = 'leafClusters';
-		this.rt.texture.colorSpace = THREE.NoColorSpace;
-		this.rt.texture.anisotropy = 4;
-		this.texture = this.rt.texture;
+		this.size = SIZE;
+		this.rt = null;
+		this.texture = null;
 		this.baked = false;
 	}
 
+	// from cached texels (see read) instead of baking
+	load( data ) {
+		this.texture = textureFromData( data, SIZE, 'leafClusters', { anisotropy: 4 } );
+		this.baked = true;
+		return this;
+	}
+
+	read( renderer ) { return readTarget( renderer, this.rt ); }
+
 	bake( renderer ) {
+		this.rt = bakeTarget( SIZE, 'leafClusters', { anisotropy: 4 } );
+		this.texture = this.rt.texture;
 		const mat = new THREE.MeshBasicNodeMaterial();
 		mat.colorNode = Fn( () => {
 			const st = uv();
@@ -95,8 +105,8 @@ export class LeafAtlas {
 				for ( let s = 0; s < 4; s ++ ) {
 					const o = vec2( ( s % 2 ) - 0.5, Math.floor( s / 2 ) - 0.5 ).mul( px * 0.5 );
 					const q = local.add( o );
-					const A = rosette( q, T.grid, T.leaves, T.width, float( 0 ) );
-					const B = rosette( q.add( 0.5 / T.grid ), T.grid, T.leaves, T.width, float( 2.1 ) );
+					const A = rosette( q, T.grid, T.leaves, T.width, float( 0 ), T.needle );
+					const B = rosette( q.add( 0.5 / T.grid ), T.grid, T.leaves, T.width, float( 2.1 ), T.needle );
 					const inA = A.d.greaterThan( 0 ), inB = B.d.greaterThan( 0 );
 					const hit = inA.or( inB ).and( isT );
 					cov.addAssign( select( hit, float( 0.25 ), float( 0 ) ) );

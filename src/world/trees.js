@@ -7,6 +7,7 @@
 // no per-instance lobe variants (the crowns vary by seed, rotation and scale instead); the shrub
 // takes the narrow-leaf tile (gorse / broom) and the fern is reshaped as bracken.
 import * as THREE from 'three/webgpu';
+import { TreeGenerator } from 'three/addons/generators/TreeGenerator.js';
 import { mulberry32 } from '../core/noise.js';
 import { tileUV } from './leafAtlas.js';
 
@@ -26,6 +27,17 @@ class Builder {
 		return this.count - 1;
 	}
 	quad( a, b, c, d ) { this.idx.push( a, b, c, a, c, d ); }
+	// an indexed geometry (position, normal) as bark: every vertex through fn( p, n ) -> [ sway, ao ]
+	wood( geo, bark, fn ) {
+		const p = geo.attributes.position, n = geo.attributes.normal, base = this.count;
+		const P = new THREE.Vector3(), N = new THREE.Vector3();
+		for ( let i = 0; i < p.count; i ++ ) {
+			P.fromBufferAttribute( p, i ); N.fromBufferAttribute( n, i );
+			const [ sway, ao ] = fn( P );
+			this.vertex( P, N, 0, 0, bark, 0, sway, ao, 0 );
+		}
+		for ( const k of geo.index.array ) this.idx.push( base + k );
+	}
 	build() {
 		const g = new THREE.BufferGeometry();
 		g.setAttribute( 'position', new THREE.Float32BufferAttribute( this.pos, 3 ) );
@@ -373,4 +385,88 @@ export function bracken( lod = 0, seed = 3 ) {
 		} );
 	}
 	return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// Pine (piñeiro): the trunk and branches are grown by three.js' TreeGenerator (a tall straight bole,
+// near-horizontal branches that shorten towards the top, twigs), the needles are tufts of cards
+// (leaf atlas tile 1) along the twigs. ~12 m tall at scale 1.
+// lod 1: trunk and branches only, with fewer, larger cards along the branches.
+// ---------------------------------------------------------------------------
+export const PINE_BARK = new THREE.Color( 0x5b3f2e );
+const _treeGen = new TreeGenerator( new THREE.MeshBasicNodeMaterial() ); // the material is never used
+
+// Ring centres of the generator's tubes. Its vertices are ring by ring, position = centre + normal
+// × radius, so two neighbours of one ring give the radius exactly (Δp = Δn · r); a pair across two
+// rings leaves a residual and is skipped. Returns [ { c, r, t } ] in tube order (t: tangent).
+function tubeRings( geo, sectionLength ) {
+	const p = geo.attributes.position.array, n = geo.attributes.normal.array;
+	const rings = [];
+	let last = null;
+	for ( let i = 0; i < p.length / 3 - 1; i ++ ) {
+		const j = i * 3;
+		const dpx = p[ j + 3 ] - p[ j ], dpy = p[ j + 4 ] - p[ j + 1 ], dpz = p[ j + 5 ] - p[ j + 2 ];
+		const dnx = n[ j + 3 ] - n[ j ], dny = n[ j + 4 ] - n[ j + 1 ], dnz = n[ j + 5 ] - n[ j + 2 ];
+		const dn2 = dnx * dnx + dny * dny + dnz * dnz;
+		if ( dn2 < 0.1 ) continue;
+		const r = ( dpx * dnx + dpy * dny + dpz * dnz ) / dn2;
+		if ( Math.hypot( dpx - dnx * r, dpy - dny * r, dpz - dnz * r ) > 1e-3 ) continue;
+		const c = new THREE.Vector3( p[ j ] - n[ j ] * r, p[ j + 1 ] - n[ j + 1 ] * r, p[ j + 2 ] - n[ j + 2 ] * r );
+		if ( last && last.c.distanceToSquared( c ) < 1e-6 ) continue;
+		last = { c, r, t: null };
+		rings.push( last );
+	}
+	// tangents: towards the next ring of the same tube (the tubes follow each other in the buffer)
+	for ( let i = 0; i < rings.length; i ++ ) {
+		const a = rings[ i ], b = rings[ i + 1 ], z = rings[ i - 1 ];
+		if ( b && b.c.distanceTo( a.c ) < sectionLength * 1.6 && b.r <= a.r + 1e-4 ) a.t = b.c.clone().sub( a.c ).normalize();
+		else if ( z && z.t ) a.t = z.t.clone();
+		else a.t = _up.clone();
+	}
+	return rings;
+}
+
+export function pineTree( lod = 0, seed = 12 ) {
+	const rand = mulberry32( seed );
+	const H = 12;
+	const sectionLength = 1.2;
+	_treeGen.parameters = {
+		seed, levels: lod ? 2 : 3, children: lod ? [ 32 ] : [ 34, 7 ], branchAngle: [ 84, 42 ], angleVariance: 10,
+		lengthRatio: 0.36, lengthVariance: 0.25, branchLengthFalloff: 0.85, trunkLength: H, trunkRadius: 0.3,
+		taper: 0.92, taperCurve: 1, rootFlare: 0.5, flareFrac: 0.08, radiusExponent: 2.3, minRadius: 0.02,
+		minLength: 0.6, droop: 0.12, upPull: 0.08, gnarl: [ 0.02, 0.12, 0.2 ], radialSegments: lod ? 4 : 5,
+		sectionLength, childStart: 0.15, trunkClear: 0.3
+	};
+	const wood = _treeGen.build().geometry;
+	const rings = tubeRings( wood, sectionLength );
+
+	const b = new Builder();
+	const flex = ( p ) => Math.min( 1, Math.hypot( p.x, p.z ) / 4 + Math.max( 0, p.y - H * 0.6 ) / ( H * 0.8 ) );
+	b.wood( wood, PINE_BARK, ( p ) => [ flex( p ) * 0.5, barkAO( p, H ) ] );
+	wood.dispose();
+
+	// foliage: along the twigs (lod 0) or the branches (lod 1), off the trunk
+	const tufts = rings.filter( ( g ) => Math.hypot( g.c.x, g.c.z ) > 0.45 && g.r < ( lod ? 0.07 : 0.05 ) );
+	let lo = Infinity, hi = - Infinity, reach = 0;
+	for ( const g of tufts ) { lo = Math.min( lo, g.c.y ); hi = Math.max( hi, g.c.y ); reach = Math.max( reach, Math.hypot( g.c.x, g.c.z ) ); }
+	const crownC = new THREE.Vector3( 0, ( lo + hi ) / 2, 0 );
+	const crownR = new THREE.Vector3( reach + 0.5, ( hi - lo ) / 2 + 0.8, reach + 0.5 );
+	const keep = lod ? 1 : 0.45, size = lod ? 2.6 : 1.45;
+	const cards = [];
+	for ( const g of tufts ) {
+		if ( rand() > keep ) continue;
+		const out = new THREE.Vector3( g.c.x, 0, g.c.z ).normalize();
+		// sprays lie along the shoot, facing mostly up and a little outwards
+		const normal = new THREE.Vector3( rand() - 0.5, rand() - 0.5, rand() - 0.5 ).multiplyScalar( 0.7 ).addScaledVector( _up, 1 ).addScaledVector( out, 0.45 ).normalize();
+		const center = g.c.clone().addScaledVector( g.t, size * 0.25 ).add( new THREE.Vector3( rand() - 0.5, ( rand() - 0.5 ) * 0.5, rand() - 0.5 ).multiplyScalar( 0.3 ) );
+		const yaw = Math.atan2( g.t.z, g.t.x ) + ( rand() - 0.5 ) * 0.8;
+		cards.push( { center, size: size * ( 0.8 + rand() * 0.4 ), normal, yaw, lobeC: g.c, lobeR: 1, crownC, crownR, flexFn: flex, tile: 1, clumpC: g.c, clumpR: 0.9 } );
+		// a second, crossing card on some tufts (the spray reads from the side too)
+		if ( rand() < ( lod ? 0.7 : 0.35 ) ) cards.push( { ...cards[ cards.length - 1 ], normal: normal.clone().addScaledVector( out, 1.2 ).normalize(), yaw: yaw + 1.2 } );
+	}
+	emitCards( b, cards, crownC );
+	const g = b.build();
+	g.translate( 0, - 0.4, 0 ); // the flared foot sinks into sloping ground
+	g.computeBoundingSphere();
+	return g;
 }

@@ -318,10 +318,38 @@ export function createFort( app, mats, rockMat ) {
 	const geo = carveAdits( rockBlockGeometry() );
 	geo.applyMatrix4( mineFrame() );
 	geo.computeBoundingSphere();
-	const block = new THREE.Mesh( geo, [ rockMat, mats.darkRock ] );
-	block.castShadow = true; block.receiveShadow = true;
-	block.name = 'mineBlock';
-	block.layers.enable( 2 );
-	group.add( block );
+	// one mesh per material: with a material array, the shadow pass draws both groups with the one
+	// shadow material, whose cache key follows the group's material; three.js then disposed and
+	// rebuilt the render object (and a new pipeline) twice every time the shadow map was drawn
+	const matsOf = [ rockMat, mats.darkRock ];
+	splitGroups( geo ).forEach( ( g, i ) => {
+		const block = new THREE.Mesh( g, matsOf[ i ] );
+		block.castShadow = true; block.receiveShadow = true;
+		block.name = i ? 'mineBlockAdits' : 'mineBlock';
+		block.layers.enable( 2 );
+		group.add( block );
+	} );
 	return group;
+}
+
+// Splits a geometry with groups into one geometry per materialIndex (vertices copied).
+function splitGroups( geo ) {
+	const src = geo.index ? geo.toNonIndexed() : geo;
+	const out = [];
+	for ( const grp of src.groups ) {
+		const m = grp.materialIndex;
+		( out[ m ] ??= [] ).push( grp );
+	}
+	return out.map( ( groups ) => {
+		const g = new THREE.BufferGeometry();
+		for ( const [ name, attr ] of Object.entries( src.attributes ) ) {
+			const n = attr.itemSize;
+			const arr = new attr.array.constructor( groups.reduce( ( a, grp ) => a + grp.count, 0 ) * n );
+			let o = 0;
+			for ( const grp of groups ) { arr.set( attr.array.subarray( grp.start * n, ( grp.start + grp.count ) * n ), o ); o += grp.count * n; }
+			g.setAttribute( name, new THREE.BufferAttribute( arr, n, attr.normalized ) );
+		}
+		g.computeBoundingSphere();
+		return g;
+	} );
 }

@@ -98,50 +98,7 @@ function trunk( r0, r1, h, seg = 7, lean = [ 0, 0 ] ) {
 	return g;
 }
 
-const BARK_PINE = new THREE.Color( 0x5a4232 );
 const BARK_BIRCH = new THREE.Color( 0xb8b0a0 );
-
-// Conifer (pine / fir): stacked drooping cones.
-export function pineGeometry( lod = 0, seed = 2 ) {
-	const rnd = mulberry32( seed );
-	const H = 11;
-	const parts = [];
-	parts.push( finalize( trunk( 0.3, 0.1, H * 0.92, lod ? 5 : 7 ), BARK_PINE, 0, ( x, y ) => ( y / H ) ** 2 * 0.4, 0.5 ) );
-	const tiers = lod ? 3 : 6;
-	const leafCol = new THREE.Color( 1, 1, 1 );
-	for ( let i = 0; i < tiers; i ++ ) {
-		const t = i / ( tiers - 1 );
-		const y0 = 2.2 + t * ( H - 4.2 );
-		const r = ( 2.6 * ( 1 - t ) + 0.7 ) * ( 0.9 + rnd() * 0.2 );
-		const h = 2.8 - t * 0.6 + ( lod ? 1.0 : 0 );
-		const g = new THREE.ConeGeometry( r, h, lod ? 6 : 9, lod ? 1 : 3, false );
-		g.translate( 0, y0 + h / 2, 0 );
-		// droop & jag the cone rims
-		const p = g.attributes.position;
-		for ( let k = 0; k < p.count; k ++ ) {
-			const x = p.getX( k ), y = p.getY( k ), z = p.getZ( k );
-			const rad = Math.hypot( x, z );
-			const jag = 1 + 0.18 * nz( Math.atan2( z, x ) * 2.2 + i * 5 + seed, y * 0.8 );
-			p.setXYZ( k, x * jag, y - rad * rad * 0.06, z * jag );
-		}
-		g.computeVertexNormals();
-		// soften normals outward
-		const nr = g.attributes.normal;
-		for ( let k = 0; k < nr.count; k ++ ) {
-			const x = p.getX( k ), z = p.getZ( k ), l = Math.hypot( x, z ) || 1;
-			nr.setXYZ( k, nr.getX( k ) * 0.5 + x / l * 0.5, nr.getY( k ) * 0.6 + 0.4, nr.getZ( k ) * 0.5 + z / l * 0.5 );
-		}
-		if ( lod === 0 ) parts.push( leafCards( Math.round( 10 + r * 8 ), 0, y0 + h * 0.35, 0, r * 1.05, h * 0.35, r * 1.05, 1.1, 'pine', rnd, H, { droop: 0.9, inner: 0.7 } ) );
-		if ( lod === 0 ) g.scale( 0.82, 1, 0.82 );
-		parts.push( finalize( g, leafCol, 1, ( x, y ) => Math.min( 1, ( y / H ) ** 1.4 ), ( x, y, z ) => {
-			const rad = Math.hypot( x, z ) / ( r + 0.01 );
-			return 0.45 + 0.55 * Math.min( 1, rad ) * ( 0.7 + 0.3 * t );
-		} ) );
-	}
-	const geo = mergeGeometries( parts.map( stripUV ) );
-	geo.computeBoundingSphere();
-	return geo;
-}
 
 // Birch / poplar with a narrow crown (used for the yellow autumn trees).
 export function birchGeometry( lod = 0, seed = 3 ) {

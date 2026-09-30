@@ -8,7 +8,7 @@ import { createSmoke } from './smoke.js';
 
 // Populates the world with props, phase by phase.
 export async function populate( app, progress ) {
-	const veg = createVegetation( app, ( p ) => progress( p * 0.5 ) );
+	const veg = await createVegetation( app, ( p ) => progress( p * 0.5 ) );
 	app.scene.add( veg );
 	app.layers.vegetation = { label: 'Vegetação', object: veg };
 	console.info( 'vegetation', veg.userData.counts );

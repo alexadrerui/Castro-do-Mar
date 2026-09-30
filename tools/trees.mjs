@@ -1,7 +1,7 @@
 // QA for the trees: frames the oak nearest to the village from eye level (close), from 60 m and
 // from above, with the depth of field off.
-//   node tools/trees.mjs [prefix] [species=oak] [--imp]   -> shots/<prefix>_<view>.png
-// --imp draws the impostors at every distance (to compare them with the near trees); --solo hides
+//   node tools/trees.mjs [prefix] [species=oak] [--imp] [--warm]   -> shots/<prefix>_<view>.png
+// --warm reloads once first (the GPU bakes read from the cache); --imp draws the impostors at every distance (to compare them with the near trees); --solo hides
 // the rocks and the other plants.
 import puppeteer from 'puppeteer-core';
 
@@ -9,6 +9,7 @@ const prefix = process.argv[ 2 ] || 'trees';
 const species = process.argv.slice( 3 ).find( ( a ) => ! a.startsWith( '--' ) ) || 'oak';
 const forceImp = process.argv.includes( '--imp' );
 const solo = process.argv.includes( '--solo' );
+const warm = process.argv.includes( '--warm' ); // reload once: the bakes come from the IndexedDB cache
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const browser = await puppeteer.launch( {
 	executablePath: EDGE, headless: 'new', protocolTimeout: 900000,
@@ -20,6 +21,11 @@ page.on( 'console', ( m ) => { if ( m.type() === 'error' || ( m.type() === 'warn
 page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e ).slice( 0, 600 ) ) );
 await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 240000, polling: 1000 } );
+if ( warm ) {
+	await new Promise( ( r ) => setTimeout( r, 3000 ) ); // the cache write
+	await page.reload( { waitUntil: 'domcontentloaded' } );
+	await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 240000, polling: 1000 } );
+}
 
 const out = await page.evaluate( async ( prefix, species, forceImp, solo ) => {
 	const a = window.__app;

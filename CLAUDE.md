@@ -75,7 +75,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - **Carvalhos** (`src/world/trees.js` e `src/world/leafAtlas.js`, porte do Tidewater, MIT):
   - `trees.js` (`oakTree(lod, seed)`): tronco com a base alargada, bifurcação baixa, ramos curvos (Bézier) e 8 lóbulos de copa, cada um com aglomerados de cartões cruzados e vazios entre eles. Normais volumétricas e exposição (`ao`) por cartão. Gera o nosso formato de vértice (`color`, `aux`, `uv`); LOD 1 com menos aglomerados e cartões maiores.
   - `leafAtlas.js`: atlas 2×2 de rosetas de folhas gerado uma vez na GPU (R cobertura, G brilho, B variação por folha). O carvalho usa o bloco 0 com um material próprio (`createFoliageMaterial( sunDir, { clusters } )`, `app.canopyMaterial`); pinheiro, bétula, arbustos e grama seguem no atlas de canvas.
-  - Impostores octaédricos (`src/world/impostors.js`, porte do `Impostors.js`): o carvalho de perto é renderizado de 6×6 direções em dois atlas na carga (~10 ms). Cada árvore distante vira um quad virado para a câmera, que reprojeta o raio no quadro mais próximo. Terceiro nível do `ChunkedInstances` (`impostor`, `impostorDistance` = 320 m para o carvalho); a troca é por tile, sem fade.
+  - Impostores octaédricos (`src/world/impostors.js`, porte do `Impostors.js`): o carvalho e o pinheiro de perto são renderizados de 6×6 direções em dois atlas na primeira carga (depois vêm do cache). Cada árvore distante vira um quad virado para a câmera, que reprojeta o raio no quadro mais próximo. Terceiro nível do `ChunkedInstances` (`impostor`, `impostorDistance` = 320 m para o carvalho); a troca é por tile, sem fade.
   - Sub-bosque (`trees.js`): `shrubBush` (tojo/giesta: lóbulos de cartões com o bloco de folhas estreitas do atlas, material de aglomerados) e `bracken` (fento: frondes do Tidewater com haste nua e lâmina triangular; os folíolos são recortados pela `uv` em `createFoliageMaterial( sunDir, { fern: true } )`). O fento predomina nas manchas de mata e nas partes baixas; o tojo, nas encostas altas.
   - Material de folhagem: `MeshPhysicalNodeMaterial` com `specularIntensity` 0,2 (com o especular padrão, o Fresnel em ângulo rasante deixava grama e frondes brancas/cinza). Cartões e frondes usam `normalViewGeometry` sem a inversão do `DoubleSide` (a face de baixo ficava preta); troncos e cones mantêm a inversão.
   - QA: `node tools/trees.mjs [prefixo] [espécie] [--imp] [--solo]` enquadra a planta mais próxima da vila (a pé, de longe e do alto), com a câmera do lado do sol; `--imp` força os impostores a qualquer distância e `--solo` esconde pedras e outras plantas.
@@ -128,12 +128,11 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 
 ### Arte (dos relatórios de QA)
 - [ ] Face do penhasco da mina: deslocar a geometria (~1,5 m) com 2–3 saliências, vegetação nas saliências e fissuras só no normal.
-- [x] Copas dos carvalhos "bolhosas": trocadas pela árvore do Tidewater (ramos visíveis, aglomerados com vazios, atlas de folhas na GPU). Pinheiro e bétula ainda são os antigos.
+- [x] Copas dos carvalhos "bolhosas": trocadas pela árvore do Tidewater (ramos visíveis, aglomerados com vazios, atlas de folhas na GPU). A bétula ainda é a antiga.
 - [x] Pinheiros pretos: não era o modelo, e sim a tonalidade de toda a vegetação convertida duas vezes para linear (`Color.set( hex )` já converte; havia um `.convertSRGBToLinear()` a mais em `vegetation.js`). Paletas de arbusto e fento reajustadas.
-- [ ] Pinheiro ainda é o modelo antigo de cones (`plants.js`); dá para refazer no estilo dos carvalhos (o Tidewater não tem conífera).
+- [x] Pinheiro novo (`trees.js` `pineTree`): tronco e galhos do `TreeGenerator` da r186; tufos de agulhas em cartões ao longo dos raminhos (bloco 1 do atlas de folhas, material `canopy` do carvalho); impostor como o do carvalho. Os centros dos anéis dos tubos são recuperados da malha do gerador (`tubeRings`). A cobertura das agulhas sobe com o nível de mip (`createFoliageMaterial`, só no quadrante do bloco 1); sem isso, as copas distantes sumiam.
 - Tentativa descartada: árvores do pacote "Low Poly Trees Free" (Sketchfab, CC BY 4.0). Ficaram boas visualmente, mas somavam ~150 chamadas de desenho e faziam o pré-compile passar do limite de 12 s mesmo com cache (carga de ~8 s para ~20 s). Se voltar a elas: juntar as 3 variantes numa espécie só e investigar os pipelines novos.
 - [ ] Nuvens: poucos cúmulos volumétricos distantes (exemplo `webgpu_volume_cloud`: raymarch numa textura 3D; faltaria iluminação pelo sol). A brétema baixa já existe (`src/post/mist.js`).
-- [ ] Pinheiro novo com o `TreeGenerator` da r186 (`three/addons/generators/TreeGenerator.js`, usado no exemplo `webgpu_custom_fog_scattering`) no lugar dos cones de `plants.js`.
 - [ ] Vila mais compacta, com mais tecido vermelho e cercas nas vielas.
 
 ### Performance (em andamento)
@@ -152,7 +151,7 @@ Medições no headless (vista 0, 1600×900, ms/frame; valores absolutos do headl
 `full 151.6 | 800×450 84.4 | sem DOF 138.7 | + sem reflexo 125.2 | + sem sombras 112.6`. O gargalo agora é **GPU/preenchimento**.
 
 Próximos passos:
-- [ ] Pipelines ainda crescem devagar (+2 a cada 20 frames): investigar quais variantes surgem (sombra? LOD?).
+- [x] Pipelines que cresciam com os frames: era o `mineBlock` com dois materiais no passe de sombra (ver Técnico).
 - [ ] DOF: rodar em meia resolução ou desligar sozinho quando `amount` ≈ 0 (hoje sempre roda com o foco ligado).
 - [ ] Reflexo da água: `resolutionScale` 0.45 → 0.3 e/ou atualizar a cada 2 frames.
 - [ ] Sombras: mapa 4096 → 2048 ou `CSMShadowNode` com 2 cascatas; menos casters.
@@ -168,6 +167,9 @@ Próximos passos:
 - [x] Carregamento: cache de relevo/máscara/AO/macro no IndexedDB, um build TSL por material nos tiles e pré-compilação nos contextos reais.
       Com cache, ~8 s até o primeiro frame (antes ~16 s mais ~6 s de travada no primeiro frame). O primeiro frame caiu de ~6 s para ~0,1 s.
 - [ ] Primeira visita (sem cache de shaders do navegador): a compilação dos pipelines na GPU passa de 12 s e bate no limite do `compile`.
+- [x] **Cache de shaders do navegador:** o projeto está no limite do que o Edge guarda entre cargas. Acima dele, a segunda carga recompila tudo e o `compile` bate nos 12 s (~20 s até o primeiro frame, em vez de ~6 s). O limite não depende de uma flag nem do número de pipelines, e perto dele o resultado varia entre execuções. Ferramentas: `node tools/pipeprobe.mjs` (tempo de cada pipeline em duas cargas; a segunda sem pipelines lentos = cache funcionando; `SETTLE`/`EXTRA` no ambiente) e `node tools/pipedup.mjs` (descritores repetidos, campos que variam e pilhas das criações depois do primeiro frame).
+  - Os bakes de GPU (atlas de folhas, impostores) ficam em cache no IndexedDB (`src/core/bakeCache.js`, chave `bakes:` com o hash de `leafAtlas.js`, `impostors.js`, `trees.js`, `vegetation.js` e a versão do three). Com cache, os shaders de bake nem são compilados. **Regra:** evitar shaders novos na carga com cache; prefira reaproveitar materiais (o pinheiro usa o `canopy` do carvalho; os impostores de todas as espécies compartilham um shader, com as constantes em uniforms).
+  - Os pipelines cresciam sem parar (884 em 15 s, 774 de um só shader): o `mineBlock` do forte tinha dois materiais (grupos). No passe de sombra, os dois grupos usam o mesmo material de sombra, cuja chave de cache segue o material do grupo, e o three recriava o render object a cada desenho da sombra. Foi dividido em duas malhas (`fort.js` `splitGroups`); agora são ~111 pipelines. **Regra:** não usar malhas com array de materiais que projetem sombra.
 - [ ] O horizonte (~1 s) e a vegetação/pedras (~1,1 s) ainda são gerados a cada carga; dá para cachear como o relevo.
 - [ ] Objetos que só aparecem embaixo d'água (superfície vista de baixo, neve marinha, fundo, peixes) ainda compilam no primeiro mergulho.
 

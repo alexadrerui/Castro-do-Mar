@@ -1,14 +1,19 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, attribute, uniform, positionLocal, positionWorld, normalWorld, time, vec3, float, color, mix, smoothstep,
-	sin, dot, max, min, abs, sqrt, floor, fract, fwidth, select, normalize, mx_noise_float, instanceIndex, hash, texture, uv, normalViewGeometry, faceDirection
+	sin, dot, max, min, abs, sqrt, floor, fract, fwidth, dFdx, dFdy, log2, length, select, normalize, mx_noise_float, instanceIndex, hash, texture, uv, normalViewGeometry, faceDirection
 } from 'three/tsl';
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
-import { pineGeometry, birchGeometry } from './plants.js';
-import { oakTree, shrubBush, bracken, OAK_BARK } from './trees.js';
+import { birchGeometry } from './plants.js';
+import { oakTree, pineTree, shrubBush, bracken, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
+import { cacheGet, cachePut, hashSources } from '../core/cache.js';
+import srcLeafAtlas from './leafAtlas.js?raw';
+import srcImpostors from './impostors.js?raw';
+import srcTrees from './trees.js?raw';
+import srcVegetation from './vegetation.js?raw';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
 import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER } from './layout.js';
@@ -43,7 +48,15 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false }
 	mat.alphaToCoverage = true;
 	const card = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w;
 	const tex = texture( clusters ?? foliageAtlas(), uv() );
-	const cover = clusters ? tex.r : tex.a;
+	let cover = clusters ? tex.r : tex.a;
+	if ( clusters ) {
+		// pine needles (atlas tile 1, the uv quarter u > 0.5, v > 0.5): the mipmaps average the thin
+		// needles down below the cut and the distant crowns vanished, leaving bare trunks; the
+		// coverage is raised with the mip level instead
+		const st = uv();
+		const mip = max( log2( max( length( dFdx( st ) ), length( dFdy( st ) ) ).mul( 1024 ) ), 0 );
+		cover = select( st.x.greaterThan( 0.5 ).and( st.y.greaterThan( 0.5 ) ), cover.mul( mip.mul( 0.4 ).add( 1 ) ), cover );
+	}
 	const aux = attribute( 'aux', 'vec4' );
 	const leaf = aux.x, sway = aux.y, ao = aux.z;
 	const baseCol = attribute( 'color', 'vec3' );
@@ -100,7 +113,7 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false }
 	mat.roughnessNode = mix( float( 0.9 ), float( 0.75 ), leaf );
 	// both faces of the thin cards and fronds keep the same soft (bent-up / volumetric) normal:
 	// DoubleSide would flip it on the back faces, and the undersides seen from below turned black;
-	// solid parts (trunks, the pine cones) keep the usual flip
+	// solid parts (trunks and branches) keep the usual flip
 	mat.normalNode = fern ? normalViewGeometry : normalViewGeometry.mul( select( card.greaterThan( 0.5 ), float( 1 ), faceDirection ) );
 	return { material: mat, uniforms: U };
 }
@@ -145,7 +158,7 @@ export function clearance( x, z, mask, pad = 0 ) {
 	return free;
 }
 
-export function createVegetation( app, progress ) {
+export async function createVegetation( app, progress ) {
 	const { hf, mask } = app;
 	const sunDir = app.sky.state.sunDir;
 	const group = new THREE.Group();
@@ -153,20 +166,36 @@ export function createVegetation( app, progress ) {
 
 	const { material } = createFoliageMaterial( sunDir );
 	app.foliageMaterial = material;
-	// broadleaf crowns: leaf clusters baked on the GPU (Tidewater's atlas)
-	const leafAtlas = new LeafAtlas().bake( app.renderer );
+	// GPU bakes: the leaf-cluster atlas (Tidewater's; tile 1 the pine needles) and the octahedral
+	// impostors of the far oaks / pines; after the first load read from the IndexedDB cache
+	const oakHi = oakTree( 0, 11 ), pineHi = pineTree( 0, 12 );
+	const leafAtlas = new LeafAtlas();
+	const oakAtlas = new ImpostorAtlas( oakHi ), pineAtlas = new ImpostorAtlas( pineHi );
+	const bakeKey = 'bakes:' + hashSources( srcLeafAtlas, srcImpostors, srcTrees, srcVegetation, THREE.REVISION );
+	const cached = await cacheGet( bakeKey );
+	if ( cached ) {
+		leafAtlas.load( cached.leaf );
+		oakAtlas.load( cached.oak ); pineAtlas.load( cached.pine );
+		console.info( 'bakes: from cache', bakeKey );
+	} else {
+		const r = app.renderer, t0 = performance.now();
+		leafAtlas.bake( r );
+		oakAtlas.bake( r, leafAtlas.texture ); pineAtlas.bake( r, leafAtlas.texture );
+		console.info( 'bakes: done in', Math.round( performance.now() - t0 ), 'ms' );
+		Promise.all( [ leafAtlas.read( r ), oakAtlas.read( r ), pineAtlas.read( r ) ] )
+			.then( ( [ leaf, oak, pine ] ) => cachePut( bakeKey, { leaf, oak, pine }, 'bakes:' ) )
+			.then( () => console.info( 'bakes: cached', bakeKey ) );
+	}
 	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture } );
 	app.canopyMaterial = canopy;
 	const { material: fernMat } = createFoliageMaterial( sunDir, { fern: true } );
-	// far oaks: octahedral impostors baked from the near tree
-	const oakHi = oakTree( 0, 11 );
-	const oakAtlas = new ImpostorAtlas( oakHi, leafAtlas.texture ).bake( app.renderer );
 	const oakImpostor = oakAtlas.createMaterial( { bark: OAK_BARK } );
+	const pineImpostor = pineAtlas.createMaterial( { bark: PINE_BARK } );
 	app.oakImpostors = oakAtlas;
-	console.info( 'oak impostors baked in', Math.round( oakAtlas.bakeMs ), 'ms' );
+	app.pineImpostors = pineAtlas;
 	const species = {
 		oak: new ChunkedInstances( { name: 'oak', hi: oakHi, lo: oakTree( 1, 11 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: 140, impostor: oakImpostor, impostorDistance: 320 } ),
-		pine: new ChunkedInstances( { name: 'pine', hi: pineGeometry( 0, 12 ), lo: pineGeometry( 1, 12 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
+		pine: new ChunkedInstances( { name: 'pine', hi: pineHi, lo: pineTree( 1, 12 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: 140, impostor: pineImpostor, impostorDistance: 320 } ),
 		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
 		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } )
