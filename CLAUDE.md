@@ -91,12 +91,11 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - [ ] O foco não é aplicado nas capturas (`app.capture`) quando o loop está pausado; considerar `focus.update` antes de capturar.
 - [x] Foco pelo clique. (Abertura/bokeh ajustáveis no painel continuam opcionais.)
 
-### Relevo e montanhas (em andamento)
-- [ ] Remover o escalonamento em degraus de 14 m do maciço em `heightfield.js`
-      (`massif = lerp( massif, Math.round( massif / 14 ) * 14, 0.18 )`). É ele que causa o padrão quadriculado na rocha.
-- [ ] Baixar a linha de neve das cordilheiras distantes em `horizon.js` (`snowLine` 1150 → ~780).
-- [ ] Conferir as vistas 4 (Lago) e 5 (Montanhas) depois das mudanças no relevo; a captura da vista 5 estourou o tempo.
-- [ ] Cordilheiras distantes ainda com sombreamento "amarrotado" e faixa clara de água na base; comparar com `ref/ref_perspective.webp`.
+### Relevo e montanhas
+- [x] Padrão quadriculado na rocha do maciço: vinha do detalhe de rocha de `terrain.js`, que se repete a cada 38 m, e não dos degraus de 14 m (removidos mesmo assim). De longe, o detalhe passa para o ruído macro.
+- [x] Cordilheiras distantes "amarrotadas", translúcidas e com faixa clara na base: o winding da malha de `horizon.js` estava invertido (normais para baixo), então só apareciam as faces de trás.
+- [x] Linha de neve das cordilheiras distantes: 1150 → 780.
+- [x] Vistas 4 (Lago) e 5 (Montanhas) conferidas.
 
 ### Arte (dos relatórios de QA)
 - [ ] Face do penhasco da mina: deslocar a geometria (~1,5 m) com 2–3 saliências, vegetação nas saliências e fissuras só no normal.

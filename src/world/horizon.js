@@ -74,7 +74,9 @@ export async function createHorizon( onProgress ) {
 	const idx = [];
 	for ( let j = 0; j < R - 1; j ++ ) for ( let i = 0; i < A; i ++ ) {
 		const a = j * A + i, b = j * A + ( i + 1 ) % A, c = ( j + 1 ) * A + i, d = ( j + 1 ) * A + ( i + 1 ) % A;
-		idx.push( a, c, b, b, c, d );
+		// counter-clockwise seen from above (normals up): the reversed order culled the slopes
+		// facing the camera and showed the far sides of the ranges, lit from below
+		idx.push( a, b, c, b, d, c );
 	}
 	const geo = new THREE.BufferGeometry();
 	geo.setAttribute( 'position', new THREE.BufferAttribute( verts, 3 ) );
@@ -89,7 +91,7 @@ export async function createHorizon( onProgress ) {
 	const n2 = mx_fractal_noise_float( wp.mul( 0.006 ), 3 ).mul( 0.5 ).add( 0.5 );
 	const forest = mix( color( 0x223619 ), color( 0x3b5226 ), n1 );
 	const rock = mix( color( 0x4c4d52 ), color( 0x7f7f84 ), n2 );
-	const snowLine = float( 1150 ).add( n1.mul( 350 ) ).add( slope.mul( 250 ) );
+	const snowLine = float( 780 ).add( n1.mul( 350 ) ).add( slope.mul( 250 ) );
 	let col = mix( forest, rock, smoothstep( 0.3, 0.6, slope.add( n2.mul( 0.2 ) ) ).max( smoothstep( 550, 1000, wp.y.add( n1.mul( 200 ) ) ) ) );
 	col = mix( col, color( 0xf4f6fa ), smoothstep( snowLine, snowLine.add( 160 ), wp.y ).mul( smoothstep( 0.7, 0.95, slope ).oneMinus() ) );
 	// aerial perspective planes: far ranges fade into blue haze

@@ -175,7 +175,6 @@ export function rawHeight( x, z ) {
 		const crag = ridged( nC, x * 0.0035 + 3.1, z * 0.0035 - 1.7, 4 );
 		const body = 0.5 + 0.5 * fbm( nB, x * 0.0022 - 4, z * 0.0022 + 2, 3 );
 		massif = mr.crest * flank * ( 0.7 + 0.2 * body ) + flank * flank * mr.crest * 0.38 * Math.pow( crag, 1.2 );
-		massif = lerp( massif, Math.round( massif / 14 ) * 14, 0.18 ); // jointed-granite ledges
 		massif *= smoothstep( 30, 200, d );
 	}
 	// --- green rocky foothills rising gradually from the village (left of

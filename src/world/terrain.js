@@ -82,9 +82,13 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 		.add( texture( detailTex, wp.xy.div( 38.0 ) ).mul( twn.z ) );
 	const stretch = ( v ) => v.sub( 0.5 ).mul( 2.2 ).add( 0.5 ).clamp( 0, 1 );
 	const nFine = stretch( D1.r );
-	const nRock3 = stretch( D2.b );
-	// granite joints: thin dark lines along Worley cell borders (F2 - F1)
-	const cracks = D2.g.mul( 0.5 );
+	// the rock detail repeats every 38 m: far away the repetition reads as a checker /
+	// camouflage pattern on the big faces, so it hands over to the baked macro noise,
+	// which never repeats over the terrain
+	const rockFar = smoothstep( 120, 520, viewDist );
+	const nRock3 = mix( stretch( D2.b ), stretch( nMed.mul( 0.55 ).add( nLarge.mul( 0.45 ) ) ), rockFar );
+	// granite joints: thin dark lines along Worley cell borders (F2 - F1), faded with the detail
+	const cracks = mix( D2.g.mul( 0.5 ), float( 1 ), rockFar );
 	const cracksFine = D1.a.mul( 0.5 );
 	const ao = attribute( 'ao', 'float' );
 
