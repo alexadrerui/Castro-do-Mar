@@ -13,6 +13,8 @@ import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
 import { Gulls } from './world/birds/gulls.js';
+import { BirdBatch } from './world/birds/batch.js';
+import { Flock } from './world/birds/flock.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
@@ -176,12 +178,35 @@ async function main() {
 	app.fish = fish;
 	app.layers.fish = { label: 'Peixes', object: fish.group };
 	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
-	// Gulls soaring over the bay (animated in the vertex shader).
-	const gulls = new Gulls( { hf, waterLevel: WATER_LEVEL } );
+	// Gulls soaring high over the bay (animated in the vertex shader).
+	const gulls = new Gulls( { hf, waterLevel: WATER_LEVEL, count: 14 } );
 	scene.add( gulls.mesh );
 	app.gulls = gulls;
 	app.layers.gulls = { label: 'Gaivotas', object: gulls.mesh };
 	app.onFrame.push( ( dt ) => gulls.update( dt ) );
+	// Gulls that perch on the roofs, the wall and the shore rocks, terns that hover and dive (one
+	// instanced draw from a storage buffer: WebGPU only, like the seabed).
+	if ( renderer.backend.isWebGPUBackend ) {
+		const birds = new BirdBatch( { capacity: 48 } );
+		// upload the (empty) records now: a storage buffer never uploaded left the precompile of
+		// the scene pending until its 12 s timeout
+		birds.commit();
+		birds.mesh.layers.enable( 2 ); // seen in the water reflection
+		scene.add( birds.mesh );
+		const flock = new Flock( app );
+		app.flock = flock;
+		app.layers.birds = { label: 'Aves pousadas', object: birds.mesh };
+		// the camera is the "viewer" that flushes them
+		const viewer = { x: 0, y: 0, z: 0, speed: 0 };
+		app.onFrame.push( ( dt ) => {
+			const p = camera.position;
+			if ( dt > 0 ) viewer.speed = Math.hypot( p.x - viewer.x, p.y - viewer.y, p.z - viewer.z ) / dt;
+			viewer.x = p.x; viewer.y = p.y; viewer.z = p.z;
+			birds.begin();
+			flock.update( dt, viewer, birds, camera );
+			birds.commit();
+		} );
+	}
 
 	// ---- camera & controls ----
 	const cam = new FreeCam( camera, canvas, { groundFn: ( x, z ) => hf.heightAt( x, z ), moveSpeed: 22 } );

@@ -27,6 +27,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Por isso roda antes um frame de sonda com a cena vazia (só luzes e água), que registra a profundidade de cada render target.
   - Depois compila para o pass da cena e em seguida para o reflexo, nessa ordem (a ordem inversa deixou o céu branco). As duas compilações não podem rodar ao mesmo tempo, porque compartilham o `lightsNode`.
   - `renderer.info.calls ++` antes de cada compilação: a chave de luzes/ambiente/névoa fica em cache por `info.calls`.
+  - Storage buffers precisam ser enviados antes da pré-compilação (ex.: `birds.commit()` logo após criar o `BirdBatch`): um buffer nunca enviado deixava o pré-compile da cena pendente até o limite de 12 s.
   - Usa internos do r186 (`renderer._renderContexts.get`); conferir ao atualizar o three. O console mostra `first frame (ms)`: se voltar a passar de ~0,5 s, a pré-compilação deixou de bater.
 - **Layers:** 1 = props que não entram no reflexo; 2 = objetos que o reflexo da água vê.
 - **Limite do WebGPU:** 8 vertex buffers por pipeline; empacote atributos (ex.: `aux` vec4 na vegetação).
@@ -90,6 +91,10 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - `gulls.js`: gaivotas-patiamarelas (26) circulando sobre a baía, acima do relevo sob cada círculo. Alternam planeio (asa em "M") e batidas; inclinam nas curvas. Tudo no vertex shader, com relógio próprio (`app.gulls.time`); `app.gulls.paused = true` congela o voo.
   - Cores do padrão em sRGB (`srgb()`); os `smoothstep` invertidos do Tidewater foram trocados pela forma com `.oneMinus()`.
   - QA: `node tools/gulls.mjs [prefixo] [índice]` faz close-ups de lado, de baixo e de cima e uma vista geral.
+  - Aves que pousam e mergulham (`flock.js`, `batch.js`, `flight.js`, `pose.js`, `kit.js`; porte do `Birds.js`/`BirdBatch.js`/`Flight.js`/`BirdPose.js`/`Kit.js`): 16 gaivotas-patiamarelas e 5 charrões (*Thalasseus sandvicensis*), numa só chamada de desenho com pose escrita pela CPU num storage buffer (só WebGPU).
+  - Gaivotas pousam em poleiros achados por raycast (ápice dos telhados redondos, cumeeira das casas longas, parapeito do muro do castro, pedras da costa), decolam quando a câmera chega perto (`FLUSH`), voam, circulam em térmicas e voltam a pousar. Charrões patrulham rotas sobre o lago, pairam contra o vento e mergulham.
+  - `app.flock.paused = true` congela as poses (QA). `node tools/birds.mjs [prefixo]` lista poleiros e estados, faz close-ups (telhado, pedra, charrão) e testa a decolagem com a câmera perto.
+  - As gaivotas altas que só planam (`gulls.js`) continuam, reduzidas a 14.
 
 - **Pedras de granito** (`src/world/granite/`, porte do Tidewater, MIT; usadas por `rocks.js`):
   - `geometry.js`: icosfera cortada por planos de fratura, com cavidade (`ao`) no vértice. Estilos boulder/block/slab/spire mais `tor` (bloco arredondado de granito). A base plana é deslocada para y = −0,35, como nas pedras antigas.
