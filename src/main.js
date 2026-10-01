@@ -25,6 +25,7 @@ import { createTerrain } from './world/terrain.js';
 import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { Lakes } from './world/lakeWater.js';
+import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
@@ -154,6 +155,11 @@ async function main() {
 	await loader.run( 'sky', async () => {
 		sky = createSky( scene, renderer );
 		app.sky = sky;
+		// cloud shadows on the ground follow the sky's cover (world/cloudShadow.js, before the materials)
+		bindSky( sky );
+		updateCloudSun( sky.state.elevation );
+		app.cloudShadow = cloudShadowUniforms;
+		if ( params.get( 'cloudshadow' ) === '0' ) cloudShadowUniforms.strength.value = 0;
 	} );
 
 	await loader.run( 'terrain', async () => {
@@ -164,7 +170,9 @@ async function main() {
 
 
 	await loader.run( 'water', async () => {
-		const water = createWater( terrain.heightTex, sky.state.sunDir );
+		// the planar reflection is captured every 100 ms (or when the camera moves 2 m) and reprojected
+		// in between (world/planarReprojection.js); ?reflectms=0 captures every frame
+		const water = createWater( terrain.heightTex, sky.state.sunDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 100 ) } );
 		scene.add( water.mesh );
 		app.water = water;
 		app.layers.water = { label: 'Água', object: water.mesh };
@@ -280,6 +288,7 @@ async function main() {
 	};
 	app.onSunChanged = () => {
 		sky.update( false );
+		updateCloudSun( sky.state.elevation );
 		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		clearTimeout( app._envT );
 		app._envT = setTimeout( () => sky.buildEnv(), 250 );
@@ -447,6 +456,7 @@ async function main() {
 	};
 
 	app.capture = async ( name = 'shot', w = 1600, h = 900 ) => {
+		app.water.reflection?.invalidate(); // a fresh reflection for the shot
 		const prev = { w: innerWidth, h: innerHeight, pr: renderer.getPixelRatio() };
 		renderer.setPixelRatio( 1 ); renderer.setSize( w, h, false );
 		camera.aspect = w / h; camera.updateProjectionMatrix();

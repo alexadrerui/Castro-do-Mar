@@ -2,8 +2,9 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, cameraPosition, time, reflector,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, pow, dot, normalize, reflect, length, sin,
-	mx_noise_float, pmremTexture
+	mx_noise_float, pmremTexture, vec4
 } from 'three/tsl';
+import { PlanarReprojection } from './planarReprojection.js';
 import { WATER_LEVEL } from './layout.js';
 
 // Tileable wave-slope texture: sum of sines with integer wave vectors so it
@@ -45,7 +46,7 @@ function createWaveTexture( size = 256, seed = 7 ) {
 	return tex;
 }
 
-// opts: waveStrength, foam (the surf; lakes are calmer), level (WATER_LEVEL; a lake's own level, world/lakeFill.js), geometry (a horizontal surface in
+// opts: reflectionInterval (ms between planar captures, planarReprojection.js), waveStrength, foam (the surf; lakes are calmer), level (WATER_LEVEL; a lake's own level, world/lakeFill.js), geometry (a horizontal surface in
 // world space; the sea's endless plane when omitted), envMap (lakes: the sky's PMREM reflected instead
 // of a planar reflector, one extra scene pass per lake was too dear), reflectionScale.
 export function createWater( heightTex, sunDir, opts = {} ) {
@@ -120,10 +121,14 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	const N = normalize( vec3( slope.x.mul( strength ).negate(), 1.0, slope.y.mul( strength ).negate() ) );
 
 	// planar reflection with wave distortion (the sea); a lake reflects the sky's environment map
-	let refl = null, reflNode;
+	let refl = null, reflNode, reproj = null, reflWeight = float( 1 );
 	if ( planar ) {
 		refl = reflector( { resolutionScale: opts.reflectionScale ?? 0.45, generateMipmaps: false, bounces: false } );
-		refl.uvNode = refl.uvNode.add( N.xz.mul( 0.012 ).mul( smoothstep( 0, 3000, dist ).oneMinus().mul( 0.8 ).add( 0.2 ) ).mul( mix( 0.4, 1.7, windField ) ) );
+		// captured on a budget and sampled through the capture's own camera (planarReprojection.js)
+		reproj = new PlanarReprojection( refl, { interval: opts.reflectionInterval } );
+		const cap = reproj.uvNode();
+		refl.uvNode = cap.uv.add( N.xz.mul( 0.012 ).mul( smoothstep( 0, 3000, dist ).oneMinus().mul( 0.8 ).add( 0.2 ) ).mul( mix( 0.4, 1.7, windField ) ) );
+		reflWeight = cap.weight;
 		mesh.add( refl.target );
 		reflNode = refl.rgb;
 	} else {
@@ -145,7 +150,7 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		const reflCol = reflNode.min( vec3( 1.1 ) );
 		// wind patches read mostly through the reflection: calm slicks are a bright mirror, the
 		// rippled patches scatter it and show more of the darker water body
-		const kR = clamp( fres.mul( 1.15 ).add( 0.06 ), 0.0, 1.0 ).mul( U.reflectivity ).mul( mix( 1.0, 0.62, windField ) );
+		const kR = clamp( fres.mul( 1.15 ).add( 0.06 ), 0.0, 1.0 ).mul( U.reflectivity ).mul( mix( 1.0, 0.62, windField ) ).mul( reflWeight );
 		const col = mix( bodyLit, reflCol, kR ).toVar();
 
 		// sun glitter
@@ -184,5 +189,5 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	// 2 cm above the water (the sea's shadow is a child of the rotated plane: its local z is up)
 	if ( opts.geometry ) shadowMesh.position.set( 0, 0.02, 0 ); else shadowMesh.position.set( 0, 0, 0.02 );
 
-	return { mesh, material: mat, uniforms: U, reflector: refl, shadowMesh };
+	return { mesh, material: mat, uniforms: U, reflector: refl, reflection: reproj, shadowMesh };
 }
