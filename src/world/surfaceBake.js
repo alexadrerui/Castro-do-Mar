@@ -5,6 +5,8 @@
 // textures repeat without a seam; the materials only colour them.
 //   stone   1024², 16 x 16 stone cells (cell space, scaled per variant by len / rowH):
 //           R  F2 - F1 of the cells (the joint distance), G per-stone colour id, B fine grain
+//   slab    1024², 16 x 16 cells of coursed flat slabs (castro house): R joint distance, G id,
+//           B grain, A pillow
 //   thatch  1024² over 4 x 4.2 m:  R strands, G fine strands, B course (layers of 0.42 m)
 //   wood    512² over 1 x 8 m:     R grain, G knots
 //   daub    512² over 4 x 4 m:     R clay fbm, G crack noise
@@ -91,6 +93,45 @@ function bakeStone() {
 	} );
 }
 
+// coursed flat slabs (the castro house, ref/casa_castro): one course per cell row, every stone 1 to 3
+// cells long (breaks per row from a hash, staggered), its outline a rounded rectangle warped by noise.
+// Distances are in course heights, assuming a cell of SLAB_ASPECT x 1 courses (len / rowH of the
+// material). R distance from the joint (0..1 = 0..0.5 course), G stone id, B fine grain, A pillow
+// unevenness of the face.
+const SLAB_ASPECT = 2.5;
+function bakeSlab() {
+	const N = STONE_N;
+	// per row: start of every stone (cell units), merged cells give the long slabs
+	const rows = [];
+	for ( let j = 0; j < N; j ++ ) {
+		const off = hash2( j, 0, 201 ) * 0.9, starts = [];
+		for ( let i = 0; i < N; i ++ ) if ( i === 0 || hash2( i, j, 211 ) > 0.4 ) starts.push( i + off + ( hash2( i, j, 221 ) - 0.5 ) * 0.5 );
+		rows.push( starts );
+	}
+	return bake( 1024, ( u, v ) => {
+		const x = u * N, y = v * N;
+		// warp of the joints: slightly wavy courses, irregular slab ends
+		const wy = perlin( x * 0.5, y * 0.5, N * 0.5, N * 0.5, 231 ) * 0.12;
+		const wx = perlin( x * 0.5 + 3.7, y * 1, N * 0.5, N, 241 ) * 0.15;
+		const yy = y + wy, xx = x + wx, j = mod( Math.floor( yy ), N ), fy = yy - Math.floor( yy );
+		const st = rows[ j ];
+		// the stone this point is in (wraps around the row)
+		let k = - 1, a = 0, b = 0;
+		for ( let q = 0; q < st.length; q ++ ) {
+			const s0 = st[ q ], s1 = q + 1 < st.length ? st[ q + 1 ] : st[ 0 ] + N;
+			for ( const sh of [ - N, 0, N ] ) if ( xx >= s0 + sh && xx < s1 + sh ) { k = q; a = s0 + sh; b = s1 + sh; }
+		}
+		// rounded rectangle, in course units: x scaled by the aspect, y the course
+		const dx = Math.min( xx - a, b - xx ) * SLAB_ASPECT, dy = Math.min( fy, 1 - fy );
+		const r = 0.3, qx = Math.max( r - dx, 0 ), qy = Math.max( r - dy, 0 );
+		const edge = Math.min( dx, dy ) < r ? r - Math.hypot( qx, qy ) : Math.min( dx, dy );
+		const id = hash2( mod( k, 64 ), j, 251 );
+		const grain = fbm( x * 6, y * 3, N * 6, N * 3, 2, 261 );
+		const pillow = fbm( x * 1.5, y * 1.5, N * 1.5, N * 1.5, 2, 271 );
+		return [ edge / 0.5, id, grain, pillow ];
+	} );
+}
+
 // thatch over 4 m (across) x 4.2 m (down the slope): fibres run down the slope; the courses (layers
 // of 0.42 m) are broken up by noise so they do not read as corrugated tiles
 function bakeThatch() {
@@ -132,12 +173,13 @@ function bakeWorld() {
 	} );
 }
 
-export const SURFACE = { stoneCells: STONE_N, thatch: [ 4, 4.2 ], wood: [ 1, 8 ], daub: 4, world: 32 };
+export const SURFACE = { stoneCells: STONE_N, slabAspect: SLAB_ASPECT, thatch: [ 4, 4.2 ], wood: [ 1, 8 ], daub: 4, world: 32 };
+const KEYS = [ 'stone', 'slab', 'thatch', 'wood', 'daub', 'world' ];
 
 // the raw texels of every surface (for the cache)
 export function bakeSurfaces() {
 	const t0 = performance.now();
-	const out = { stone: bakeStone(), thatch: bakeThatch(), wood: bakeWood(), daub: bakeDaub(), world: bakeWorld() };
+	const out = { stone: bakeStone(), slab: bakeSlab(), thatch: bakeThatch(), wood: bakeWood(), daub: bakeDaub(), world: bakeWorld() };
 	out.ms = performance.now() - t0;
 	return out;
 }
@@ -145,7 +187,7 @@ export function bakeSurfaces() {
 // textures from the raw texels (repeat, mipmapped, data: no colour space)
 export function surfaceTextures( raw ) {
 	const tex = {};
-	for ( const k of [ 'stone', 'thatch', 'wood', 'daub', 'world' ] ) {
+	for ( const k of KEYS ) {
 		const { data, res } = raw[ k ];
 		const t = new THREE.DataTexture( data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType );
 		t.name = 'surface_' + k;

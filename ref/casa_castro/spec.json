@@ -846,26 +846,20 @@
       "interaction-pass",
       "optimization-pass"
     ],
-    "currentPass": "surface-pass",
+    "currentPass": "complete",
     "completedPasses": [
       "blockout",
       "structural-pass",
       "form-refinement",
-      "material-pass"
+      "material-pass",
+      "surface-pass",
+      "lighting-pass",
+      "interaction-pass",
+      "optimization-pass"
     ],
-    "lastCompletedPass": "material-pass",
-    "blockedReason": "",
-    "nextRequiredEvidence": [
-      "Every required material feature group has local overrides or surfaceDetail tied to evidenceRefs.",
-      "A grazing-angle close-up proves that normal/height detail breaks highlights naturally and does not read as smooth plastic.",
-      "AI vision comparison score meets selfCorrectLoop.visualAcceptance.threshold.",
-      "component surfaceDetail for tactile normal/bump/displacement and locality",
-      "browser render screenshot from your agent's browser/screenshot tool",
-      "side-by-side reference/render comparison sheet for AI vision review",
-      "AI vision score at or above the visual acceptance threshold",
-      "all critical semantic feature scores from the shared image pair at or above their thresholds",
-      "self-correction review appended with action=continue before the next pass"
-    ]
+    "lastCompletedPass": "optimization-pass",
+    "blockedReason": "all build passes completed",
+    "nextRequiredEvidence": []
   },
   "lookDevTargets": {
     "qualityPriority": "reference-fidelity",
@@ -968,7 +962,10 @@
       "defaultBreakable": false,
       "fractureGroupNaming": "Use stable semantic names such as body-shell, left-hinge, glass-panel, branch-segment.",
       "debrisStrategy": "Prefer detachable component groups and a small number of procedural fragments over random mesh explosion."
-    }
+    },
+    "runtimeNotes": [
+      "Village runtime: in ?edit the house is one objectGroup (8 meshes, one per material) whose origin is the anchor on the ground at the compound centre (CASTRO_HOUSE.centre); the object editor selects it by raycast, moves it along the ground, turns it about Y (recorded as yaw), scales it uniformly, removes/undoes (tools/castroedit.mjs). In normal mode it is merged by material with the village. Sub-part pivots (door leaf, porch, shelter) are not separate runtime nodes yet."
+    ]
   },
   "assumptions": [
     "Stylized procedural reconstruction with the project materials; the photographs are not projected.",
@@ -1184,14 +1181,14 @@
       "seams": [],
       "localFeatures": [],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.9,
+        "microRoughness": 0.92,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "coursed flat slabs (surfaceBake slab, 2.5:1 cells, 0.2 m courses): rounded-rectangle faces, the relief a height in metres via proceduralBump",
+        "displacementPattern": "none (relief in the normal only; the walls stay flat boxes / ring walls)",
+        "occlusionPattern": "recessed dark joints (gap 0x2c2b2a, roughness 1.0) and a darkened 4-35% band at each slab edge",
+        "edgeWearPattern": "pillowed faces: the upper arris catches raking light; per-slab unevenness from the A channel",
+        "notes": "Moss/soil settle in the joints low on the wall (worldPatch moss mask); detail fades to the mean tone past ~0.05-0.25 course per pixel."
       },
       "evidenceRefs": [
         "ref_1",
@@ -1345,14 +1342,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.9,
+        "microRoughness": 0.92,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "coursed flat slabs (surfaceBake slab, 2.5:1 cells, 0.2 m courses): rounded-rectangle faces, the relief a height in metres via proceduralBump",
+        "displacementPattern": "none (relief in the normal only; the walls stay flat boxes / ring walls)",
+        "occlusionPattern": "recessed dark joints (gap 0x2c2b2a, roughness 1.0) and a darkened 4-35% band at each slab edge",
+        "edgeWearPattern": "pillowed faces: the upper arris catches raking light; per-slab unevenness from the A channel",
+        "notes": "Moss/soil settle in the joints low on the wall (worldPatch moss mask); detail fades to the mean tone past ~0.05-0.25 course per pixel."
       },
       "evidenceRefs": [
         "ref_1",
@@ -1528,14 +1525,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.88,
+        "microRoughness": 0.9,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "same coursed slabs as the walls (door jambs, lintel, piers, merlons use castroStone)",
+        "displacementPattern": "none",
+        "occlusionPattern": "dark joints",
+        "edgeWearPattern": "pillowed arrises",
+        "notes": "Remapped to castroStone by CASTRO_KEYS; no separate dressed-stone finish (approximation)."
       },
       "evidenceRefs": [
         "ref_1"
@@ -1700,14 +1697,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.8,
+        "microRoughness": 0.85,
+        "bumpAmplitude": 0.4,
+        "normalPattern": "grain; rosette and rakes as geometry relief",
+        "displacementPattern": "rosette petals and torus in geometry",
+        "occlusionPattern": "plank seams",
+        "edgeWearPattern": "weathered grey on up-facing faces",
+        "notes": "village woodMaterial"
       },
       "evidenceRefs": [
         "ref_1"
@@ -1855,14 +1852,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.88,
+        "microRoughness": 0.9,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "same coursed slabs as the walls (door jambs, lintel, piers, merlons use castroStone)",
+        "displacementPattern": "none",
+        "occlusionPattern": "dark joints",
+        "edgeWearPattern": "pillowed arrises",
+        "notes": "Remapped to castroStone by CASTRO_KEYS; no separate dressed-stone finish (approximation)."
       },
       "evidenceRefs": [
         "ref_2"
@@ -2040,14 +2037,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.97,
+        "microRoughness": 0.97,
+        "bumpAmplitude": 0.025,
+        "normalPattern": "straw fibres down the slope (4 mm) plus tufts ~18 cm x 60 cm (2.5 cm), a height in metres",
+        "displacementPattern": "course bands in the geometry (thatchFace / coneCourses lips 0.08-0.11 m, ragged eave)",
+        "occlusionPattern": "darker hollows between tufts (colour x0.7-1.05); shadowed eave lip (uv.y < 0.6 m)",
+        "edgeWearPattern": "grey sun-bleached vs damp dark patches (worldPatch G), sparse moss",
+        "notes": "The texture 0.42 m courses are switched off (courses: 0): the geometry carries the courses."
       },
       "evidenceRefs": [
         "ref_1",
@@ -2199,14 +2196,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.97,
+        "microRoughness": 0.97,
+        "bumpAmplitude": 0.025,
+        "normalPattern": "straw fibres down the slope (4 mm) plus tufts ~18 cm x 60 cm (2.5 cm), a height in metres",
+        "displacementPattern": "course bands in the geometry (thatchFace / coneCourses lips 0.08-0.11 m, ragged eave)",
+        "occlusionPattern": "darker hollows between tufts (colour x0.7-1.05); shadowed eave lip (uv.y < 0.6 m)",
+        "edgeWearPattern": "grey sun-bleached vs damp dark patches (worldPatch G), sparse moss",
+        "notes": "The texture 0.42 m courses are switched off (courses: 0): the geometry carries the courses."
       },
       "evidenceRefs": [
         "ref_1"
@@ -2345,14 +2342,14 @@
       "seams": [],
       "localFeatures": [],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.97,
+        "microRoughness": 0.97,
+        "bumpAmplitude": 0.025,
+        "normalPattern": "straw fibres down the slope (4 mm) plus tufts ~18 cm x 60 cm (2.5 cm), a height in metres",
+        "displacementPattern": "course bands in the geometry (thatchFace / coneCourses lips 0.08-0.11 m, ragged eave)",
+        "occlusionPattern": "darker hollows between tufts (colour x0.7-1.05); shadowed eave lip (uv.y < 0.6 m)",
+        "edgeWearPattern": "grey sun-bleached vs damp dark patches (worldPatch G), sparse moss",
+        "notes": "The texture 0.42 m courses are switched off (courses: 0): the geometry carries the courses."
       },
       "evidenceRefs": [
         "ref_2",
@@ -2511,14 +2508,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.9,
+        "microRoughness": 0.92,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "coursed flat slabs (surfaceBake slab, 2.5:1 cells, 0.2 m courses): rounded-rectangle faces, the relief a height in metres via proceduralBump",
+        "displacementPattern": "none (relief in the normal only; the walls stay flat boxes / ring walls)",
+        "occlusionPattern": "recessed dark joints (gap 0x2c2b2a, roughness 1.0) and a darkened 4-35% band at each slab edge",
+        "edgeWearPattern": "pillowed faces: the upper arris catches raking light; per-slab unevenness from the A channel",
+        "notes": "Moss/soil settle in the joints low on the wall (worldPatch moss mask); detail fades to the mean tone past ~0.05-0.25 course per pixel."
       },
       "evidenceRefs": [
         "ref_3",
@@ -2669,14 +2666,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.9,
+        "microRoughness": 0.92,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "coursed flat slabs (surfaceBake slab, 2.5:1 cells, 0.2 m courses): rounded-rectangle faces, the relief a height in metres via proceduralBump",
+        "displacementPattern": "none (relief in the normal only; the walls stay flat boxes / ring walls)",
+        "occlusionPattern": "recessed dark joints (gap 0x2c2b2a, roughness 1.0) and a darkened 4-35% band at each slab edge",
+        "edgeWearPattern": "pillowed faces: the upper arris catches raking light; per-slab unevenness from the A channel",
+        "notes": "Moss/soil settle in the joints low on the wall (worldPatch moss mask); detail fades to the mean tone past ~0.05-0.25 course per pixel."
       },
       "evidenceRefs": [
         "ref_3",
@@ -2823,14 +2820,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.88,
+        "microRoughness": 0.9,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "same coursed slabs as the walls (door jambs, lintel, piers, merlons use castroStone)",
+        "displacementPattern": "none",
+        "occlusionPattern": "dark joints",
+        "edgeWearPattern": "pillowed arrises",
+        "notes": "Remapped to castroStone by CASTRO_KEYS; no separate dressed-stone finish (approximation)."
       },
       "evidenceRefs": [
         "ref_3"
@@ -2984,14 +2981,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.97,
+        "microRoughness": 0.97,
+        "bumpAmplitude": 0.025,
+        "normalPattern": "straw fibres down the slope (4 mm) plus tufts ~18 cm x 60 cm (2.5 cm), a height in metres",
+        "displacementPattern": "course bands in the geometry (thatchFace / coneCourses lips 0.08-0.11 m, ragged eave)",
+        "occlusionPattern": "darker hollows between tufts (colour x0.7-1.05); shadowed eave lip (uv.y < 0.6 m)",
+        "edgeWearPattern": "grey sun-bleached vs damp dark patches (worldPatch G), sparse moss",
+        "notes": "The texture 0.42 m courses are switched off (courses: 0): the geometry carries the courses."
       },
       "evidenceRefs": [
         "ref_3",
@@ -3169,14 +3166,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.85,
+        "microRoughness": 0.85,
+        "bumpAmplitude": 0.4,
+        "normalPattern": "grain along the member (surfaceBake wood)",
+        "displacementPattern": "none",
+        "occlusionPattern": "plank seams",
+        "edgeWearPattern": "weathered grey on up-facing faces",
+        "notes": "village woodMaterial"
       },
       "evidenceRefs": [
         "ref_1"
@@ -3326,14 +3323,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.85,
+        "microRoughness": 0.85,
+        "bumpAmplitude": 0.4,
+        "normalPattern": "grain along the member (surfaceBake wood)",
+        "displacementPattern": "none",
+        "occlusionPattern": "plank seams",
+        "edgeWearPattern": "weathered grey on up-facing faces",
+        "notes": "village woodMaterial"
       },
       "evidenceRefs": [
         "ref_1"
@@ -3485,14 +3482,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.85,
+        "microRoughness": 0.85,
+        "bumpAmplitude": 0.4,
+        "normalPattern": "grain along the member (surfaceBake wood)",
+        "displacementPattern": "none",
+        "occlusionPattern": "plank seams",
+        "edgeWearPattern": "weathered grey on up-facing faces",
+        "notes": "village woodMaterial"
       },
       "evidenceRefs": [
         "ref_1",
@@ -3661,14 +3658,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.85,
+        "microRoughness": 0.85,
+        "bumpAmplitude": 0.4,
+        "normalPattern": "grain along the member (surfaceBake wood)",
+        "displacementPattern": "none",
+        "occlusionPattern": "plank seams",
+        "edgeWearPattern": "weathered grey on up-facing faces",
+        "notes": "village woodMaterial"
       },
       "evidenceRefs": [
         "ref_1"
@@ -3842,14 +3839,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.9,
+        "microRoughness": 0.92,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "coursed flat slabs (surfaceBake slab, 2.5:1 cells, 0.2 m courses): rounded-rectangle faces, the relief a height in metres via proceduralBump",
+        "displacementPattern": "none (relief in the normal only; the walls stay flat boxes / ring walls)",
+        "occlusionPattern": "recessed dark joints (gap 0x2c2b2a, roughness 1.0) and a darkened 4-35% band at each slab edge",
+        "edgeWearPattern": "pillowed faces: the upper arris catches raking light; per-slab unevenness from the A channel",
+        "notes": "Moss/soil settle in the joints low on the wall (worldPatch moss mask); detail fades to the mean tone past ~0.05-0.25 course per pixel."
       },
       "evidenceRefs": [
         "ref_1",
@@ -4000,14 +3997,14 @@
         }
       ],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.9,
+        "microRoughness": 0.92,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "coursed flat slabs (surfaceBake slab, 2.5:1 cells, 0.2 m courses): rounded-rectangle faces, the relief a height in metres via proceduralBump",
+        "displacementPattern": "none (relief in the normal only; the walls stay flat boxes / ring walls)",
+        "occlusionPattern": "recessed dark joints (gap 0x2c2b2a, roughness 1.0) and a darkened 4-35% band at each slab edge",
+        "edgeWearPattern": "pillowed faces: the upper arris catches raking light; per-slab unevenness from the A channel",
+        "notes": "Moss/soil settle in the joints low on the wall (worldPatch moss mask); detail fades to the mean tone past ~0.05-0.25 course per pixel."
       },
       "evidenceRefs": [
         "ref_1",
@@ -4147,14 +4144,14 @@
       "seams": [],
       "localFeatures": [],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.85,
+        "microRoughness": 0.85,
+        "bumpAmplitude": 0.4,
+        "normalPattern": "grain along the member (surfaceBake wood)",
+        "displacementPattern": "none",
+        "occlusionPattern": "plank seams",
+        "edgeWearPattern": "weathered grey on up-facing faces",
+        "notes": "village woodMaterial"
       },
       "evidenceRefs": [
         "ref_1"
@@ -4293,14 +4290,14 @@
       "seams": [],
       "localFeatures": [],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.97,
+        "microRoughness": 0.97,
+        "bumpAmplitude": 0.025,
+        "normalPattern": "straw fibres down the slope (4 mm) plus tufts ~18 cm x 60 cm (2.5 cm), a height in metres",
+        "displacementPattern": "course bands in the geometry (thatchFace / coneCourses lips 0.08-0.11 m, ragged eave)",
+        "occlusionPattern": "darker hollows between tufts (colour x0.7-1.05); shadowed eave lip (uv.y < 0.6 m)",
+        "edgeWearPattern": "grey sun-bleached vs damp dark patches (worldPatch G), sparse moss",
+        "notes": "The texture 0.42 m courses are switched off (courses: 0): the geometry carries the courses."
       },
       "evidenceRefs": [
         "ref_1"
@@ -4439,14 +4436,14 @@
       "seams": [],
       "localFeatures": [],
       "surfaceDetail": {
-        "macroRoughness": 0.0,
-        "microRoughness": 0.0,
-        "bumpAmplitude": 0.0,
-        "normalPattern": "",
-        "displacementPattern": "",
-        "occlusionPattern": "",
-        "edgeWearPattern": "",
-        "notes": ""
+        "macroRoughness": 0.88,
+        "microRoughness": 0.9,
+        "bumpAmplitude": 0.012,
+        "normalPattern": "same coursed slabs as the walls (door jambs, lintel, piers, merlons use castroStone)",
+        "displacementPattern": "none",
+        "occlusionPattern": "dark joints",
+        "edgeWearPattern": "pillowed arrises",
+        "notes": "Remapped to castroStone by CASTRO_KEYS; no separate dressed-stone finish (approximation)."
       },
       "evidenceRefs": [
         "ref_1"
@@ -4617,6 +4614,24 @@
             "ambient-occlusion"
           ],
           "notes": "Use generated maps as material evidence, then refine after browser screenshot comparison."
+        },
+        {
+          "id": "slab-joints",
+          "region": "all walls",
+          "effect": "recessed dark joints, pillowed slab faces 1.2 cm",
+          "evidenceRefs": [
+            "crops/granite-dry-stone.png",
+            "ref_3",
+            "ref_4"
+          ]
+        },
+        {
+          "id": "joint-moss",
+          "region": "lower wall",
+          "effect": "moss/soil colour in the joints",
+          "evidenceRefs": [
+            "ref_1"
+          ]
         }
       ],
       "shaderNotes": [
@@ -5087,6 +5102,25 @@
             "ambient-occlusion"
           ],
           "notes": "Use generated maps as material evidence, then refine after browser screenshot comparison."
+        },
+        {
+          "id": "tufts",
+          "region": "all roofs",
+          "effect": "tuft relief 2.5 cm and darker hollows",
+          "evidenceRefs": [
+            "crops/thatch-old.png",
+            "ref_1",
+            "ref_2"
+          ]
+        },
+        {
+          "id": "eave-shadow",
+          "region": "eave lip",
+          "effect": "darkened lowest 0.6 m",
+          "evidenceRefs": [
+            "ref_1",
+            "ref_3"
+          ]
         }
       ],
       "shaderNotes": [
@@ -6339,6 +6373,134 @@
       "cameraView": "",
       "notes": "",
       "aiVisionNotes": ""
+    },
+    {
+      "timestamp": "2026-10-01T21:23:27.160538+00:00",
+      "passId": "surface-pass",
+      "estimatedFidelity": 0.77,
+      "aiVisionScore": 0.76,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.75,
+        "lightingCamera": 0.75
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.76,
+          "notes": "castroStone is now slabMaterial: coursed flat slabs from a new baked 'slab' texture (rounded-rectangle slabs 1-3 cells long at 2.5:1, wavy courses), dark recessed joints, 1.2 cm pillow relief as a height in metres (no black lines, unlike the old stone bump). Warmer neutral grey (tints 0x46433f / 0xaaa59c, reference crop mean 82,79,77). Thatch: texture courses off (geometry has them), tuft relief 2.5 cm and darker hollows."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Courses from geometry read clearly; the thatch still reads smoother and less shaggy than the reference at review distance (strand detail fades with the pixel footprint)."
+        }
+      ],
+      "referenceScreenshot": "ref_1.png",
+      "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castro_sf3_ref1.png",
+      "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/surface_cmp.png",
+      "cameraView": "",
+      "notes": "",
+      "aiVisionNotes": ""
+    },
+    {
+      "timestamp": "2026-10-01T21:29:52.184841+00:00",
+      "passId": "lighting-pass",
+      "estimatedFidelity": 0.76,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.74,
+        "lightingCamera": 0.77
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.75,
+          "notes": "Stone tints lowered for the village light (0x3b3835 / 0x8e8981): in the sun the wall is ~10% lighter and more neutral than the village stone, as the reference is; studio views darker than the reference (lower exposure in the studio)."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Thatch reads dark against the sky in backlight and shows course lines in sun; same smoothness limitation as the surface pass."
+        }
+      ],
+      "referenceScreenshot": "ref_1.png",
+      "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castro_vila4_6.png",
+      "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/lighting_cmp.png",
+      "cameraView": "",
+      "notes": "",
+      "aiVisionNotes": ""
+    },
+    {
+      "timestamp": "2026-10-01T21:31:28.869656+00:00",
+      "passId": "interaction-pass",
+      "estimatedFidelity": 0.76,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.74,
+        "lightingCamera": 0.77
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.75,
+          "notes": "Unchanged since the lighting pass."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Unchanged since the lighting pass."
+        }
+      ],
+      "referenceScreenshot": "ref_1.png",
+      "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castroedit_turned.png",
+      "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/lighting_cmp.png",
+      "cameraView": "",
+      "notes": "",
+      "aiVisionNotes": ""
+    },
+    {
+      "timestamp": "2026-10-01T21:33:19.236449+00:00",
+      "passId": "optimization-pass",
+      "estimatedFidelity": 0.76,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.74,
+        "lightingCamera": 0.77
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.75,
+          "notes": "Unchanged since the lighting pass."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Unchanged since the lighting pass."
+        }
+      ],
+      "referenceScreenshot": "ref_1.png",
+      "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castro_vila4_6.png",
+      "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/lighting_cmp.png",
+      "cameraView": "",
+      "notes": "",
+      "aiVisionNotes": ""
     }
   ],
   "reviewHistory": [
@@ -6580,6 +6742,170 @@
         "notes": "",
         "aiVisionNotes": ""
       }
+    },
+    {
+      "timestamp": "2026-10-01T21:23:27.160538+00:00",
+      "passId": "surface-pass",
+      "estimatedFidelity": 0.77,
+      "aiVisionScore": 0.76,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.75,
+        "lightingCamera": 0.75
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.76,
+          "notes": "castroStone is now slabMaterial: coursed flat slabs from a new baked 'slab' texture (rounded-rectangle slabs 1-3 cells long at 2.5:1, wavy courses), dark recessed joints, 1.2 cm pillow relief as a height in metres (no black lines, unlike the old stone bump). Warmer neutral grey (tints 0x46433f / 0xaaa59c, reference crop mean 82,79,77). Thatch: texture courses off (geometry has them), tuft relief 2.5 cm and darker hollows."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Courses from geometry read clearly; the thatch still reads smoother and less shaggy than the reference at review distance (strand detail fades with the pixel footprint)."
+        }
+      ],
+      "action": "continue",
+      "summary": "Surface pass: grazing close-ups added to the review page (--close: front wall, back wall, tower, roof, cone). castroStone -> slabMaterial on a new baked slab texture (coursed flat slabs, recessed joints, 1.2 cm pillow relief in metres, warmer grey). castroThatch -> courses off, tufts 2.5 cm relief + hollows. Close-ups: the raking light catches the slab arrises and the joints fall into shadow; thatch shows tuft relief. Remaining: thatch smoother than the reference at distance; slab layout more regular than the rubble of the reference; tower ring wall faceting visible up close.",
+      "matched": [],
+      "mismatches": [],
+      "specFixes": [],
+      "codeFixes": [],
+      "evidence": [],
+      "visualEvidence": {
+        "referenceScreenshot": "ref_1.png",
+        "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castro_sf3_ref1.png",
+        "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/surface_cmp.png",
+        "cameraView": "",
+        "notes": "",
+        "aiVisionNotes": ""
+      }
+    },
+    {
+      "timestamp": "2026-10-01T21:29:52.184841+00:00",
+      "passId": "lighting-pass",
+      "estimatedFidelity": 0.76,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.74,
+        "lightingCamera": 0.77
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.75,
+          "notes": "Stone tints lowered for the village light (0x3b3835 / 0x8e8981): in the sun the wall is ~10% lighter and more neutral than the village stone, as the reference is; studio views darker than the reference (lower exposure in the studio)."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Thatch reads dark against the sky in backlight and shows course lines in sun; same smoothness limitation as the surface pass."
+        }
+      ],
+      "action": "continue",
+      "summary": "Lighting pass: the house placed in the village (BUILDINGS type castro at -63,24) and checked in sun and backlight with the village lighting (sky IBL, sun shadows, ACES 0.8, bloom, haze). Stone tints lowered for that light. Neutral studio, grazing close-ups and the 5 reference cameras separate material from lighting errors. verify.mjs OK in cold and warm loads. Remaining: studio renders darker than the reference; thatch smoother than the reference.",
+      "matched": [],
+      "mismatches": [],
+      "specFixes": [],
+      "codeFixes": [],
+      "evidence": [],
+      "visualEvidence": {
+        "referenceScreenshot": "ref_1.png",
+        "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castro_vila4_6.png",
+        "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/lighting_cmp.png",
+        "cameraView": "",
+        "notes": "",
+        "aiVisionNotes": ""
+      }
+    },
+    {
+      "timestamp": "2026-10-01T21:31:28.869656+00:00",
+      "passId": "interaction-pass",
+      "estimatedFidelity": 0.76,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.74,
+        "lightingCamera": 0.77
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.75,
+          "notes": "Unchanged since the lighting pass."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Unchanged since the lighting pass."
+        }
+      ],
+      "action": "continue",
+      "summary": "Interaction pass: tools/castroedit.mjs in the object editor - pivot on the layout anchor on the ground, click selection (box, gizmo, menu 'Casa do castro'), 90 deg turn about the pivot recorded as yaw, Delete and Ctrl+Z, no console errors. Catalogue entry adds new castro houses. Limitation: the house is one editor object; door/porch/shelter are not separate runtime pivots (no use for them in the village yet).",
+      "matched": [],
+      "mismatches": [],
+      "specFixes": [],
+      "codeFixes": [],
+      "evidence": [],
+      "visualEvidence": {
+        "referenceScreenshot": "ref_1.png",
+        "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castroedit_turned.png",
+        "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/lighting_cmp.png",
+        "cameraView": "",
+        "notes": "",
+        "aiVisionNotes": ""
+      }
+    },
+    {
+      "timestamp": "2026-10-01T21:33:19.236449+00:00",
+      "passId": "optimization-pass",
+      "estimatedFidelity": 0.76,
+      "aiVisionScore": 0.75,
+      "visualAcceptanceThreshold": 0.7,
+      "layerScores": {
+        "silhouetteProportion": 0.8,
+        "componentStructure": 0.78,
+        "formDetail": 0.74,
+        "materialSurface": 0.74,
+        "lightingCamera": 0.77
+      },
+      "featureReviews": [
+        {
+          "id": "reference-material-system",
+          "score": 0.75,
+          "notes": "Unchanged since the lighting pass."
+        },
+        {
+          "id": "roof-system",
+          "score": 0.74,
+          "notes": "Unchanged since the lighting pass."
+        }
+      ],
+      "action": "continue",
+      "summary": "Optimization pass: 9,566 triangles; merged by material in the village (2 new meshes, shared proxy for reflection/shadow); 2 new shaders cost 0.37 s of cold compile (shadercost total 9.4 s); warm load unchanged (verify OK, 6.6 s, precompile 1.7 s). No LOD or instancing needed at this size.",
+      "matched": [],
+      "mismatches": [],
+      "specFixes": [],
+      "codeFixes": [],
+      "evidence": [],
+      "visualEvidence": {
+        "referenceScreenshot": "ref_1.png",
+        "renderScreenshot": "D:/VSCode/Vila_Celta_ 890/shots/castro_vila4_6.png",
+        "comparisonImage": "D:/VSCode/Vila_Celta_ 890/ref/casa_castro/review/lighting_cmp.png",
+        "cameraView": "",
+        "notes": "",
+        "aiVisionNotes": ""
+      }
     }
   ],
   "lodPlan": [
@@ -6600,7 +6926,23 @@
     "maxDrawCalls": 16,
     "textureSize": 2048,
     "fpsTarget": 30,
-    "optimizationPolicy": "Reach accepted visual fidelity first, then optimize without removing reference-critical geometry or surface layers."
+    "optimizationPolicy": "Reach accepted visual fidelity first, then optimize without removing reference-critical geometry or surface layers.",
+    "measured": {
+      "triangles": 9566,
+      "perMaterial": {
+        "castroStone": 1265,
+        "castroThatch": 4792,
+        "wood": 773,
+        "woodPost": 2440,
+        "other": 496
+      },
+      "drawCalls": "normal mode: merged by material with the village (adds castroStone + castroThatch meshes; reflection and sun shadow use the shared flat proxy of core/proxies.js); editor: 8 meshes",
+      "shaderCompileCold": "castroStone 187 ms + castroThatch 180 ms (tools/shadercost.mjs; all pipelines 9.4 s vs 8.7 s before)",
+      "load": "verify.mjs OK; warm load ready 6.6 s, precompile 1.7 s (browser shader cache still holds)",
+      "instancing": "not needed: one house, repeated parts (planks, rafters, merlons, posts) merged into the per-material buffers",
+      "lod": "none: 9.6k triangles; the material detail fades by pixel footprint (aa) at distance",
+      "fpsTarget": "village frame unchanged within measurement noise (headless ~16 ms/frame in the shots)"
+    }
   },
   "lightingFromPhoto": [
     {
@@ -6640,6 +6982,18 @@
       "id": "exposure",
       "type": "tone mapping",
       "notes": "ACES filmic tone mapping, exposure 0.8 (project renderer); ground shadow from the key; ambient occlusion baked in materials."
+    },
+    {
+      "id": "village",
+      "type": "in-situ",
+      "role": "environment light",
+      "notes": "Final lighting is the village: Preetham sky IBL + directional sun with 4096 shadow map, ACES exposure 0.8, bloom, haze scatter, mist. Checked sunlit (shots/castro_vila4_6.png) and backlit (castro_vila3_6.png): stone in sun (136,130,116) vs village stone (124,116,96)."
+    },
+    {
+      "id": "checks",
+      "type": "review",
+      "role": "fill light",
+      "notes": "Neutral: review studio (hemisphere 1.3 + key 2.2 + fill 0.6, flat or radial grey backdrop). Grazing: --close close-ups with the key raking the walls/roof. Reference-matched: the 5 reference cameras. Shadows: soft key shadow in the village only (studio has none, contact read from AO in materials)."
     }
   ],
   "proceduralStrategy": [
@@ -7932,6 +8286,660 @@
         "by": "user",
         "date": "2026-10-01",
         "reason": "User accepted silhouette IoU ~0.8 (threshold 0.85); colour delta passes (maxDeltaE 15.9 < 20). Material render IoU: ref1 0.85, ref2 0.70, ref3 0.80, ref4 0.79, ref5 0.78 (ref4 fell from 0.84 with the same geometry: the dark thatch is close to the flat backdrop in the render mask)."
+      }
+    },
+    {
+      "passed": false,
+      "checks": {
+        "silhouetteIoU": 0.6598,
+        "aspectRatioDelta": 0.1429,
+        "scaleDelta": 0.125,
+        "bilateralSymmetryError": 0.2614,
+        "colorDelta": {
+          "checked": 21,
+          "maxDeltaE": 11.24,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 11.24
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            }
+          ],
+          "gated": true
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.660 is below threshold 0.85",
+        "aspect-ratio delta 0.143 exceeds threshold 0.05",
+        "scale delta 0.125 exceeds threshold 0.08"
+      ],
+      "renderHash": "ec99636675fb7599",
+      "passId": "surface-pass"
+    },
+    {
+      "passed": false,
+      "checks": {
+        "silhouetteIoU": 0.6598,
+        "aspectRatioDelta": 0.1429,
+        "scaleDelta": 0.125,
+        "bilateralSymmetryError": 0.2614,
+        "colorDelta": {
+          "checked": 21,
+          "maxDeltaE": 11.24,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 11.24
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            }
+          ],
+          "gated": true
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.660 is below threshold 0.85",
+        "aspect-ratio delta 0.143 exceeds threshold 0.05",
+        "scale delta 0.125 exceeds threshold 0.08"
+      ],
+      "renderHash": "ec99636675fb7599",
+      "passId": "surface-pass"
+    },
+    {
+      "passed": true,
+      "checks": {
+        "silhouetteIoU": 0.8388,
+        "aspectRatioDelta": 0.0275,
+        "scaleDelta": 0.0267,
+        "bilateralSymmetryError": 0.2614,
+        "colorDelta": {
+          "checked": 21,
+          "maxDeltaE": 11.24,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 11.24
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 4.75
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.81
+            },
+            {
+              "componentId": null,
+              "deltaE": 6.56
+            },
+            {
+              "componentId": null,
+              "deltaE": 8.05
+            }
+          ],
+          "gated": true
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.839 is below threshold 0.85"
+      ],
+      "renderHash": "ec99636675fb7599",
+      "passId": "surface-pass",
+      "override": {
+        "by": "user",
+        "date": "2026-10-01",
+        "reason": "Same acceptance as the material pass (user accepted IoU ~0.8, threshold 0.85). Geometry unchanged since material-pass; ref1 IoU 0.839 against the matte. overlay.py: ref1 0.85, ref2 0.70, ref3 0.74, ref4 0.73, ref5 0.78 (ref3/ref4 fell from 0.80/0.79 with the same geometry: darker joints and tuft hollows are closer to the flat backdrop in the render mask)."
+      }
+    },
+    {
+      "passed": true,
+      "checks": {
+        "silhouetteIoU": 0.8391,
+        "aspectRatioDelta": 0.0275,
+        "scaleDelta": 0.0267,
+        "bilateralSymmetryError": 0.2662,
+        "colorDelta": {
+          "checked": 21,
+          "maxDeltaE": 16.68,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.4
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            }
+          ],
+          "gated": true
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.839 is below threshold 0.85"
+      ],
+      "renderHash": "bb64de7c447092da",
+      "passId": "lighting-pass",
+      "override": {
+        "by": "user",
+        "date": "2026-10-01",
+        "reason": "Same IoU ~0.8 acceptance. Geometry unchanged: flat-grey render (castro_ltf) IoU 0.848/0.703/0.823/0.843/0.782. The material render mask (castro_lt) drops ref3 to 0.49 because the darker village-tuned stone in shadow matches the flat #303030 backdrop within the mask threshold (speckled walls in castro_lt_overlay.png) - a mask artefact, not geometry."
+      }
+    },
+    {
+      "passed": true,
+      "checks": {
+        "silhouetteIoU": 0.8391,
+        "aspectRatioDelta": 0.0275,
+        "scaleDelta": 0.0267,
+        "bilateralSymmetryError": 0.2662,
+        "colorDelta": {
+          "checked": 21,
+          "maxDeltaE": 16.68,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.4
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            }
+          ],
+          "gated": true
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.839 is below threshold 0.85"
+      ],
+      "renderHash": "bb64de7c447092da",
+      "passId": "interaction-pass",
+      "override": {
+        "by": "user",
+        "date": "2026-10-01",
+        "reason": "Same IoU ~0.8 acceptance; geometry unchanged since lighting-pass (flat render IoU 0.848/0.703/0.823/0.843/0.782)."
+      }
+    },
+    {
+      "passed": true,
+      "checks": {
+        "silhouetteIoU": 0.8391,
+        "aspectRatioDelta": 0.0275,
+        "scaleDelta": 0.0267,
+        "bilateralSymmetryError": 0.2662,
+        "colorDelta": {
+          "checked": 21,
+          "maxDeltaE": 16.68,
+          "perComponent": [
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.4
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 12.48
+            },
+            {
+              "componentId": null,
+              "deltaE": 10.3
+            },
+            {
+              "componentId": null,
+              "deltaE": 2.13
+            },
+            {
+              "componentId": null,
+              "deltaE": 16.68
+            }
+          ],
+          "gated": true
+        }
+      },
+      "failures": [
+        "silhouette IoU 0.839 is below threshold 0.85"
+      ],
+      "renderHash": "bb64de7c447092da",
+      "passId": "optimization-pass",
+      "override": {
+        "by": "user",
+        "date": "2026-10-01",
+        "reason": "Same IoU ~0.8 acceptance; geometry unchanged since lighting-pass."
       }
     }
   ]

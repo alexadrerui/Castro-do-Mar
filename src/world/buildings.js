@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { GeoBuilder, box, post, beam, ringWall, coneRoof, gableRoof, gableWall, canopy, bunting, straightWall } from '../core/builder.js';
 import { mulberry32 } from '../core/noise.js';
 import { BUILDINGS, STALLS, WALLS, FIELDS, VILLAGE, PROPS } from './layout.js';
+import { buildCastroHouse, CASTRO_HOUSE } from './castroHouse.js';
 
 const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
 const M = ( x, y, z, ry = 0, s = 1 ) => new THREE.Matrix4().compose( V( x, y, z ), new THREE.Quaternion().setFromAxisAngle( V( 0, 1, 0 ), ry ), V( s, s, s ) );
@@ -253,6 +254,30 @@ function lookout( B, b, y, rnd ) {
 	for ( const [ k, g ] of L.build() ) B.add( k, g, m );
 }
 
+// ----------------------------------------------------------- castro house
+// The composite castro house (world/castroHouse.js, ref/casa_castro), built on flat ground in its own
+// frame, centred on the compound (CASTRO_HOUSE.centre) and turned by b.rot (its front, the door,
+// faces local +Z). It sits at the lowest ground
+// under its walls, so no wall foot floats on the slope the pad leaves (the floor sinks a little on
+// the high side instead).
+function castroHouse( B, b ) {
+	const L = new GeoBuilder();
+	buildCastroHouse( L, { seed: b.seed } );
+	const c = Math.cos( b.rot || 0 ), s = Math.sin( b.rot || 0 );
+	const H = CASTRO_HOUSE, hb = H.body, [ ox, oz ] = H.centre;
+	// a point of the house frame in the world (the anchor b.x, b.z is the centre of the compound)
+	const at = ( u, v ) => [ b.x + ( u - ox ) * c + ( v - oz ) * s, b.z - ( u - ox ) * s + ( v - oz ) * c ];
+	let y = Infinity;
+	for ( const [ u, v ] of [ [ hb.x0, hb.z0 ], [ hb.x0, hb.z1 ], [ hb.x1, hb.z0 ], [ hb.x1, hb.z1 ], [ H.tower.x + H.tower.r, H.tower.z ], [ H.shelter.x, H.shelter.z ], [ H.shelter.x + H.shelter.r, H.shelter.z ] ] ) {
+		y = Math.min( y, B.hf.heightAt( ...at( u, v ) ) );
+	}
+	const m = M( b.x, y - 0.12, b.z, b.rot || 0 ).multiply( new THREE.Matrix4().makeTranslation( - ox, 0, - oz ) );
+	for ( const [ k, g ] of L.build() ) B.add( k, g, m );
+	// the oven fire of the shelter
+	const sh = H.shelter, [ sx, sz ] = at( sh.x, sh.z );
+	return { smoke: V( sx, y + sh.wallH + sh.postH + 1.6, sz ) };
+}
+
 // ----------------------------------------------------------- market stall
 function stall( B, x, z, rot, y, rnd, red = true ) {
 	const w = 4.0 + rnd() * 1.5, d = 2.4 + rnd() * 0.8;
@@ -313,6 +338,7 @@ function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
 		else if ( entry.type === 'hut' ) hut( L, entry, y, r );
 		else if ( entry.type === 'granary' ) granary( L, entry, y, r );
 		else if ( entry.type === 'lookout' ) lookout( L, entry, y, r );
+		else if ( entry.type === 'castro' ) res = castroHouse( { add: ( k, g, m ) => L.add( k, g, m ), hf }, entry );
 		if ( res && r() < 0.65 ) smoke = res.smoke;
 	} else {
 		x = entry.x; z = entry.z;

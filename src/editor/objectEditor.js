@@ -23,6 +23,7 @@ const CATALOGUE = [
 	{ label: 'Cabana', kind: 'building', entry: { type: 'hut', r: 2.5 } },
 	{ label: 'Celeiro', kind: 'building', entry: { type: 'granary', r: 1.6 } },
 	{ label: 'Torre de vigia', kind: 'building', entry: { type: 'lookout' } },
+	{ label: 'Casa do castro', kind: 'building', entry: { type: 'castro', r: 9.5, rot: 0 } },
 	{ label: 'Barraca', kind: 'stall', entry: { red: true } },
 	{ label: 'Cercado', kind: 'prop', entry: { type: 'pen', w: 6, d: 5, rot: 0 } },
 	{ label: 'Palheiro', kind: 'prop', entry: { type: 'hay', r: 1.2 } },
@@ -32,7 +33,7 @@ const CATALOGUE = [
 	{ label: 'Colmeia', kind: 'prop', entry: { type: 'skep' } },
 	{ label: 'Lenha', kind: 'prop', entry: { type: 'wood', rot: 0 } }
 ];
-const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha' };
+const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', castro: 'Casa do castro', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha' };
 const MODES = [ 'translate', 'rotate', 'scale' ];
 const UNDO_MAX = 60;
 

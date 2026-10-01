@@ -3,6 +3,6 @@ import { bakeSurfaces } from './surfaceBake.js';
 
 self.onmessage = () => {
 	const out = bakeSurfaces();
-	const transfer = [ 'stone', 'thatch', 'wood', 'daub', 'world' ].map( ( k ) => out[ k ].data.buffer );
+	const transfer = [ 'stone', 'slab', 'thatch', 'wood', 'daub', 'world' ].map( ( k ) => out[ k ].data.buffer );
 	self.postMessage( out, transfer );
 };

@@ -1,5 +1,5 @@
 // Captures the castro house review page (review/castro.html) from the five reference viewpoints:
-// node tools/castroreview.mjs [prefix] [--detail=0|1|2] [--flat] [--unlit] [--mat] [--plain]
+// node tools/castroreview.mjs [prefix] [--detail=0|1|2] [--flat] [--unlit] [--mat] [--plain] [--close]
 // Writes shots/<prefix>_ref<k>.png and shots/<prefix>_sheet.png (reference above, render below).
 import puppeteer from 'puppeteer-core';
 
@@ -24,6 +24,11 @@ page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e ).slice( 0,
 await page.goto( `http://localhost:5190/review/castro.html?detail=${ detail }${ flat ? '&flat' : '' }${ plain ? '&plain' : '' }${ unlit ? '&unlit' : '' }${ real ? '&mat' : '' }`, { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__review && window.__review.ready, { timeout: 120000 } );
 await page.evaluate( ( p ) => window.__review.shoot( p ), prefix );
+// --close: the grazing close-ups of the surface pass, shots/<prefix>_close_<name>.png
+if ( process.argv.includes( '--close' ) ) {
+	await page.evaluate( ( p ) => window.__review.shootClose( p ), prefix );
+	console.log( 'shots/' + prefix + '_close_*.png' );
+}
 
 // comparison sheet: one column per view, reference on top, render below, all at 420 px wide
 const sheet = await page.evaluate( async ( p ) => {

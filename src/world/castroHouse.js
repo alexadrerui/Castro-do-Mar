@@ -21,7 +21,8 @@ export const CASTRO_HOUSE = {
 	tower: { x: 3.1, z: - 0.7, r: 3.0, h: 3.6 },   // ref_3: wall height ~0.6 of the diameter
 	porch: { x0: - 5.0, x1: - 1.1, depth: 2.0, hFront: 2.15, hBack: 2.5 },
 	shelter: { x: 6.3, z: 5.9, r: 1.85, wallH: 0.9, postH: 1.4 },
-	footprintR: 7.5                             // for the pads / clearance of the village
+	centre: [ 1.5, 2.5 ],                       // middle of the compound (house, tower, shelter): the village anchor
+	footprintR: 9.5                             // about the centre: pads / clearance of the village (layout r)
 };
 
 // its own stone and thatch (world/materials.js castroStone / castroThatch: the reference's grey

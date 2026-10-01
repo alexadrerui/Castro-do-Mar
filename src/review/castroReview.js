@@ -133,6 +133,36 @@ async function shoot( name ) {
 	return 'ok';
 }
 
+// grazing close-ups for the surface pass (camera, target; the sun rakes across the surface):
+// whether the stone and thatch relief breaks the highlights or reads as smooth plastic
+export const CLOSE = [
+	{ name: 'front-wall', cam: [ - 6.3, 1.4, 3.35 ], at: [ - 2.0, 1.2, 2.75 ] },
+	{ name: 'back-wall', cam: [ - 6.6, 1.5, - 3.5 ], at: [ - 0.5, 1.3, - 2.75 ] },
+	{ name: 'tower', cam: [ 7.6, 1.5, 0.6 ], at: [ 5.3, 1.6, - 2.7 ] },
+	{ name: 'roof', cam: [ - 7.2, 3.4, 4.2 ], at: [ - 0.5, 4.2, 1.2 ] },
+	{ name: 'cone', cam: [ 8.2, 4.3, 2.4 ], at: [ 3.1, 4.6, - 0.7 ] }
+];
+
+async function shootClose( name ) {
+	renderer.setSize( 960, 600 );
+	camera.aspect = 960 / 600;
+	camera.clearViewOffset();
+	camera.fov = 45;
+	camera.up.set( 0, 1, 0 );
+	for ( const c of CLOSE ) {
+		camera.position.set( ...c.cam );
+		camera.lookAt( ...c.at );
+		camera.updateProjectionMatrix();
+		renderer.render( scene, camera );
+		await new Promise( ( r ) => requestAnimationFrame( r ) );
+		renderer.render( scene, camera );
+		const blob = await new Promise( ( r ) => renderer.domElement.toBlob( r, 'image/png' ) );
+		await fetch( `/__capture?name=${ name }_close_${ c.name }`, { method: 'POST', body: blob } );
+	}
+	camera.fov = 20;
+	return 'ok';
+}
+
 let current = 0;
 frame( VIEWS[ 0 ] );
 renderer.setAnimationLoop( () => renderer.render( scene, camera ) );
@@ -142,4 +172,4 @@ addEventListener( 'keydown', ( e ) => {
 } );
 document.getElementById( 'hud' ).textContent = `detail ${ detail }${ flat ? ' · flat' : '' } · teclas 1–5: vistas das referências`;
 
-window.__review = { ready: true, shoot, VIEWS, scene, camera, renderer };
+window.__review = { ready: true, shoot, shootClose, VIEWS, CLOSE, scene, camera, renderer };

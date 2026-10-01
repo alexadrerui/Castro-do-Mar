@@ -118,7 +118,10 @@ export const BUILDINGS = [
 	{ type: 'hut', x: - 76, z: - 5, r: 2.4, seed: 25 },
 	// watch hut on the western edge (small tower in the perspective reference)
 	{ type: 'lookout', x: - 84, z: 26, seed: 31 },
-	{ type: 'lookout', x: - 170, z: - 230, seed: 32 }
+	{ type: 'lookout', x: - 170, z: - 230, seed: 32 },
+	// the composite castro house (world/castroHouse.js, ref/casa_castro) on the west side, its door toward
+	// the market; r = CASTRO_HOUSE.footprintR
+	{ type: 'castro', x: - 63, z: 24, r: 9.5, rot: 1.95, seed: 7 }
 ];
 
 // Ground footprint radius of a building (pads in the relief, trampled ground, vegetation clearance);

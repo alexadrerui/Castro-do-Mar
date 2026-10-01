@@ -1,0 +1,4 @@
+[
+ {"id": "reference-material-system", "score": 0.76, "notes": "castroStone is now slabMaterial: coursed flat slabs from a new baked 'slab' texture (rounded-rectangle slabs 1-3 cells long at 2.5:1, wavy courses), dark recessed joints, 1.2 cm pillow relief as a height in metres (no black lines, unlike the old stone bump). Warmer neutral grey (tints 0x46433f / 0xaaa59c, reference crop mean 82,79,77). Thatch: texture courses off (geometry has them), tuft relief 2.5 cm and darker hollows."},
+ {"id": "roof-system", "score": 0.74, "notes": "Courses from geometry read clearly; the thatch still reads smoother and less shaggy than the reference at review distance (strand detail fades with the pixel footprint)."}
+]

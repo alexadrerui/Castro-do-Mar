@@ -1,0 +1,4 @@
+[
+ {"id": "reference-material-system", "score": 0.75, "notes": "Stone tints lowered for the village light (0x3b3835 / 0x8e8981): in the sun the wall is ~10% lighter and more neutral than the village stone, as the reference is; studio views darker than the reference (lower exposure in the studio)."},
+ {"id": "roof-system", "score": 0.74, "notes": "Thatch reads dark against the sky in backlight and shows course lines in sun; same smoothness limitation as the surface pass."}
+]
