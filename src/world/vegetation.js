@@ -18,6 +18,7 @@ import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
 import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
+import { cloudShade } from './cloudShadow.js';
 
 const nV = makeSimplex( 606 );
 
@@ -106,7 +107,7 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false }
 		mat.opacityNode = float( 1 );
 	}
 	const bark = baseCol.mul( mix( 0.75, 1.1, n ) );
-	mat.colorNode = mix( bark, leafCol, leaf ).mul( mix( 0.55, 1.0, ao ) );
+	mat.colorNode = mix( bark, leafCol, leaf ).mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() );
 
 	// fake subsurface: brighten foliage facing away from the sun (back-lit rims)
 	const back = max( dot( normalWorld, normalize( U.sunDir ) ).negate(), 0.0 );

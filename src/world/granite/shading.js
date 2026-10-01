@@ -9,6 +9,7 @@ import {
 	float, vec2, vec3, normalize, mix, smoothstep, max, min, abs, dot, cross, dFdx, dFdy, sign, fwidth, length,
 	positionWorld, normalWorld, texture, attribute, fract, saturate, transformNormalToView, Fn,
 } from 'three/tsl';
+import { cloudShade } from '../cloudShadow.js';
 
 // sRGB triplet -> linear vec3 constant
 export const srgb = ( r, g, b ) => {
@@ -199,7 +200,7 @@ export function createGraniteMaterial( { tex, heightTex, waterLevel = 0, lo = fa
 	const contact = float( 1 ).sub( smoothstep( 0.0, 0.3, above.add( R.height.sub( 0.5 ).mul( 0.2 ) ) ) ).mul( smoothstep( waterLevel - 0.5, waterLevel + 0.3, ground ) );
 	const drift = mix( srgb( 0.37, 0.3, 0.23 ), srgb( 0.64, 0.59, 0.48 ), smoothstep( waterLevel + 3.0, waterLevel + 1.0, ground ) );
 	const albedo = mix( R.albedo.mul( tint ), drift, contact.mul( 0.75 ) );
-	mat.colorNode = albedo;
+	mat.colorNode = albedo.mul( cloudShade() ); // drifting cloud shadows (world/cloudShadow.js)
 	mat.roughnessNode = mix( R.rough, float( 0.92 ), contact );
 	mat.normalNode = Fn( () => transformNormalToView( perturbNormal( N, R.hd, 1.0 ) ) )();
 	const cav = attribute( 'ao', 'float' );

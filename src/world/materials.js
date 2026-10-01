@@ -5,6 +5,7 @@ import {
 } from 'three/tsl';
 import { proceduralBump } from './terrain.js';
 import { SURFACE } from './surfaceBake.js';
+import { cloudShade } from './cloudShadow.js';
 
 // All building materials read metric UVs written by core/builder.js.
 // Colours are tuned against the references: warm grey granite, grey-olive
@@ -225,7 +226,7 @@ export function emberMaterial( T ) {
 
 // T: the baked surface textures (world/surfaceBake.js surfaceTextures)
 export function createBuildingMaterials( T ) {
-	return {
+	const mats = {
 		stone: stoneMaterial( T, { tintA: 0x5d574c, tintB: 0x8f8574, moss: 0.25 } ),
 		stoneDark: stoneMaterial( T, { tintA: 0x524d44, tintB: 0x7d7566, rowH: 0.34, len: 0.6, moss: 0.35 } ),
 		fortStone: stoneMaterial( T, { tintA: 0x5e5a50, tintB: 0x8a8272, rowH: 0.45, len: 0.8, moss: 0.8 } ),
@@ -247,6 +248,9 @@ export function createBuildingMaterials( T ) {
 		doorway: doorwayMaterial(),
 		ember: emberMaterial( T )
 	};
+	// drifting cloud shadows (world/cloudShadow.js) on every lit surface (not the dark doorway, not the embers)
+	for ( const [ k, m ] of Object.entries( mats ) ) if ( k !== 'doorway' && k !== 'ember' ) m.colorNode = m.colorNode.mul( cloudShade() );
+	return mats;
 }
 
 export { Fn, texture, clamp, abs, max };

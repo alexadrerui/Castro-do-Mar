@@ -13,6 +13,7 @@ import { proceduralBump } from './terrain.js';
 import { buildRockGeometry, ROCK_STYLES } from './granite/geometry.js';
 import { getDetailTexture } from './granite/detail.js';
 import { createGraniteMaterial } from './granite/shading.js';
+import { cloudShade } from './cloudShadow.js';
 
 const nR = makeSimplex( 3131 );
 
@@ -64,7 +65,7 @@ export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1,
 	col = mix( col, mix( color( 0x5e6a33 ), color( 0x8f8f58 ), nFine ), lich.mul( 0.55 ) );
 	// dark wet band near the waterline
 	col = col.mul( mix( 0.55, 1.0, smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.9, wp.y ) ) );
-	mat.colorNode = col.mul( tint );
+	mat.colorNode = col.mul( tint ).mul( cloudShade() );
 	mat.roughnessNode = mix( float( 0.9 ), float( 0.55 ), smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.8, wp.y ).oneMinus() );
 	const h = crack.mul( 0.5 ).add( n3.mul( 0.4 ) ).add( nFine.mul( 0.15 ) );
 	mat.normalNode = proceduralBump( h, float( 0.9 ) );

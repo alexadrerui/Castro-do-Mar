@@ -18,6 +18,7 @@ import { meadowTone } from './terrain.js';
 import { clearance, inLake } from './vegetation.js';
 import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE } from './layout.js';
+import { cloudShade } from './cloudShadow.js';
 
 // The world is divided into CELL x CELL metre cells. Every visible cell near the camera draws one
 // instance of a "patch": a fixed blue-noise set of clump slots. In the vertex shader each slot is
@@ -594,7 +595,7 @@ export class GrassField {
 				select( kind.lessThan( 1.5 ), oatStalk,
 					select( kind.lessThan( 2.5 ), oatHead,
 						select( kind.lessThan( 3.5 ), vine, flower ) ) ) );
-			return c.mul( select( kind.lessThan( 2.5 ), ao, float( 1 ) ) );
+			return c.mul( select( kind.lessThan( 2.5 ), ao, float( 1 ) ) ).mul( cloudShade() );
 		} )();
 		mat.roughnessNode = select( vG.y.greaterThan( 2.5 ).and( vG.y.lessThan( 3.5 ) ), float( 0.45 ), float( 0.8 ) );
 		mat.metalnessNode = float( 0 );

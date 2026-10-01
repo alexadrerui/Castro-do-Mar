@@ -6,6 +6,7 @@ import {
 } from 'three/tsl';
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';
+import { cloudShade } from './cloudShadow.js';
 
 // Screen-space bump from an arbitrary procedural height node (the built-in
 // bumpMap() only differentiates texture UVs).
@@ -172,7 +173,8 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	col = mix( col, color( 0xf2f4f7 ), snowM );
 
 	// baked sky-visibility (heightfield AO) darkens valleys and crevices
-	mat.colorNode = col.mul( mix( 0.55, 1.0, ao ) );
+	// and drifting cloud shadows (world/cloudShadow.js)
+	mat.colorNode = col.mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() );
 	mat.aoNode = mix( float( 0.6 ), float( 1.0 ), ao );
 
 	// roughness: wet near water, rock slightly smoother

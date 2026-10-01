@@ -11,6 +11,7 @@ import {
 	Fn, float, uniform, vec2, vec3, vec4, attribute, texture, uv, positionGeometry, normalGeometry, positionWorld, cameraPosition, property,
 	normalize, cross, dot, abs, max, mix, floor, clamp, select, sin, cos, color, cameraViewMatrix, positionViewDirection, mx_noise_float
 } from 'three/tsl';
+import { cloudShade } from './cloudShadow.js';
 
 // At startup the plant is rendered from N x N directions on the upper hemisphere (hemi-octahedral
 // layout) into two atlases:
@@ -223,7 +224,7 @@ export class ImpostorAtlas {
 			const bright = vA.x.div( cov ), leaf = vA.y.div( cov ), cr = vA.z.div( cov ), ex = vB.w.div( cov );
 			const n = mx_noise_float( iPos.xyz.mul( 0.9 ) ).mul( 0.5 ).add( 0.5 );
 			const leafCol = tint.mul( mix( 0.8, 1.1, n ) ).mul( bright.mul( 1.4 ) ).mul( mix( vec3( 0.9, 0.95, 1.05 ), vec3( 1.1, 1.06, 0.85 ), cr ) );
-			return select( leaf.greaterThan( 0.5 ), leafCol, uniform( bark ) ).mul( mix( 0.55, 1.0, ex ) );
+			return select( leaf.greaterThan( 0.5 ), leafCol, uniform( bark ) ).mul( mix( 0.55, 1.0, ex ) ).mul( cloudShade() );
 		} )();
 
 		mat.normalNode = Fn( () => {
