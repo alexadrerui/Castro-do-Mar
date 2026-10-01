@@ -14,6 +14,13 @@ import { proceduralBump } from './terrain.js';
 const footprint = ( st ) => length( fwidth( st ) );
 const aa = ( st, lo, hi ) => smoothstep( lo, hi, footprint( st ) );
 
+// Mean tone of a procedural material, for its cheap stand-in in the water reflection and the
+// shadow pass (core/proxies.js): the mix of two sRGB colours, darkened by k.
+const proxyTone = ( mat, a, b, k = 1 ) => {
+	mat.userData.proxyColor = new THREE.Color( a ).lerp( new THREE.Color( b ), 0.5 ).multiplyScalar( k );
+	return mat;
+};
+
 // Dry-stone masonry (no mortar): irregular courses of granite blocks.
 export function stoneMaterial( { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB = 0xb0a692, moss = 0.6 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
@@ -41,7 +48,7 @@ export function stoneMaterial( { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB
 	// pillowed stone faces
 	const bumpH = smoothstep( 0.0, 0.07, edge ).mul( 0.8 ).add( n.mul( 0.25 ) );
 	mat.normalNode = proceduralBump( bumpH, far.oneMinus().mul( 1.6 ) );
-	return mat;
+	return proxyTone( mat, tintA, tintB, 0.8 );
 }
 
 // Layered straw thatch, grey with age, mossy patches (reference roofs).
@@ -66,7 +73,7 @@ export function thatchMaterial( { base = 0x6a604c, light = 0x8e8266, mossy = 0.2
 	mat.roughnessNode = float( 0.97 );
 	const bh = strands.mul( 0.5 ).add( strands2.mul( 0.25 ) ).add( smoothstep( 0.0, 0.3, course ).mul( 0.25 ) );
 	mat.normalNode = proceduralBump( bh, fc.oneMinus().mul( 2.2 ) );
-	return mat;
+	return proxyTone( mat, base, light, 0.85 );
 }
 
 // Planks / timber. Grain runs along uv.y (posts) — plank seams across uv.x.
@@ -88,7 +95,7 @@ export function woodMaterial( { a = 0x4a3526, b = 0x755638, plank = 0.24, seams 
 	mat.colorNode = col;
 	mat.roughnessNode = float( 0.85 );
 	mat.normalNode = proceduralBump( grain.mul( 0.4 ), fg.oneMinus().mul( 0.8 ) );
-	return mat;
+	return proxyTone( mat, a, b );
 }
 
 // Woven cloth (market canopies, bunting, banners).
@@ -105,7 +112,7 @@ export function clothMaterial( { a = 0x8c2419, b = 0xb13a28 } = {} ) {
 	mat.roughnessNode = float( 0.95 );
 	// thin cloth glows a little when back-lit
 	mat.emissiveNode = col.mul( 0.04 );
-	return mat;
+	return proxyTone( mat, a, b );
 }
 
 // Woven wattle (hazel rods around stakes).
@@ -120,7 +127,7 @@ export function wattleMaterial() {
 	col = mix( col.mul( smoothstep( 0.0, 0.3, rod ).mul( smoothstep( 0.7, 1.0, rod ).oneMinus() ).mul( 0.5 ).add( 0.5 ) ), color( 0x655038 ), far );
 	mat.colorNode = col;
 	mat.roughnessNode = float( 0.9 );
-	return mat;
+	return proxyTone( mat, 0x4e3c29, 0x86704e, 0.85 );
 }
 
 // Wattle & daub (clay render), cream-brown.
@@ -132,7 +139,7 @@ export function daubMaterial() {
 	mat.colorNode = mix( color( 0x8f7a5c ), color( 0xb4a07c ), n ).mul( cracks.oneMinus() ).mul( smoothstep( 0.0, 0.5, st.y ).mul( 0.25 ).add( 0.75 ) );
 	mat.roughnessNode = float( 0.95 );
 	mat.normalNode = proceduralBump( n.mul( 0.5 ), float( 0.8 ) );
-	return mat;
+	return proxyTone( mat, 0x8f7a5c, 0xb4a07c, 0.9 );
 }
 
 // Mine interior: dark rock swallowing light with depth.
@@ -142,7 +149,7 @@ export function darkRockMaterial() {
 	mat.colorNode = mix( color( 0x221f1b ), color( 0x4a443b ), n );
 	mat.roughnessNode = float( 0.95 );
 	mat.normalNode = proceduralBump( n, float( 1.2 ) );
-	return mat;
+	return proxyTone( mat, 0x221f1b, 0x4a443b );
 }
 
 export function doorwayMaterial() {

@@ -24,6 +24,7 @@ import { createSky } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { createHorizon } from './world/horizon.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
+import { PROXY_LAYER } from './core/proxies.js';
 // the generated fields depend only on this code: its hash is the cache key
 import srcHeight from './world/heightfield.js?raw';
 import srcLayout from './world/layout.js?raw';
@@ -430,6 +431,9 @@ async function main() {
 		const reflector = app.water.reflector.reflector;
 		const reflCam = reflector.getVirtualCamera( camera );
 		reflCam.layers.set( 2 );
+		// stand-ins of the procedural surfaces in the reflection and the shadow pass (core/proxies.js)
+		reflCam.layers.enable( PROXY_LAYER );
+		sky.sun.shadow.camera.layers.enable( PROXY_LAYER );
 		// Precompile in the render contexts the frame really uses. The shader cache key of a
 		// render object includes its render context, keyed by render target, MRT and call
 		// depth (how deeply the render() is nested: the scene pass runs inside post.render(),
@@ -475,8 +479,14 @@ async function main() {
 			await compileFor( camera, scenePass.renderTarget, scenePass.getMRT() );
 			if ( ! reflRT ) return;
 			app.water.mesh.visible = false; // the reflection pass hides the water itself
+			// nor the sky: whenever the whole precompile finished (always with the cache, also cold
+			// since the proxies of core/proxies.js made it fast enough), a cold load drew the main
+			// sky white (the horizon tone, no clouds), as if through the reflection camera; cause
+			// not pinned down. Its shader is small and builds on the first frame.
+			sky.sky.visible = false;
 			const refl = compileFor( reflCam, reflRT, null );
 			app.water.mesh.visible = true;
+			sky.sky.visible = true;
 			await refl;
 		};
 		// never block the loader forever (hidden tabs throttle the GPU queue)

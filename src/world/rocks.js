@@ -62,6 +62,9 @@ export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1,
 	mat.roughnessNode = mix( float( 0.9 ), float( 0.55 ), smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.8, wp.y ).oneMinus() );
 	const h = crack.mul( 0.5 ).add( n3.mul( 0.4 ) ).add( nFine.mul( 0.15 ) );
 	mat.normalNode = proceduralBump( h, float( 0.9 ) );
+	// plain meshes (the fort's rock block): mean tone of the stand-in in the reflection and the
+	// shadow pass (core/proxies.js)
+	if ( ! useTint ) mat.userData.proxyColor = new THREE.Color( 0x6e675c ).lerp( new THREE.Color( 0xb8ae9b ), 0.5 ).multiplyScalar( tintScale * 0.85 );
 	return mat;
 }
 

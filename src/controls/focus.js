@@ -30,7 +30,7 @@ export class AutoFocus {
 		// BVH-accelerated picking on the big merged meshes (houses, fort, rock)
 		this.targets = [];
 		for ( const root of targets ) root.traverse( ( o ) => {
-			if ( ! o.isMesh || o.isInstancedMesh || o.userData.instances || ! o.geometry?.attributes.position ) return;
+			if ( ! o.isMesh || o.isInstancedMesh || o.userData.instances || o.userData.proxy || ! o.geometry?.attributes.position ) return;
 			o.geometry.boundsTree = new MeshBVH( o.geometry );
 			o.raycast = acceleratedRaycast;
 			this.targets.push( o );

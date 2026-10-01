@@ -4,6 +4,7 @@ import { createRocks, createRockMaterial } from './rocks.js';
 import { createBuildingMaterials } from './materials.js';
 import { createBuildings } from './buildings.js';
 import { createFort } from './fort.js';
+import { addProxies } from '../core/proxies.js';
 import { createSmoke } from './smoke.js';
 
 // Populates the world with props, phase by phase.
@@ -30,6 +31,8 @@ export async function populate( app, progress ) {
 	const fort = createFort( app, mats, createRockMaterial( 1.0, false, { tintScale: 0.62, jointScale: 0.22 } ) );
 	app.scene.add( fort );
 	app.layers.fort = { label: 'Castro', object: fort };
+	// cheap stand-ins in the water reflection and the shadow pass
+	addProxies( bld ); addProxies( fort );
 	const smoke = createSmoke( bld.userData.smoke );
 	app.scene.add( smoke.mesh );
 	app.smoke = smoke;
