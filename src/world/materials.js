@@ -168,8 +168,9 @@ export function createBuildingMaterials() {
 		stone: stoneMaterial( { tintA: 0x5d574c, tintB: 0x8f8574, moss: 0.25 } ),
 		stoneDark: stoneMaterial( { tintA: 0x524d44, tintB: 0x7d7566, rowH: 0.34, len: 0.6, moss: 0.35 } ),
 		fortStone: stoneMaterial( { tintA: 0x5e5a50, tintB: 0x8a8272, rowH: 0.45, len: 0.8, moss: 0.8 } ),
-		thatch: thatchMaterial(),
-		thatchGreen: thatchMaterial( { base: 0x5c5a40, light: 0x7c7856, mossy: 0.55 } ),
+		// weathered, dark straw (the reference roofs are brown-grey, not straw yellow)
+		thatch: thatchMaterial( { base: 0x544a3a, light: 0x756a54 } ),
+		thatchGreen: thatchMaterial( { base: 0x4a4834, light: 0x666244, mossy: 0.55 } ),
 		wattle: wattleMaterial(),
 		wood: woodMaterial(),
 		woodPost: woodMaterial( { a: 0x3f2d20, b: 0x624631, plank: 10, seams: false } ),

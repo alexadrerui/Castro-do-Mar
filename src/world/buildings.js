@@ -118,8 +118,15 @@ function pen( B, hf, x, z, w, d, rot ) {
 }
 
 // ----------------------------------------------------------- round house
+// Proportions from the castro reconstructions (and tools/houses.mjs): about 1.8 m of stone wall in
+// sight under a thick, ragged thatch eave that overhangs ~0.6 m, a ~40-44 degree cone above it.
+const ROUND = { visible: 1.8, over: 0.62, thick: 0.5 };
+
 function roundHouse( B, b, y, rnd, hf ) {
-	const r = b.r, h = 2.2 + r * 0.09, t = 0.55;
+	const r = b.r, t = 0.55;
+	const pitch = Math.tan( ( 40 + rnd() * 4 ) * Math.PI / 180 );
+	// the wall rises behind the eave: its top meets the roof cone inside the thatch
+	const h = 0.4 + ROUND.visible + ROUND.thick + ROUND.over * pitch - 0.05 + r * 0.02;
 	const base = y - 0.4, wallTop = base + h;
 	const door = doorAngle( b );
 	const jit = ( a ) => 0.05 * Math.sin( a * 7 + b.seed ) + 0.03 * Math.sin( a * 13 );
@@ -135,12 +142,14 @@ function roundHouse( B, b, y, rnd, hf ) {
 	}
 	B.add( 'wood', box( 0.95, 1.68, 0.08 ), at( r - t + 0.12, base ) );
 	B.add( 'doorway', box( 0.96, 1.7, 0.02 ), at( r - t - 0.02, base ) );
-	// conical thatch resting on the wall head, slightly convex (beehive look)
-	const R = r + 1.0;
-	const H = R * ( 0.88 + rnd() * 0.14 );
-	const y0 = wallTop - H * ( R - r ) / R + 0.05;
-	const rj = ( a, t2 ) => ( 0.08 * Math.sin( a * 5 + b.seed ) + 0.05 * Math.sin( a * 11 + 2 ) ) * ( 1 - t2 );
-	B.add( b.seed % 3 === 0 ? 'thatchGreen' : 'thatch', coneRoof( R, y0, y0 + H, { seg: 40, rings: 8, sag: - 0.35, thick: 0.55, jitter: rj } ), M( b.x, 0, b.z ) );
+	// conical thatch resting on the wall head, slightly convex (beehive look); the eave sits at the
+	// visible wall height plus its own thickness
+	const R = r + ROUND.over;
+	const H = R * pitch;
+	const y0 = base + 0.4 + ROUND.visible + ROUND.thick + r * 0.02;
+	// a ragged eave: waves of different lengths around it, fading towards the apex
+	const rj = ( a, t2 ) => ( 0.13 * Math.sin( a * 5 + b.seed ) + 0.08 * Math.sin( a * 11 + 2 ) + 0.05 * Math.sin( a * 23 + b.seed * 3 ) ) * Math.pow( 1 - t2, 2 );
+	B.add( b.seed % 3 === 0 ? 'thatchGreen' : 'thatch', coneRoof( R, y0, y0 + H, { seg: 44, rings: 8, sag: - 0.3, thick: ROUND.thick, jitter: rj } ), M( b.x, 0, b.z ) );
 	// finial knot
 	B.add( 'thatchGreen', coneRoof( 0.6, y0 + H - 0.5, y0 + H + 0.35, { seg: 10, rings: 2, thick: 0.12, sag: - 0.5 } ), M( b.x, 0, b.z ) );
 	// lived-in clutter by the door
@@ -169,15 +178,18 @@ function granary( B, b, y, rnd ) {
 function hut( B, b, y ) {
 	const r = b.r;
 	B.add( 'stone', ringWall( r, 1.1, 0.4, { seg: 20 } ), M( b.x, y - 0.3, b.z ) );
-	B.add( 'daub', ringWall( r - 0.05, 0.9, 0.2, { door: doorAngle( b ), doorW: 0.8, seg: 20, batter: 0 } ), M( b.x, y + 0.8, b.z ) );
-	const R = r + 0.6, H = R * 1.15;
-	const top = y + 1.7;
-	B.add( 'thatch', coneRoof( R, top - H * 0.6 / R + 0.05, top - H * 0.6 / R + 0.05 + H, { seg: 24, rings: 5, sag: - 0.3, thick: 0.4 } ), M( b.x, 0, b.z ) );
+	// ~1.3 m of wall in sight under a 0.45 m eave
+	B.add( 'daub', ringWall( r - 0.05, 1.3, 0.2, { door: doorAngle( b ), doorW: 0.8, seg: 20, batter: 0 } ), M( b.x, y + 0.8, b.z ) );
+	const over = 0.45, R = r + over, H = R * 1.11;
+	const top = y + 2.1;
+	const rj = ( a, t2 ) => ( 0.07 * Math.sin( a * 6 + b.seed ) + 0.04 * Math.sin( a * 13 ) ) * Math.pow( 1 - t2, 2 );
+	B.add( 'thatch', coneRoof( R, top - H * over / R + 0.05, top - H * over / R + 0.05 + H, { seg: 24, rings: 5, sag: - 0.3, thick: 0.35, jitter: rj } ), M( b.x, 0, b.z ) );
 }
 
 // ----------------------------------------------------------- long house
 function longHouse( B, b, y, rnd, hf ) {
-	const { w, l } = b, h = 2.3;
+	// ~1.8 m of wall in sight under the eave (see ROUND)
+	const { w, l } = b, h = 3.15;
 	const m = M( b.x, 0, b.z, b.rot );
 	const local = new GeoBuilder();
 	const hw = w / 2, hl = l / 2, t = 0.5, sb = 0.85;
@@ -199,10 +211,10 @@ function longHouse( B, b, y, rnd, hf ) {
 	local.add( 'woodPost', beam( V( hw + 0.02, y + 1.8, - 0.95 ), V( hw + 0.02, y + 1.8, 0.95 ), 0.13 ) );
 	local.add( 'daub', box( t - 0.1, h - 1.9, 1.3 ), M( hw - t / 2, y + 1.9, 0 ) );
 	// roof sits on the wall plate: eave drops below the wall head
-	const rise = w * 0.66, over = 0.8;
+	const rise = w * 0.55, over = 0.6; // ~48 degrees
 	const y0 = y + h - over * rise / ( w / 2 ) + 0.05;
 	const roofKey = rnd() < 0.4 ? 'thatchGreen' : 'thatch';
-	local.add( roofKey, gableRoof( w, l, y0, rise + over * rise / ( w / 2 ), { over, thick: 0.6 } ) );
+	local.add( roofKey, gableRoof( w, l, y0, rise + over * rise / ( w / 2 ), { over, thick: 0.55 } ) );
 	for ( const e of [ - 1, 1 ] ) local.add( 'wood', gableWall( w - 0.2, y + h, rise * 0.95, e * ( hl - 0.1 ), e ) );
 	// thatched ridge roll
 	const ry = y0 + rise + over * rise / ( w / 2 );
