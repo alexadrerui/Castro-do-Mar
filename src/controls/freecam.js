@@ -20,6 +20,7 @@ export class FreeCam {
 		this.diveClearance = opts.diveClearance ?? 0.6; // m above the bottom when underwater
 		this.enabled = true;
 		this.leftLook = true; // false: the left button is left to another tool (terrain editor)
+		this.planar = false;  // true: WASD move in the horizontal plane (a view from above), Q / E up and down
 
 		this.yaw = 0; this.pitch = 0;
 		this.vel = new THREE.Vector3();
@@ -158,8 +159,15 @@ export class FreeCam {
 			( k.has( 'KeyS' ) || k.has( 'ArrowDown' ) ? 1 : 0 ) - ( k.has( 'KeyW' ) || k.has( 'ArrowUp' ) ? 1 : 0 )
 		);
 		const speed = this.moveSpeed * ( k.has( 'ShiftLeft' ) || k.has( 'ShiftRight' ) ? this.boost : 1 );
-		const wish = new THREE.Vector3( input.x, 0, input.z ).applyQuaternion( cam.quaternion );
-		wish.y += input.y;
+		let wish;
+		if ( this.planar ) {
+			// looking down, "forward" is up on the screen: the heading (yaw), not the view direction
+			const c = Math.cos( this.yaw ), s = Math.sin( this.yaw );
+			wish = new THREE.Vector3( input.x * c + input.z * s, input.y, - input.x * s + input.z * c );
+		} else {
+			wish = new THREE.Vector3( input.x, 0, input.z ).applyQuaternion( cam.quaternion );
+			wish.y += input.y;
+		}
 		if ( wish.lengthSq() > 0 ) wish.normalize().multiplyScalar( speed );
 
 		const damp = Math.pow( this.damping, dt * 60 );

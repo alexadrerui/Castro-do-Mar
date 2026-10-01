@@ -12,8 +12,14 @@
 // the rest (AO, vegetation, rocks, houses, grass) is rebuilt from the edited relief on the next
 // load: "Salvar e aplicar" writes public/terrain-edits.bin and reloads.
 //
+// Water tools (after the shoreline tools of the Habitat Creator game): dig down to a depth below the
+// water level, fill up to a height above it; both leave a ramp of the chosen width between the new
+// level and the relief as it was before the stroke (natural banks, no step at the rim).
+// View from above (button or T): the camera flies over the cursor looking down; WASD then move in
+// the plane.
+//
 // Mouse: left = sculpt, right drag = look, WASD/QE = fly, Alt + left = orbit. Shift: invert.
-// [ ] size. Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z): undo / redo.
+// [ ] size. T: view from above. Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z): undo / redo.
 import * as THREE from 'three/webgpu';
 import { makeSimplex, fbm } from '../core/noise.js';
 import { WATER_LEVEL } from '../world/layout.js';
@@ -26,6 +32,8 @@ const TOOLS = [
 	{ id: 'flatten', label: 'Aplanar', hint: 'Leva à altura do ponto onde a pincelada começou' },
 	{ id: 'noise', label: 'Ruído', hint: 'Soma ruído fbm: rugosidade natural (Shift: subtrai)' },
 	{ id: 'restore', label: 'Restaurar', hint: 'Desfaz as edições sob o pincel: volta ao relevo procedural' },
+	{ id: 'dig', label: 'Cavar', hint: 'Cava até a profundidade abaixo do nível da água, com margem em rampa até o relevo de antes' },
+	{ id: 'fill', label: 'Aterrar', hint: 'Aterra até a altura acima do nível da água, com margem em rampa até o fundo de antes' },
 	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' }
 ];
 const UNDO_MAX = 40;
@@ -55,6 +63,7 @@ export class TerrainEditor {
 		this.strength = 0.5;    // 0..1
 		this.hardness = 0.35;   // 0 = all falloff, 1 = hard edge
 		this.gen = { kind: 'island', freq: 1.2, octaves: 5, height: 14, depth: 6, seed: 7 };
+		this.water = { depth: 4, fill: 1.5, shore: 8 }; // m below / above WATER_LEVEL, ramp width
 
 		this.active = true;
 		this.down = false;
@@ -201,6 +210,26 @@ export class TerrainEditor {
 				const n2 = this.stroke.noise ??= makeSimplex( this.gen.seed );
 				const fr = this.gen.freq / 100, rate = 8 * s * sign * dt;
 				this._forCells( cx, cz, ( k, x, z, w ) => this._set( k, d[ k ] + fbm( n2, x * fr, z * fr, this.gen.octaves ) * rate * w ) );
+				break;
+			}
+			case 'dig':
+			case 'fill': {
+				// a fixed profile, not a rate: the level inside, then a ramp of width `shore` up (dig) or
+				// down (fill) to the relief as it was before this stroke, so holding the brush does not
+				// eat the bank away. Only lowers (dig) / only raises (fill).
+				const dig = this.tool === 'dig', st = this.stroke, R = this.radius;
+				const level = dig ? WATER_LEVEL - this.water.depth : WATER_LEVEL + this.water.fill;
+				const S = Math.min( this.water.shore, R ), inner = R - S;
+				const f = Math.min( 1, 6 * s * dt );
+				this._forCells( cx, cz, ( k, x, z ) => {
+					const r = Math.hypot( x - cx, z - cz );
+					const u = S > 0 ? Math.min( 1, Math.max( 0, ( r - inner ) / S ) ) : ( r < R ? 0 : 1 );
+					const b = u * u * ( 3 - 2 * u );
+					const orig = st.touched.has( k ) ? this.base[ k ] + st.touched.get( k ) : d[ k ];
+					const target = level + ( orig - level ) * b;
+					if ( dig ? target >= d[ k ] : target <= d[ k ] ) return;
+					this._set( k, d[ k ] + ( target - d[ k ] ) * f );
+				} );
 				break;
 			}
 			case 'restore': {
@@ -381,9 +410,10 @@ export class TerrainEditor {
 			a.needsUpdate = true;
 		};
 		fill( this.ringOuter, this.radius );
-		fill( this.ringInner, Math.max( 0.5, this.radius * this.hardness * 0.95 ) );
+		const water = this.tool === 'dig' || this.tool === 'fill';
+		fill( this.ringInner, Math.max( 0.5, water ? this.radius - Math.min( this.water.shore, this.radius ) : this.radius * this.hardness * 0.95 ) );
 		const neg = ( this.tool === 'lower' ) !== this.invert;
-		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : neg ? 0xff9a6a : 0xe6c987;
+		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : this.tool === 'dig' ? 0x5fc8e8 : this.tool === 'fill' ? 0xd8b56a : neg ? 0xff9a6a : 0xe6c987;
 		this.ringOuter.material.color.setHex( c );
 		this.ringInner.material.color.setHex( c );
 	}
@@ -414,6 +444,7 @@ export class TerrainEditor {
 			if ( e.target.closest && e.target.closest( 'input,select,textarea' ) ) return;
 			if ( e.key === 'Shift' ) this.invert = true;
 			if ( ! this.active ) return;
+			if ( e.code === 'KeyT' && ! e.ctrlKey && ! e.metaKey ) this.toggleOverhead();
 			if ( e.code === 'BracketLeft' ) this._setRadius( this.radius / 1.15 );
 			if ( e.code === 'BracketRight' ) this._setRadius( this.radius * 1.15 );
 			if ( ( e.ctrlKey || e.metaKey ) && e.code === 'KeyZ' ) { e.preventDefault(); e.shiftKey ? this.redoStep() : this.undoStep(); }
@@ -429,6 +460,30 @@ export class TerrainEditor {
 		if ( ! on ) { this.down = false; this._end(); }
 		this.panel.classList.toggle( 'paused', ! on );
 		this.ui.toggle.textContent = on ? 'Pausar edição' : 'Retomar edição';
+	}
+
+	// View from above over the cursor (or the point the camera looks at), and back
+	toggleOverhead() {
+		const fc = this.app.freecam, cam = this.camera;
+		if ( this.overhead ) {
+			const o = this.overhead;
+			this.overhead = null;
+			fc.planar = false;
+			fc.flyTo( o.pos, o.target, 1.2 );
+		} else {
+			const fwd = cam.getWorldDirection( new THREE.Vector3() );
+			const target = this.hit ? this.hit.clone() : cam.position.clone().addScaledVector( fwd, 120 );
+			target.y = this.hf.heightAt( target.x, target.z );
+			this.overhead = { pos: cam.position.clone(), target: cam.position.clone().addScaledVector( fwd, 60 ) };
+			const H = Math.max( 120, this.radius * 7 );
+			// almost straight down (an exact vertical has no heading); the top of the screen keeps the
+			// current heading
+			const h = new THREE.Vector3( fwd.x, 0, fwd.z ).normalize();
+			if ( ! Number.isFinite( h.x ) || h.lengthSq() < 0.5 ) h.set( 0, 0, - 1 );
+			fc.flyTo( target.clone().add( new THREE.Vector3( 0, H, 0 ) ).addScaledVector( h, - H * 0.03 ), target, 1.2 );
+			fc.planar = true;
+		}
+		this.ui.overhead.classList.toggle( 'on', !! this.overhead );
 	}
 
 	_setRadius( r ) {
@@ -486,6 +541,12 @@ export class TerrainEditor {
 			<label>Tamanho <input data-k="size" type="range" min="3" max="300" step="1"><output></output></label>
 			<label>Força <input data-k="strength" type="range" min="0.02" max="1" step="0.01"><output></output></label>
 			<label>Dureza <input data-k="hardness" type="range" min="0" max="1" step="0.01"><output></output></label>
+			<fieldset class="water">
+				<legend>Água (Cavar e Aterrar) · nível ${ WATER_LEVEL } m</legend>
+				<label>Profundidade <input data-k="wdepth" type="range" min="0.5" max="30" step="0.5"><output></output></label>
+				<label>Aterro <input data-k="wfill" type="range" min="0.2" max="20" step="0.1"><output></output></label>
+				<label>Margem <input data-k="wshore" type="range" min="0" max="60" step="0.5"><output></output></label>
+			</fieldset>
 			<fieldset class="gen">
 				<legend>Procedural (Gerar e Ruído)</legend>
 				<label>Tipo <select data-k="kind"><option value="island">Ilha</option><option value="perlin">Perlin</option></select></label>
@@ -496,15 +557,16 @@ export class TerrainEditor {
 				<label>Semente <input data-k="seed" type="number" min="1" max="99999" step="1"><button data-act="dice" class="small" title="Semente aleatória">🎲</button></label>
 			</fieldset>
 			<p class="info"></p>
+			<div class="row"><button data-act="overhead" title="T">Vista de cima</button></div>
 			<div class="row"><button data-act="undo">Desfazer</button><button data-act="redo">Refazer</button></div>
 			<div class="row"><button data-act="save" class="primary">Salvar e aplicar</button></div>
 			<div class="row"><button data-act="export">Exportar</button><button data-act="import">Importar</button><button data-act="clear">Limpar tudo</button></div>
-			<p class="keys">Esq.: esculpir · Dir. arrastar: olhar · WASD/QE: voar · Shift: inverter · [ ]: tamanho · Ctrl+Z/Y</p>
+			<p class="keys">Esq.: esculpir · Dir. arrastar: olhar · WASD/QE: voar · Shift: inverter · [ ]: tamanho · T: vista de cima · Ctrl+Z/Y</p>
 			<input type="file" accept=".bin" hidden>`;
 		document.body.appendChild( el );
 		this.panel = el;
 		const q = ( s ) => el.querySelector( s );
-		this.ui = { toggle: q( '[data-act=toggle]' ), hint: q( '.hint' ), info: q( '.info' ), size: q( '[data-k=size]' ), sizeOut: q( '[data-k=size]' ).nextElementSibling, undo: q( '[data-act=undo]' ), redo: q( '[data-act=redo]' ) };
+		this.ui = { overhead: q( '[data-act=overhead]' ), toggle: q( '[data-act=toggle]' ), hint: q( '.hint' ), info: q( '.info' ), size: q( '[data-k=size]' ), sizeOut: q( '[data-k=size]' ).nextElementSibling, undo: q( '[data-act=undo]' ), redo: q( '[data-act=redo]' ) };
 		const style = document.createElement( 'style' );
 		style.textContent = `
 			#terrain-editor { position: fixed; top: 78px; left: 12px; width: 288px; padding: 10px 12px; z-index: 12; font-size: 12px; color: var(--ink); max-height: calc(100vh - 140px); overflow: auto; }
@@ -549,6 +611,9 @@ export class TerrainEditor {
 		bind( 'size', () => this.radius, ( v ) => { this.radius = v; }, ( v ) => v.toFixed( 0 ) + ' m' );
 		bind( 'strength', () => this.strength, ( v ) => { this.strength = v; }, ( v ) => Math.round( v * 100 ) + '%' );
 		bind( 'hardness', () => this.hardness, ( v ) => { this.hardness = v; }, ( v ) => Math.round( v * 100 ) + '%' );
+		bind( 'wdepth', () => this.water.depth, ( v ) => { this.water.depth = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
+		bind( 'wfill', () => this.water.fill, ( v ) => { this.water.fill = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
+		bind( 'wshore', () => this.water.shore, ( v ) => { this.water.shore = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
 		bind( 'kind', () => this.gen.kind, ( v ) => { this.gen.kind = v; }, String );
 		bind( 'freq', () => this.gen.freq, ( v ) => { this.gen.freq = v; }, ( v ) => v.toFixed( 2 ) );
 		bind( 'octaves', () => this.gen.octaves, ( v ) => { this.gen.octaves = v; }, String );
@@ -561,6 +626,7 @@ export class TerrainEditor {
 		let clearArmed = 0;
 		const acts = {
 			toggle: () => this.setActive( ! this.active ),
+			overhead: () => this.toggleOverhead(),
 			dice: () => { this.gen.seed = 1 + Math.floor( Math.random() * 99998 ); seed.value = this.gen.seed; },
 			undo: () => this.undoStep(), redo: () => this.redoStep(),
 			save: () => this.save(), export: () => this.exportFile(), import: () => file.click(),

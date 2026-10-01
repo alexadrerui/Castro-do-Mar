@@ -1,7 +1,7 @@
 // QA of the terrain editor (?edit): drives it with the real mouse in headless Edge.
 //   node tools/terrainedit.mjs [prefix] [--save]
-// Raises, smooths and stamps an island with the pointer, checks the heights under the brush and
-// the undo / redo, and captures shots/<prefix>_<step>.png (with the editor panel: page screenshot).
+// Raises, smooths and stamps an island with the pointer, digs a pond and fills a shoal (water tools),
+// checks the heights under the brush, the undo / redo and the view from above (T), and captures shots/<prefix>_<step>.png (with the editor panel: page screenshot).
 // --save also saves (POST /__terrain-edits), reloads and checks that the edited relief survived
 // the reload (heights, cache key) - and then deletes public/terrain-edits.bin again.
 import puppeteer from 'puppeteer-core';
@@ -138,6 +138,44 @@ const stuck = await page.evaluate( () => window.__app.editor.down );
 await page.mouse.up( { button: 'right' } ); await sleep( 200 );
 check( stuck === false, 'pincelada encerra ao soltar o esquerdo com o direito apertado' );
 await page.click( '#terrain-editor [data-act=undo]' ); await sleep( 200 );
+
+// 8. water tools, from straight above: dig a pond on land, fill a shoal in the lake
+const top = async ( p, h = 160 ) => { await page.evaluate( ( p, h ) => { const a = window.__app; const g = a.hf.heightAt( p.x, p.z ); a.views.push( { label: 'edit', pos: [ p.x + 0.01, g + h, p.z + 0.01 ], target: [ p.x, g, p.z ] } ); a.setView( a.views.length - 1 ); }, p, h ); await sleep( 1200 ); };
+const D = { x: - 190, z: 70 };
+await top( D );
+const ring = await page.evaluate( ( D ) => { const hf = window.__app.hf; return { c: hf.heightAt( D.x, D.z ), rim: hf.heightAt( D.x + 29, D.z ), bank: hf.heightAt( D.x + 26, D.z ) }; }, D );
+await setTool( 'dig' );
+await page.evaluate( () => { const e = window.__app.editor; e.radius = 30; e.strength = 1; e.water.depth = 4; e.water.shore = 8; } );
+await stroke( [ [ D.x, D.z ], [ D.x + 0.5, D.z ] ], 2500 );
+const dug = await page.evaluate( ( D ) => { const hf = window.__app.hf; return { c: hf.heightAt( D.x, D.z ), mid: hf.heightAt( D.x + 15, D.z ), bank: hf.heightAt( D.x + 26, D.z ), rim: hf.heightAt( D.x + 29, D.z ) }; }, D );
+check( Math.abs( dug.c + 4 ) < 0.3 && Math.abs( dug.mid + 4 ) < 0.3, `cavar: centro ${ ring.c.toFixed( 1 ) } -> ${ dug.c.toFixed( 2 ) } m, meio ${ dug.mid.toFixed( 2 ) } m (alvo -4)` );
+check( dug.bank > dug.c + 1 && dug.bank < ring.bank && Math.abs( dug.rim - ring.rim ) < Math.max( 1.5, ( ring.rim + 4 ) * 0.15 ), `cavar: margem em rampa (26 m: ${ ring.bank.toFixed( 1 ) } -> ${ dug.bank.toFixed( 1 ) } m; borda 29 m: ${ ring.rim.toFixed( 1 ) } -> ${ dug.rim.toFixed( 1 ) } m)` );
+await shot( '4_dig' );
+const F = { x: 360, z: - 200 };
+await top( F );
+const f0 = await heightAt( F.x, F.z );
+await setTool( 'fill' );
+await page.evaluate( () => { const e = window.__app.editor; e.radius = 30; e.water.fill = 1.5; e.water.shore = 10; } );
+await stroke( [ [ F.x, F.z ], [ F.x + 0.5, F.z ] ], 2500 );
+const f1 = await heightAt( F.x, F.z );
+check( f0 < 0 && Math.abs( f1 - 1.5 ) < 0.3, `aterrar: ${ f0.toFixed( 1 ) } -> ${ f1.toFixed( 2 ) } m (alvo +1,5)` );
+await shot( '5_fill' );
+
+// 9. view from above (T): looks down, W moves in the plane, T again goes back
+await page.evaluate( ( P ) => { const a = window.__app, g = a.hf.heightAt( P.x, P.z ); a.views.push( { label: 'edit', pos: [ P.x + 70, g + 75, P.z + 70 ], target: [ P.x, g, P.z ] } ); a.setView( a.views.length - 1 ); }, P );
+await sleep( 800 );
+const before = await page.evaluate( () => window.__app.camera.position.toArray() );
+const sP = await toScreen( P.x, P.z ); await page.mouse.move( sP.x, sP.y ); await sleep( 300 );
+await page.keyboard.press( 'KeyT' ); await sleep( 2000 );
+const o1 = await page.evaluate( () => { const c = window.__app.camera; return { pos: c.position.toArray(), dirY: c.getWorldDirection( new c.position.constructor() ).y }; } );
+check( o1.dirY < - 0.95, `vista de cima: câmera olhando para baixo (direção y ${ o1.dirY.toFixed( 3 ) })` );
+await shot( '6_overhead' );
+await page.keyboard.down( 'KeyW' ); await sleep( 700 ); await page.keyboard.up( 'KeyW' ); await sleep( 600 );
+const o2 = await page.evaluate( () => window.__app.camera.position.toArray() );
+check( Math.abs( o2[ 1 ] - o1.pos[ 1 ] ) < 0.5 && Math.hypot( o2[ 0 ] - o1.pos[ 0 ], o2[ 2 ] - o1.pos[ 2 ] ) > 3, `W anda no plano (altura ${ o1.pos[ 1 ].toFixed( 1 ) } -> ${ o2[ 1 ].toFixed( 1 ) }, deslocou ${ Math.hypot( o2[ 0 ] - o1.pos[ 0 ], o2[ 2 ] - o1.pos[ 2 ] ).toFixed( 1 ) } m)` );
+await page.keyboard.press( 'KeyT' ); await sleep( 2000 );
+const back = await page.evaluate( () => window.__app.camera.position.toArray() );
+check( Math.hypot( back[ 0 ] - before[ 0 ], back[ 1 ] - before[ 1 ], back[ 2 ] - before[ 2 ] ) < 1, 'T de novo volta à câmera de antes' );
 
 if ( doSave ) {
 	// put the island back, save, and check it after the reload
