@@ -345,4 +345,4 @@ export function createBuildings( app, mats, progress ) {
 	return group;
 }
 
-export { woodpile, basket, jar };
+export { woodpile, basket, jar, doorAngle };

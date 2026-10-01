@@ -1,0 +1,90 @@
+{
+	"note": "tools/verify.mjs baseline: per-view image statistics of a known-good build",
+	"date": "2026-10-01",
+	"views": {
+		"0": {
+			"view": 0,
+			"label": "Panorâmica",
+			"luma": 126.8,
+			"spread": 61,
+			"chroma": 28.8,
+			"top": [
+				196,
+				207,
+				213
+			],
+			"clip": 0,
+			"black": 0
+		},
+		"1": {
+			"view": 1,
+			"label": "Aérea",
+			"luma": 52.6,
+			"spread": 24.9,
+			"chroma": 24.3,
+			"top": [
+				34,
+				50,
+				47
+			],
+			"clip": 0,
+			"black": 0
+		},
+		"2": {
+			"view": 2,
+			"label": "Vila",
+			"luma": 96.6,
+			"spread": 66.7,
+			"chroma": 26.2,
+			"top": [
+				194,
+				204,
+				209
+			],
+			"clip": 0,
+			"black": 0
+		},
+		"3": {
+			"view": 3,
+			"label": "Minas",
+			"luma": 116.1,
+			"spread": 56.5,
+			"chroma": 29.4,
+			"top": [
+				140,
+				157,
+				164
+			],
+			"clip": 0,
+			"black": 0.001
+		},
+		"4": {
+			"view": 4,
+			"label": "Lago",
+			"luma": 140.5,
+			"spread": 55.3,
+			"chroma": 37.8,
+			"top": [
+				151,
+				183,
+				208
+			],
+			"clip": 0,
+			"black": 0
+		},
+		"5": {
+			"view": 5,
+			"label": "Montanhas",
+			"luma": 164.5,
+			"spread": 69.8,
+			"chroma": 36.8,
+			"top": [
+				181,
+				197,
+				212
+			],
+			"clip": 0.008,
+			"black": 0
+		}
+	}
+}

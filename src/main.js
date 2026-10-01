@@ -66,6 +66,7 @@ const app = {
 	dynamicRes: true
 };
 window.__app = app;
+app.THREE = THREE; // QA tools (tools/houses.mjs: raycasts in the page)
 
 const loader = new Loader( STEPS );
 
@@ -398,6 +399,7 @@ async function main() {
 		const blob = await new Promise( ( r ) => canvas.toBlob( r, 'image/png' ) );
 		renderer.setPixelRatio( prev.pr ); renderer.setSize( prev.w, prev.h, false );
 		camera.aspect = prev.w / prev.h; camera.updateProjectionMatrix();
+		app.lastCaptureBlob = blob; // tools/verify.mjs measures it
 		await fetch( '/__capture?name=' + encodeURIComponent( name ), { method: 'POST', body: blob } );
 		return name;
 	};
@@ -481,8 +483,9 @@ async function main() {
 			app.water.mesh.visible = false; // the reflection pass hides the water itself
 			// nor the sky: whenever the whole precompile finished (always with the cache, also cold
 			// since the proxies of core/proxies.js made it fast enough), a cold load drew the main
-			// sky white (the horizon tone, no clouds), as if through the reflection camera; cause
-			// not pinned down. Its shader is small and builds on the first frame.
+			// sky white (the horizon tone, no clouds), as if through the reflection camera, in the
+			// depth-of-field output; cause not pinned down. Its shader is small and builds on the
+			// first frame. tools/verify.mjs fails on it.
 			sky.sky.visible = false;
 			const refl = compileFor( reflCam, reflRT, null );
 			app.water.mesh.visible = true;
