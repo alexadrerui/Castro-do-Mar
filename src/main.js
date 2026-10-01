@@ -29,6 +29,7 @@ import { PROXY_LAYER } from './core/proxies.js';
 import { loadTerrainEdits, hashEdits } from './world/terrainEdits.js';
 import { loadWorldEdits, applyWorldEdits } from './world/worldEdits.js';
 import { loadNatureEdits } from './world/natureEdits.js';
+import { loadSurfaces } from './world/surfaces.js';
 import { BUILDINGS } from './world/layout.js';
 // the generated fields depend only on this code: its hash is the cache key
 import srcHeight from './world/heightfield.js?raw';
@@ -102,6 +103,8 @@ async function main() {
 
 	// Heightfield, splat mask, AO and macro noise: from the IndexedDB cache when
 	// the generator code is unchanged, otherwise baked in the worker and stored.
+	// the house surfaces bake in their own worker meanwhile (world/surfaces.js; cached after the first load)
+	app.surfaces = loadSurfaces();
 	hf = new HeightField();
 	// hand edits of the relief (public/terrain-edits.bin, see world/terrainEdits.js and ?edit)
 	const terrainEdits = await loadTerrainEdits();

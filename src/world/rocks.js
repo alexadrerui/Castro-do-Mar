@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
-	positionWorld, normalWorld, attribute, vec2, vec3, float, color, mix, smoothstep, fract,
-	mx_noise_float, mx_fractal_noise_float, mx_worley_noise_vec2
+	positionWorld, normalWorld, attribute, vec2, vec3, float, color, mix, smoothstep, fract, texture
 } from 'three/tsl';
+import { SURFACE } from './surfaceBake.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { clearance, sampleMask } from './vegetation.js';
@@ -35,21 +35,26 @@ function graniteGeometry( style, seed, subdiv ) {
 	return g;
 }
 
-export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1, jointScale = 0.9 } = {} ) {
+// Jointed granite for plain meshes (the fort's carved rock block). T: the baked surface textures
+// (world/surfaceBake.js): the joints come from the stone cells, the noises from the clay and the
+// world-patch tiles, all sampled in world space (along the wall: x + z; up: y).
+export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1, jointScale = 0.9 } = {}, T ) {
 	const mat = new THREE.MeshStandardNodeMaterial();
 	const wp = positionWorld;
 	const tint = ( useTint ? attribute( 'aTint', 'vec3' ) : vec3( 1 ) ).mul( tintScale );
-	const n3 = mx_fractal_noise_float( wp.mul( 0.45 ), 3 ).mul( 0.5 ).add( 0.5 );
-	const nFine = mx_noise_float( wp.mul( 3.5 ) ).mul( 0.5 ).add( 0.5 );
+	const along = wp.x.add( wp.z );
+	const patch = texture( T.world, vec2( along, wp.y ).div( SURFACE.world ) );
+	const n3 = patch.r;                                                         // ~2 m blotches
+	const nFine = texture( T.daub, vec2( along, wp.y ).mul( 1.4 ).div( SURFACE.daub ) ).r; // grain
 	// jointed granite: tall vertical joint blocks + gently wavy horizontal sheeting
-	const wv = mx_worley_noise_vec2( vec2( wp.x.add( wp.z ).mul( jointScale ), wp.y.mul( jointScale * 0.3 ) ) );
-	const sheetN = mx_noise_float( wp.mul( 0.12 ) ).mul( 1.4 );
+	const cells = texture( T.stone, vec2( along.mul( jointScale ), wp.y.mul( jointScale * 0.3 ) ).div( SURFACE.stoneCells ) );
+	const sheetN = patch.g.sub( 0.5 ).mul( 2.8 );
 	const sheet = fract( wp.y.mul( jointScale * 1.2 ).add( sheetN ) );
-	const crackV = smoothstep( 0.0, 0.035, wv.y.sub( wv.x ) );
+	const crackV = smoothstep( 0.0, 0.035, cells.r );
 	const crackH = smoothstep( 0.0, 0.05, sheet ).mul( smoothstep( 0.95, 1.0, sheet ).oneMinus() );
 	const crack = crackV.mul( crackH ).mul( 0.15 ).add( 0.85 ).mul( mix( 0.9, 1.0, n3 ) );
-	// vertical weathering streaks
-	const streak = mx_noise_float( vec3( wp.x.mul( 0.9 ), wp.y.mul( 0.08 ), wp.z.mul( 0.9 ) ) ).mul( 0.5 ).add( 0.5 );
+	// vertical weathering streaks (the world tile stretched along y)
+	const streak = texture( T.world, vec2( along.mul( 1.1 ), wp.y.mul( 0.1 ) ).div( SURFACE.world ) ).b;
 	// granite: warm grey with feldspar speckle, darker in joints
 	let col = mix( color( 0x6e675c ), color( 0xb8ae9b ), smoothstep( 0.3, 0.75, n3 ) );
 	col = col.mul( mix( 0.85, 1.12, nFine ) ).mul( crack ).mul( mix( 0.78, 1.08, streak ) );

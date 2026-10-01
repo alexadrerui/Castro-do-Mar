@@ -152,7 +152,9 @@ export function coneRoof( R, y0, y1, opts = {} ) {
 			const nA = [ Math.cos( a0 ) * ( y1 - y0 ), R, Math.sin( a0 ) * ( y1 - y0 ) ], nB = [ Math.cos( a1 ) * ( y1 - y0 ), R, Math.sin( a1 ) * ( y1 - y0 ) ];
 			const nl = ( v ) => { const l = Math.hypot( ...v ); return v.map( ( x ) => x / l ); };
 			s.quad( pt( a1, t0 ), pt( a0, t0 ), pt( a0, t1 ), pt( a1, t1 ),
-				[ a1 * c0, t0 * slant ], [ a0 * c0, t0 * slant ], [ a0 * c1, t1 * slant ], [ a1 * c1, t1 * slant ],
+				// u: the angle times the eave radius, so the straw (along v) runs straight to the apex;
+				// the arc length of each ring (a * c) sheared it into spirals
+				[ a1 * R, t0 * slant ], [ a0 * R, t0 * slant ], [ a0 * R, t1 * slant ], [ a1 * R, t1 * slant ],
 				[ nl( nB ), nl( nA ), nl( nA ), nl( nB ) ] );
 		}
 		// underside of the eave (thickness) and the rolled edge

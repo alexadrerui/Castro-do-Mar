@@ -2,6 +2,7 @@ import { createVegetation } from './vegetation.js';
 import { GrassField } from './grass.js';
 import { createRocks, createRockMaterial } from './rocks.js';
 import { createBuildingMaterials } from './materials.js';
+import { surfaceTextures } from './surfaceBake.js';
 import { createBuildings } from './buildings.js';
 import { createFort } from './fort.js';
 import { addProxies } from '../core/proxies.js';
@@ -23,13 +24,16 @@ export async function populate( app, progress ) {
 	app.scene.add( rocks );
 	app.layers.rocks = { label: 'Pedras', object: rocks };
 	console.info( 'rocks', rocks.userData.counts );
-	const mats = createBuildingMaterials();
+	// the house surfaces, baked (world/surfaceBake.js; started by main.js at the start of the load)
+	const surf = surfaceTextures( await app.surfaces );
+	app.surfaceTextures = surf;
+	const mats = createBuildingMaterials( surf );
 	app.buildingMaterials = mats;
 	// in the editor (?edit) every house / stall / prop is its own group, so it can be selected
 	const bld = createBuildings( app, mats, ( p ) => progress( 0.8 + p * 0.1 ), { separate: new URLSearchParams( location.search ).has( 'edit' ) } );
 	app.scene.add( bld );
 	app.layers.buildings = { label: 'Casas', object: bld };
-	const fort = createFort( app, mats, createRockMaterial( 1.0, false, { tintScale: 0.62, jointScale: 0.22 } ) );
+	const fort = createFort( app, mats, createRockMaterial( 1.0, false, { tintScale: 0.62, jointScale: 0.22 }, surf ) );
 	app.scene.add( fort );
 	app.layers.fort = { label: 'Castro', object: fort };
 	// cheap stand-ins in the water reflection and the shadow pass
