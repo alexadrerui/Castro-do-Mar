@@ -578,8 +578,9 @@ export class GrassField {
 			let grass0 = mix( base, tip, smoothstep( 0.05, 0.95, hf_ ) );
 			// dead blades: straw to brown
 			grass0 = mix( grass0, mix( straw, soil.mul( 1.8 ), rnd.mul( 0.6 ) ).mul( smoothstep( 0.0, 0.5, hf_ ).mul( 0.4 ).add( 0.6 ) ), dryBlade.mul( duneF.oneMinus() ) );
-			// pale midrib
-			grass0 = grass0.mul( pow( abs( across ).oneMinus(), 6 ).mul( smoothstep( 0.05, 0.4, hf_ ) ).mul( 0.18 ).add( 1 ) );
+			// pale midrib (|across| goes past 1 on the wide blades: pow of a negative base is NaN, and
+			// the NaN pixels spread into glowing blobs through the MSAA resolve, the bloom and the DOF)
+			grass0 = grass0.mul( pow( saturate( abs( across ).oneMinus() ), 6 ).mul( smoothstep( 0.05, 0.4, hf_ ) ).mul( 0.18 ).add( 1 ) );
 			// wind sheen: blades flattened by a gust show their paler undersides
 			const grass = mix( grass0, grass0.mul( vec3( 1.3, 1.28, 1.1 ) ).add( vec3( 0.03, 0.03, 0.015 ) ), vGust.mul( smoothstep( 0.15, 0.9, hf_ ) ).mul( 0.6 ) );
 			// marram: grey-green stalks, pale spikes

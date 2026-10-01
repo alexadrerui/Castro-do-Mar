@@ -20,7 +20,7 @@ export class Godrays {
 	// scenePass: the scene pass (colour and depth); sunDir: direction towards the sun (world)
 	constructor( { scenePass, sunDir, resolutionScale = 0.33, samples = 48 } ) {
 		this.sunDir = sunDir;
-		this.strength = uniform( 3.5 );  // 0 = off
+		this.strength = uniform( 0.8 );  // 0 = off (3.5 turned the whole frame white facing the sun)
 		this.decay = uniform( 0.97 );     // per sample, along the ray
 		this.length = uniform( 0.9 );     // fraction of the way to the sun the ray reaches
 		this.falloff = uniform( 7 );      // how fast the source fades away from the sun (screen units)

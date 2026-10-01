@@ -21,7 +21,7 @@ import { Flock } from './world/birds/flock.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
-import { createSky } from './world/sky.js';
+import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { createHorizon } from './world/horizon.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
@@ -255,14 +255,14 @@ async function main() {
 	};
 	app.onSunChanged = () => {
 		sky.update( false );
-		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / 4.2 ) );
+		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		clearTimeout( app._envT );
 		app._envT = setTimeout( () => sky.buildEnv(), 250 );
 		const e = sky.state.elevation;
 		const warm = THREE.MathUtils.smoothstep( e, 0, 22 );
 		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
 		app.underwater?.setDaylight( hazeColor.value );
-		app.underwater?.setSun( sky.state.sunDir, sky.sun.intensity / 5.4 );
+		app.underwater?.setSun( sky.state.sunDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.sunDir, sky.sun, app.underwater?.murk.value );
 		app.snow?.light.value.copy( hazeColor.value );
 		app.seabed?.updateSun( sky.state.sunDir );
@@ -325,7 +325,7 @@ async function main() {
 	// pass at half resolution. Toggled in the panel; when off the output is rebuilt without it.
 	// The input is clamped: the sun disc of the SkyMesh is thousands of times brighter than white
 	// and turned the bloom into a glare over half of the frame (the sky went white around the sun).
-	const bloomPass = bloom( scenePass.getTextureNode().min( vec4( 6 ) ), 0.16, 0.35, 1.05 );
+	const bloomPass = bloom( scenePass.getTextureNode().min( vec4( 2.5 ) ), 0.12, 0.3, 1.05 );
 	app.bloom = bloomPass;
 	let bloomOn = true;
 

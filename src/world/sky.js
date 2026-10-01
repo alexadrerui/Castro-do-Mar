@@ -1,9 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
-import { uniform, vec4 } from 'three/tsl';
+import { uniform, vec4, max, dot, normalize, pow, positionWorld, cameraPosition } from 'three/tsl';
 
 // Preetham sky + procedural clouds (built into SkyMesh), sun light and
 // sky-derived image based lighting.
+// peak sun intensity (the water and underwater sun terms are normalised by it)
+export const SUN_MAX = 3.9;
+
 export function createSky( scene, renderer ) {
 
 	const sky = new SkyMesh();
@@ -12,8 +15,8 @@ export function createSky( scene, renderer ) {
 	sky.material.fog = false;
 	sky.turbidity.value = 2.4;
 	sky.rayleigh.value = 1.0;
-	sky.mieCoefficient.value = 0.004;
-	sky.mieDirectionalG.value = 0.82;
+	sky.mieCoefficient.value = 0.0025; // smaller white halo around the sun
+	sky.mieDirectionalG.value = 0.86;
 	sky.cloudCoverage.value = 0.55;
 	sky.cloudDensity.value = 0.85;
 	sky.cloudElevation.value = 0.55;
@@ -24,7 +27,12 @@ export function createSky( scene, renderer ) {
 	// sky is scaled; the image based lighting (envSky below) keeps its own level.
 	const gain = uniform( 0.4 );
 	const skyColor = sky.material.colorNode;
-	sky.material.colorNode = vec4( skyColor.rgb.mul( gain ), 1 );
+	// Facing the sun, the Mie halo and the back-lit clouds filled a third of the frame far above
+	// white, and the bloom / god rays / DOF spread it into a white-out: the sky is dimmed towards
+	// the sun (the disc itself stays far above white).
+	const toSun = max( dot( normalize( positionWorld.sub( cameraPosition ) ), normalize( sky.sunPosition ) ), 0 );
+	const sunDim = pow( toSun, 5 ).mul( 0.5 ).oneMinus();
+	sky.material.colorNode = vec4( skyColor.rgb.mul( gain ).mul( sunDim ), 1 );
 	sky.frustumCulled = false;
 	sky.layers.enable( 2 );
 	scene.add( sky );
@@ -74,7 +82,7 @@ export function createSky( scene, renderer ) {
 		const e = Math.max( 0, state.elevation );
 		const warm = THREE.MathUtils.smoothstep( e, 0, 25 );
 		sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
-		sun.intensity = 5.4 * THREE.MathUtils.smoothstep( e, - 1, 8 );
+		sun.intensity = SUN_MAX * THREE.MathUtils.smoothstep( e, - 1, 8 );
 		hemi.intensity = 0.08 + 0.09 * THREE.MathUtils.smoothstep( e, - 5, 30 );
 
 		if ( rebuildEnv ) {

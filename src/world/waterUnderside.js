@@ -3,6 +3,7 @@ import {
 	Fn, uniform, float, vec2, vec3, sin, cos, dot, normalize, refract, length, mix, smoothstep, pow, max, exp,
 	positionWorld, cameraPosition, time, fract, floor,
 } from 'three/tsl';
+import { SUN_MAX } from './sky.js';
 
 // The water surface seen from below (the water mesh is one-sided: from below it shows nothing).
 // A plane at the water level drawn from its back side only, so it exists for the camera under
@@ -115,7 +116,7 @@ export function createWaterUnderside( { waterLevel = 0, size = 36000 } = {} ) {
 			const day = Math.max( hazeColor.r, hazeColor.g, hazeColor.b ) / 0.72;
 			U.zenith.value.setRGB( 0.22, 0.4, 0.78 ).multiplyScalar( day );
 			U.sunDir.value.copy( sunDir );
-			U.sun.value.copy( sunLight.color ).multiplyScalar( sunLight.intensity / 5.4 );
+			U.sun.value.copy( sunLight.color ).multiplyScalar( sunLight.intensity / SUN_MAX );
 			if ( murk ) U.murk.value.copy( murk );
 
 		},
