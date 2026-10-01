@@ -25,6 +25,7 @@ import { createTerrain } from './world/terrain.js';
 import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { Lakes } from './world/lakeWater.js';
+import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
@@ -103,6 +104,8 @@ async function main() {
 		camera = new THREE.PerspectiveCamera( 50, innerWidth / innerHeight, 1.0, 40000 );
 		camera.layers.enable( 1 ); // layer 1: small props (skipped by reflection and shadows)
 		app.renderer = renderer; app.scene = scene; app.camera = camera;
+		// a lost GPU device reloads the page and restores the view (core/recovery.js)
+		installRecovery( app );
 	} );
 
 	// Heightfield, splat mask, AO and macro noise: from the IndexedDB cache when
@@ -679,6 +682,7 @@ async function main() {
 	loader.finish( () => hud.show(), AUTO );
 	if ( AUTO ) hud.show();
 	app.ready = true;
+	restoreAfterRecovery( app );
 }
 
 const tmpV = new THREE.Vector3(), tmpC = new THREE.Vector3();
