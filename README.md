@@ -35,3 +35,4 @@ Abra http://localhost:5190 (`?auto` pula o botão de entrada).
 ## Créditos
 
 - **[Tidewater](https://github.com/dgreenheck/tidewater)** (MIT, Copyright (c) 2026 DRG Software Solutions LLC): peixes, fundo do mar, pedras de granito, gaivotas, árvore/arbusto/fento, atlas de folhas, impostores, gotas na lente e neve marinha, adaptados (cada arquivo portado traz o cabeçalho de origem).
+- **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados; a licença vai junto em `src/world/koi/LICENSE-AndyLePool`.

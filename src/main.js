@@ -15,6 +15,7 @@ import { Godrays } from './post/godrays.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
+import { KoiPonds } from './world/koi/ponds.js';
 import { Gulls } from './world/birds/gulls.js';
 import { BirdBatch } from './world/birds/batch.js';
 import { Flock } from './world/birds/flock.js';
@@ -204,6 +205,14 @@ async function main() {
 	app.fish = fish;
 	app.layers.fish = { label: 'Peixes', object: fish.group };
 	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
+	// Koi and lotus in the lakes dug in the terrain editor (world/koi: none until one is dug).
+	const koi = new KoiPonds( { hf, waterLevel: WATER_LEVEL, edits: app.terrainEdits } );
+	app.koi = koi;
+	if ( koi.ponds.length ) {
+		scene.add( koi.group );
+		app.layers.koi = { label: 'Carpas e lótus', object: koi.group };
+		app.onFrame.push( ( dt ) => koi.update( dt, camera ) );
+	}
 	// Gulls soaring high over the bay (animated in the vertex shader).
 	const gulls = new Gulls( { hf, waterLevel: WATER_LEVEL, count: 14 } );
 	scene.add( gulls.mesh );
