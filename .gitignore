@@ -4,3 +4,6 @@ shots/
 .vite/
 *.log
 .DS_Store
+# derived from ref/casa_castro (img2threejs PBR evidence; make_mattes.py)
+ref/casa_castro/pbr/
+ref/casa_castro/matte/

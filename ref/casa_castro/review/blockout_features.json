@@ -1,0 +1,1 @@
+[{"id": "overall-silhouette", "score": 0.78, "notes": "L composite reads in all 5 views: block + round tower + cone inside the parapet + shelter. Mean IoU 0.79 vs mattes; porch/props missing in blockout, ref_2 weakest (0.68)."}]

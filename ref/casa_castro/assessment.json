@@ -1,0 +1,610 @@
+{
+ "targetName": "Casa composta do castro",
+ "sourceImage": "ref_1.png",
+ "preSpecAssessment": {
+  "objectClass": {
+   "primaryType": "composite castro house (rectangular dwelling + round tower) with a detached round kitchen shelter",
+   "primaryDomain": "object",
+   "formLanguage": [
+    "geometric",
+    "organic-edges"
+   ],
+   "structureKind": [
+    "architectural",
+    "assembly",
+    "radial (tower, shelter)",
+    "repetition (stones, posts, rafters, thatch courses)"
+   ],
+   "motionPotential": [
+    "static",
+    "fire flicker in the shelter"
+   ],
+   "materialFamilies": [
+    "dry-stone granite",
+    "thatch",
+    "timber",
+    "carved timber",
+    "fire"
+   ],
+   "notes": "Game-model reference on a grey backdrop, five views (front 3/4, rear 3/4, tower side, back, top). Rebuilt procedurally with the project materials (no photo projection)."
+  },
+  "complexity": {
+   "tier": "complex",
+   "scores": {
+    "silhouetteComplexity": 3,
+    "componentCount": 4,
+    "hierarchyDepth": 3,
+    "repetitionDensity": 4,
+    "materialLayerCount": 3,
+    "localDetailDensity": 3,
+    "occlusionRisk": 2,
+    "actionReadinessNeed": 1
+   },
+   "estimatedCounts": {
+    "macroComponents": 6,
+    "mesoComponents": 12,
+    "microFeatureGroups": 7,
+    "materialLayers": 5,
+    "repetitionSystems": 5
+   },
+   "reasoning": [
+    "Six macro parts (rectangular body, round tower, body roof, stepped tower cone, timber porch, detached shelter).",
+    "Meso parts: door with stone jambs and lintel, carved gable with rosette, thatch dormer over the door, porch posts with braces, rafter ends, plank roof, side gateway, tower window, crenellated tower crown, ridge roll, shelter low wall, shelter posts.",
+    "Repetition: wall stones (material), thatch courses, porch rafter ends, shelter posts, tower crown stones.",
+    "Occlusion: interior not visible; plan relation from the top view (confidence 0.7)."
+   ]
+  },
+  "specDepthDecision": {
+   "requiredDepth": "complex",
+   "minimumComponentLevels": [
+    "macro",
+    "meso",
+    "micro"
+   ],
+   "needsRepetitionSystems": true,
+   "needsMaterialLocalOverrides": true,
+   "needsMultipleReviewViews": true,
+   "needsActionReadyHierarchy": true,
+   "rationale": "Choose simple/moderate/complex/ultra-complex from observed structure, not from a hardcoded domain."
+  },
+  "unknownsToResolveBeforeImplementation": [
+   "Exact plan footprint of body vs tower (inferred from ref_5).",
+   "Rosette motif detail (approximated as a six-petal Celtic rosette).",
+   "Interior: not modelled (dark doorway)."
+  ],
+  "detailInventory": {
+   "scanMethod": "component-zones",
+   "targetMinDetails": 10,
+   "details": [
+    {
+     "id": "thatch-courses",
+     "kind": "repetition",
+     "description": "Five to seven stepped thatch courses with frayed, lighter lower edges on both roofs",
+     "region": {
+      "x": 0.03,
+      "y": 0.05,
+      "width": 0.62,
+      "height": 0.4,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "roof silhouette + albedo",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "body-roof"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.85
+    },
+    {
+     "id": "tower-cone-steps",
+     "kind": "contour",
+     "description": "Tower cone built as three or four stacked thatch tiers (stepped profile)",
+     "region": {
+      "x": 0.4,
+      "y": 0.1,
+      "width": 0.4,
+      "height": 0.45,
+      "units": "normalized"
+     },
+     "scale": "macro",
+     "affects": "silhouette",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "tower-roof"
+     },
+     "evidenceRef": "ref_3.png",
+     "confidence": 0.8
+    },
+    {
+     "id": "tower-crown",
+     "kind": "repetition",
+     "description": "Irregular crenellated crown of protruding stones on the tower wall head",
+     "region": {
+      "x": 0.38,
+      "y": 0.4,
+      "width": 0.42,
+      "height": 0.1,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "silhouette",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "tower-wall"
+     },
+     "evidenceRef": "ref_3.png",
+     "confidence": 0.8
+    },
+    {
+     "id": "dry-stone-courses",
+     "kind": "texture",
+     "description": "Flat granite stones in irregular courses, dark dry joints, no mortar",
+     "region": {
+      "x": 0.05,
+      "y": 0.45,
+      "width": 0.65,
+      "height": 0.4,
+      "units": "normalized"
+     },
+     "scale": "micro",
+     "affects": "albedo + normal",
+     "mapsTo": {
+      "type": "material.localOverrides",
+      "ref": "granite-dry-stone"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.85
+    },
+    {
+     "id": "carved-gable",
+     "kind": "linework",
+     "description": "Triangular timber gable over the door with a carved six-petal rosette and border",
+     "region": {
+      "x": 0.35,
+      "y": 0.33,
+      "width": 0.17,
+      "height": 0.12,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "geometry relief",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "door-gable"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.6
+    },
+    {
+     "id": "thatch-dormer",
+     "kind": "contour",
+     "description": "Thatch dormer / hood projecting over the carved gable and door",
+     "region": {
+      "x": 0.32,
+      "y": 0.28,
+      "width": 0.25,
+      "height": 0.2,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "silhouette",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "body-roof"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.7
+    },
+    {
+     "id": "door-frame",
+     "kind": "contour",
+     "description": "Door opening with dressed stone jambs, lintel and a stone threshold step",
+     "region": {
+      "x": 0.37,
+      "y": 0.45,
+      "width": 0.13,
+      "height": 0.32,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "door"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.85
+    },
+    {
+     "id": "porch-rafter-ends",
+     "kind": "repetition",
+     "description": "Row of six or seven round rafter ends under the porch plank roof",
+     "region": {
+      "x": 0.09,
+      "y": 0.5,
+      "width": 0.28,
+      "height": 0.06,
+      "units": "normalized"
+     },
+     "scale": "micro",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "porch"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.85
+    },
+    {
+     "id": "porch-braces",
+     "kind": "contour",
+     "description": "Porch posts with diagonal knee braces to the beam",
+     "region": {
+      "x": 0.09,
+      "y": 0.5,
+      "width": 0.28,
+      "height": 0.25,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "porch"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.8
+    },
+    {
+     "id": "plank-roof",
+     "kind": "texture",
+     "description": "Single-pitch plank roof on the porch, red-brown timber boards",
+     "region": {
+      "x": 0.08,
+      "y": 0.48,
+      "width": 0.3,
+      "height": 0.06,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "geometry + albedo",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "porch"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.8
+    },
+    {
+     "id": "tower-window",
+     "kind": "contour",
+     "description": "Small square window in the tower wall",
+     "region": {
+      "x": 0.58,
+      "y": 0.55,
+      "width": 0.05,
+      "height": 0.1,
+      "units": "normalized"
+     },
+     "scale": "micro",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "tower-wall"
+     },
+     "evidenceRef": "ref_3.png",
+     "confidence": 0.75
+    },
+    {
+     "id": "side-gateway",
+     "kind": "contour",
+     "description": "Wide stone-framed opening on the long side wall",
+     "region": {
+      "x": 0.13,
+      "y": 0.45,
+      "width": 0.17,
+      "height": 0.35,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "body-wall"
+     },
+     "evidenceRef": "ref_2.png",
+     "confidence": 0.7
+    },
+    {
+     "id": "shelter-wall",
+     "kind": "contour",
+     "description": "Low curved dry-stone wall around the shelter, open on one side",
+     "region": {
+      "x": 0.63,
+      "y": 0.65,
+      "width": 0.33,
+      "height": 0.2,
+      "units": "normalized"
+     },
+     "scale": "meso",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "shelter"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.85
+    },
+    {
+     "id": "shelter-fire",
+     "kind": "emissive",
+     "description": "Fire / embers in the shelter",
+     "region": {
+      "x": 0.78,
+      "y": 0.72,
+      "width": 0.1,
+      "height": 0.08,
+      "units": "normalized"
+     },
+     "scale": "micro",
+     "affects": "emissive",
+     "mapsTo": {
+      "type": "material.localOverrides",
+      "ref": "fire"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.6
+    },
+    {
+     "id": "yard-props",
+     "kind": "repetition",
+     "description": "Cart with spoked wheels, barrels, baskets, jars and fruit under the porch",
+     "region": {
+      "x": 0.04,
+      "y": 0.65,
+      "width": 0.35,
+      "height": 0.2,
+      "units": "normalized"
+     },
+     "scale": "micro",
+     "affects": "geometry",
+     "mapsTo": {
+      "type": "component.localFeatures",
+      "ref": "porch-props"
+     },
+     "evidenceRef": "ref_1.png",
+     "confidence": 0.75
+    }
+   ]
+  },
+  "anatomy": {
+   "applies": false,
+   "styleHeads": 0.0,
+   "proportions": {
+    "headUnit": 0.0,
+    "torso": 0.0,
+    "legs": 0.0,
+    "shoulderWidth": 0.0,
+    "hipWidth": 0.0
+   },
+   "pose": {
+    "type": "unassessed",
+    "jointAngles": {}
+   },
+   "faceLandmarks": {
+    "eyeLine": 0.0,
+    "eyeSpacing": 0.0,
+    "noseBase": 0.0,
+    "mouthLine": 0.0,
+    "hairline": 0.0
+   },
+   "features": [],
+   "confidence": 0.0,
+   "note": "Only meaningful when objectClass.primaryDomain is character or hybrid. Set applies=true and fill from forge/stage1_intake/extract_landmarks.py. See grimoire/character/reconstruction.md and grimoire/character/likeness_maximization.md."
+  },
+  "sourceImage": "ref_1.png"
+ },
+ "qualityContract": {
+  "qualityBar": "complex",
+  "definitionOfDone": [
+   "The rendered model matches the reference silhouette, primary proportions, visible component hierarchy, material response, and most recognizable local features for the selected fidelity tier."
+  ],
+  "minimumSpecDepth": {
+   "macroComponents": 3,
+   "mesoComponents": 8,
+   "microFeatureGroups": 5,
+   "materialLayers": 3,
+   "repetitionSystems": 1,
+   "reviewViewpoints": 4
+  },
+  "featureGroups": [
+   {
+    "id": "overall-silhouette",
+    "name": "Overall silhouette and proportions",
+    "required": true,
+    "qualityCriteria": [
+     "Bounding shape, dominant curves, negative spaces, and scale relationships are explicitly described."
+    ],
+    "evidenceRefs": [
+     "full-object"
+    ],
+    "failureModes": [
+     "model reads as a generic placeholder instead of the reference object",
+     "major proportions are guessed without evidence"
+    ]
+   },
+   {
+    "id": "primary-structure",
+    "name": "Primary structure and hierarchy",
+    "required": true,
+    "qualityCriteria": [
+     "Major parts, joints, seams, contact points, and parent-child relationships are named before code generation."
+    ],
+    "evidenceRefs": [
+     "full-object"
+    ],
+    "failureModes": [
+     "large visible parts are merged into one mesh",
+     "component hierarchy is too shallow for the observed complexity"
+    ]
+   },
+   {
+    "id": "attachment-joint-correctness",
+    "name": "Attachment and joint correctness",
+    "required": true,
+    "qualityCriteria": [
+     "Every visible child appendage, branch, limb, handle, connector, tube, cable, horn, wing, leg, or hinged part has an attachment contract with parent socket, localStart/localEnd, contact type, embed/overlap, and gap tolerance."
+    ],
+    "evidenceRefs": [
+     "full-object"
+    ],
+    "failureModes": [
+     "child part root floats away from the parent",
+     "branch/limb/tube is centered in space instead of pivoting from its root",
+     "parent-child transform mixes world and local coordinates"
+    ]
+   },
+   {
+    "id": "surface-material-response",
+    "name": "Surface material response",
+    "required": true,
+    "qualityCriteria": [
+     "Albedo zones, roughness, normal/bump/displacement intent, cavity dirt, edge wear, and local overrides are specified where visible.",
+     "Important materials define independent albedo, roughness, height/normal, and AO responses instead of reusing one texture for unrelated PBR channels.",
+     "Surface response is decomposed into macro, meso, and micro frequency bands with scale and amplitude tied to object scale."
+    ],
+    "evidenceRefs": [
+     "full-object"
+    ],
+    "failureModes": [
+     "surface looks like flat plastic",
+     "local material variation is missing or not tied to image evidence"
+    ]
+   },
+   {
+    "id": "reference-lookdev",
+    "name": "Reference color, material, and lighting response",
+    "required": true,
+    "qualityCriteria": [
+     "Material-pass names the reference-derived albedo palette, roughness variation, tactile normal/bump/displacement response, and local masks.",
+     "When a source image is available, run reference PBR extraction and require confidence >= 0.7 before treating maps as implementation-ready.",
+     "Lighting-pass names key/fill/rim or environment light, exposure, tone mapping, background, and contact shadow behavior.",
+     "Neutral, grazing-angle, and reference-matched renders prove that surface relief survives relighting and is not painted into albedo."
+    ],
+    "evidenceRefs": [
+     "full-object"
+    ],
+    "failureModes": [
+     "model has acceptable shape but reads as flat shaded or plastic",
+     "colors are a generic average instead of reference-observed local color zones",
+     "lighting is evenly ambient and cannot reproduce the source value range"
+    ]
+   }
+  ],
+  "visualDeltaChecks": [
+   "silhouette and negative-space delta",
+   "component hierarchy depth delta",
+   "repetition density and distribution delta",
+   "material albedo/roughness/normal response delta",
+   "local feature placement and scale delta"
+  ],
+  "antiShallowSpecRules": [
+   "Do not proceed to code if qualityContract.qualityBar is unassessed.",
+   "Do not proceed to code if the spec only contains a root component for a moderate or complex object.",
+   "Do not proceed to code if required featureGroups are not represented by componentTree, materials, or repetitionSystems.",
+   "Do not proceed to code if visible local features are described only in prose and not attached to components/materials/evidenceRefs.",
+   "Do not proceed past structural-pass if attached child parts lack attachment.parentSocket, localStart, localEnd, embedDepth/overlap, and gapTolerance.",
+   "Do not pass material look-dev when albedo is reused as roughness, height, normal, or AO.",
+   "Do not pass material look-dev without macro, meso, and micro surface frequency bands for close-up materials.",
+   "Do not pass reference-fidelity material look-dev from a source image without usable referencePbr maps or an explicit documented limitation.",
+   "Do not patch a spec with extracted PBR maps when extraction confidence is below the target threshold unless the user explicitly accepts lower fidelity.",
+   "Do not place adjacent separate-geometry parts below 0.02 world-unit seam overlap (source: grimoire/build/geometry_patterns.md).",
+   "Do not satisfy raised or recessed relief, fasteners, or grip structure with a map alone when the feature affects form; use geometry or displacement (source: grimoire/build/geometry_patterns.md)."
+  ]
+ },
+ "authoringInstruction": "Fill observed object class, complexity reasoning, featureGroups, visualDeltaChecks, and unknowns before generating or implementing ObjectSculptSpec.",
+ "localSpecSearch": {
+  "collection": "core_3d",
+  "query": "Casa composta do castro thatch roof dry stone wall round tower conical roof timber porch",
+  "index": {
+   "status": "rebuilt",
+   "reason": "missing",
+   "fingerprint": "ac4f0bc9028e34083dbb5d5531ae3df7699c8e7641d5f8e6d42e7492ea1be1d0"
+  },
+  "matches": [
+   {
+    "record_id": "core.shader-mapping-cylindergeometry-barrels-round-components",
+    "file_path": "docs/raw/img2threejs-skill-dataset.json",
+    "heading": null,
+    "key_path": "categories.rendering_shader_mapping[4]",
+    "score": 7.696442865086,
+    "snippets": [
+     "... part. Ánh xạ tới mọi bộ phận có tiết diện tròn dạng nòng. Recognition cues: Long uniform-cross-section round part (barrel, suppressor, muzzle brake body, cleaning rod, magazine tube) Dấu hiệu nhận diện: Bộ phận tròn có tiết ..."
+    ],
+    "source_refs": [
+     {
+      "path": "docs/raw/img2threejs-skill-dataset.json",
+      "heading": null,
+      "key_path": "categories.rendering_shader_mapping[4]"
+     }
+    ],
+    "evidence_refs": [
+     {
+      "kind": "source",
+      "ref": "docs/raw/img2threejs-skill-dataset.json",
+      "note": "img2threejs NotebookLM research distillation"
+     }
+    ]
+   },
+   {
+    "record_id": "core.shader-mapping-conegeometry-tapered-tips",
+    "file_path": "docs/raw/img2threejs-skill-dataset.json",
+    "heading": null,
+    "key_path": "categories.rendering_shader_mapping[11]",
+    "score": 3.444012187557,
+    "snippets": [
+     "... giống đầu đạn hoặc có mũi nhọn. Recognition cues: Tapered pointed shape narrowing to a point — projectile tips, some conical muzzle device shapes Dấu hiệu nhận diện: Hình thon nhọn thu về một điểm — đầu đạn, một số hình dạng đầu nòng ..."
+    ],
+    "source_refs": [
+     {
+      "path": "docs/raw/img2threejs-skill-dataset.json",
+      "heading": null,
+      "key_path": "categories.rendering_shader_mapping[11]"
+     }
+    ],
+    "evidence_refs": [
+     {
+      "kind": "source",
+      "ref": "docs/raw/img2threejs-skill-dataset.json",
+      "note": "img2threejs NotebookLM research distillation"
+     }
+    ]
+   },
+   {
+    "record_id": "core.pbr-anisotropy",
+    "file_path": "docs/raw/img2threejs-skill-dataset.json",
+    "heading": null,
+    "key_path": "categories.material_pbr[6]",
+    "score": 2.761412737115,
+    "snippets": [
+     "... loại được chải xước hoặc có rãnh, phản xạ kéo dài theo hướng vân. Recognition cues: Elongated, streaky highlights (not round) that stay aligned with visible brush/groove marks as the view angle changes; Common on brushed steel/titanium ..."
+    ],
+    "source_refs": [
+     {
+      "path": "docs/raw/img2threejs-skill-dataset.json",
+      "heading": null,
+      "key_path": "categories.material_pbr[6]"
+     }
+    ],
+    "evidence_refs": [
+     {
+      "kind": "source",
+      "ref": "docs/raw/img2threejs-skill-dataset.json",
+      "note": "img2threejs NotebookLM research distillation"
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -436,4 +436,4 @@ export function createBuildings( app, mats, progress, { separate = false } = {} 
 	return group;
 }
 
-export { woodpile, basket, jar, doorAngle };
+export { woodpile, basket, jar, quern, oxCart, doorAngle };

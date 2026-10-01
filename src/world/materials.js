@@ -30,7 +30,8 @@ const proxyTone = ( mat, a, b, k = 1 ) => {
 const worldPatch = ( T ) => texture( T.world, vec2( positionWorld.x.add( positionWorld.y.mul( 0.5 ) ), positionWorld.z.sub( positionWorld.y.mul( 0.5 ) ) ).div( SURFACE.world ) );
 
 // Dry-stone masonry (no mortar): irregular courses of granite blocks.
-export function stoneMaterial( T, { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB = 0xb0a692, moss = 0.6 } = {} ) {
+// fade: the pixel footprint, in rows, over which the stone cells fade to the average tone
+export function stoneMaterial( T, { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB = 0xb0a692, moss = 0.6, fade = [ 0.02, 0.12 ], gapColor = 0x2b2721, bump = 1.6 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
 	const st = uv();
 	// the stone cells, in cell space (len x rowH metres per cell)
@@ -40,19 +41,19 @@ export function stoneMaterial( T, { rowH = 0.3, len = 0.55, tintA = 0x746d61, ti
 	const cid = s.g, n = s.b;
 	let col = mix( color( tintA ), color( tintB ), cid.mul( 0.7 ).add( n.mul( 0.3 ) ) );
 	col = mix( col, col.mul( vec3( 1.06, 1.0, 0.9 ) ), hash( cid.mul( 91.0 ) ).step( 0.7 ) );
-	const gap = color( 0x2b2721 );
+	const gap = color( gapColor );
 	// lichen and moss: patchy, stronger low on the wall and on top faces
 	const mn = worldPatch( T ).r;
 	const mossM = smoothstep( 0.55, 0.8, mn.add( normalWorld.y.clamp( 0, 1 ).mul( 0.35 ) ).add( smoothstep( 0.0, 1.2, st.y ).oneMinus().mul( 0.15 ) ) ).mul( moss );
 	col = mix( col, mix( color( 0x4d5a2a ), color( 0x7c7e48 ), n ), mossM.mul( 0.65 ) );
-	const far = aa( st, rowH * 0.02, rowH * 0.12 );
+	const far = aa( st, rowH * fade[ 0 ], rowH * fade[ 1 ] );
 	const avg = mix( color( tintA ), color( tintB ), 0.5 ).mul( 0.72 );
 	const farCol = mix( avg, mix( color( 0x4d5a2a ), color( 0x7c7e48 ), 0.5 ), mossM.mul( 0.6 ) );
 	mat.colorNode = mix( mix( gap, col, mix( stoneMask, 1.0, far ) ), farCol, far );
 	mat.roughnessNode = float( 0.92 );
 	// pillowed stone faces
 	const bumpH = smoothstep( 0.0, 0.07, edge ).mul( 0.8 ).add( n.mul( 0.25 ) );
-	mat.normalNode = proceduralBump( bumpH, far.oneMinus().mul( 1.6 ) );
+	mat.normalNode = proceduralBump( bumpH, far.oneMinus().mul( bump ) );
 	return proxyTone( mat, tintA, tintB, 0.8 );
 }
 
@@ -186,6 +187,11 @@ export function createBuildingMaterials( T ) {
 		// weathered, dark straw (the reference roofs are brown-grey, not straw yellow)
 		thatch: thatchMaterial( T, { base: 0x544a3a, light: 0x756a54 } ),
 		thatchGreen: thatchMaterial( T, { base: 0x4a4834, light: 0x666244, mossy: 0.55 } ),
+		// the composite castro house (world/castroHouse.js, ref/casa_castro): thin flat granite slabs in
+		// ~14 courses per wall, neutral cool grey (reference crop mean 82,79,77, light 125,116,109),
+		// and darker olive-brown thatch (crop mean 69,61,48). Compiled only where a mesh uses them.
+		castroStone: stoneMaterial( T, { tintA: 0x3f4045, tintB: 0xa4a6b0, rowH: 0.2, len: 0.5, moss: 0.15, fade: [ 0.05, 0.25 ], gapColor: 0x2c2b2a, bump: 0 } ), // no bump: at 0.2 m courses the joint step flipped the normal (black lines)
+		castroThatch: thatchMaterial( T, { base: 0x24211d, light: 0x6c604f, mossy: 0.12 } ),
 		wattle: wattleMaterial( T ),
 		wood: woodMaterial( T ),
 		woodPost: woodMaterial( T, { a: 0x3f2d20, b: 0x624631, plank: 10, seams: false } ),
