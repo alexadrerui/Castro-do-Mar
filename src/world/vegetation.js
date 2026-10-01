@@ -132,6 +132,12 @@ export function sampleMask( mask, x, z ) {
 }
 
 // How much free space around (x,z) for vegetation (0 = forbidden, 1 = free).
+// Lakes at their own level (world/lakeWater.js) keep their water clear of plants and rocks: set by
+// main.js once the lakes are filled (none in the worker).
+let lakeTest = null;
+export function setLakeTest( fn ) { lakeTest = fn; }
+export const inLake = ( x, z ) => !! lakeTest && lakeTest( x, z );
+
 export function clearance( x, z, mask, pad = 0 ) {
 	const [ path, dirt, field ] = sampleMask( mask, x, z );
 	if ( path > 0.05 || field > 0.2 ) return 0;
@@ -252,7 +258,7 @@ export async function createVegetation( app, progress ) {
 		for ( let x = x0; x < x1; x += step ) {
 			const px = x + ( rnd() - 0.5 ) * step, pz = z + ( rnd() - 0.5 ) * step;
 			const h = hf.heightAt( px, pz );
-			if ( h < 1.6 || h > 430 ) continue;
+			if ( h < 1.6 || h > 430 || inLake( px, pz ) ) continue;
 			const slope = hf.slopeAt( px, pz );
 			if ( slope > 0.95 ) continue;
 			const distV = Math.hypot( px - VILLAGE.x, pz - VILLAGE.z );
@@ -308,7 +314,7 @@ export async function createVegetation( app, progress ) {
 					if ( prnd() >= Math.min( 1, n ) ) continue;
 					const x = tx + prnd() * NATURE.cell, z = tz + prnd() * NATURE.cell;
 					const h = hf.heightAt( x, z );
-					if ( h < 1.2 || hf.slopeAt( x, z ) > 1.1 ) continue;
+					if ( h < 1.2 || hf.slopeAt( x, z ) > 1.1 || inLake( x, z ) ) continue;
 					if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 && clearance( x, z, app.mask ) <= 0 ) continue;
 					if ( place( sp, x, z, s0 + prnd() * ( s1 - s0 ), tilt, prnd ) ) counts[ sp ] ++;
 				}

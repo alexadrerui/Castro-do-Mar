@@ -53,7 +53,7 @@ export function findLakes( hf, waterLevel, edits ) {
 
 // window of the grid around the lake (+2 cells), its water mask and the distance to the shore in
 // metres (two-pass chamfer, 0 on dry cells)
-function makeLake( hf, cells, waterLevel ) {
+export function makeLake( hf, cells, waterLevel ) {
 	const n = hf.n, cell = hf.cell;
 	let i0 = n, i1 = 0, j0 = n, j1 = 0, sx = 0, sz = 0, deepest = 0;
 	for ( const k of cells ) {
@@ -104,7 +104,7 @@ function makeLake( hf, cells, waterLevel ) {
 	let maxShore = 0, cx = 0, cz = 0;
 	for ( let k = 0; k < w * h; k ++ ) if ( dist[ k ] > maxShore ) { maxShore = dist[ k ]; cx = x0 + ( k % w ) * cell; cz = z0 + Math.floor( k / w ) * cell; }
 	return {
-		area: cells.length * cell * cell, deepest, maxShore,
+		level: waterLevel, area: cells.length * cell * cell, deepest, maxShore,
 		// the point farthest from the shore (the fish start around it)
 		cx, cz,
 		box: [ x0, z0, x0 + ( w - 1 ) * cell, z0 + ( h - 1 ) * cell ],

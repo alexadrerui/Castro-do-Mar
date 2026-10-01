@@ -24,6 +24,8 @@ import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
 import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
+import { Lakes } from './world/lakeWater.js';
+import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
@@ -166,6 +168,16 @@ async function main() {
 		scene.add( water.mesh );
 		app.water = water;
 		app.layers.water = { label: 'Água', object: water.mesh };
+		// lakes at their own level (world/lakeWater.js: the terrain editor's "Encher"); their water
+		// reflects the sky's environment map, built here already so they are in the pre-compile
+		const lakes = new Lakes( { hf, seeds: app.worldEdits?.lakes ?? [] } );
+		app.lakes = lakes;
+		if ( lakes.list.length ) setLakeTest( ( x, z ) => lakes.wet( x, z ) );
+		scene.add( lakes.group );
+		if ( lakes.list.length || params.has( 'edit' ) ) {
+			sky.buildEnv();
+			lakes.attachWater( terrain.heightTex, sky.state.sunDir, scene.environment );
+		}
 	} );
 
 	await loader.run( 'horizon', async ( p ) => {
@@ -205,8 +217,9 @@ async function main() {
 	app.fish = fish;
 	app.layers.fish = { label: 'Peixes', object: fish.group };
 	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
-	// Koi and lotus in the lakes dug in the terrain editor (world/koi: none until one is dug).
-	const koi = new KoiPonds( { hf, waterLevel: WATER_LEVEL, edits: app.terrainEdits } );
+	// Koi and lotus in the lakes made in the terrain editor ("Encher", or dug below the sea level):
+	// world/koi, nothing until there is one.
+	const koi = new KoiPonds( { hf, waterLevel: WATER_LEVEL, edits: app.terrainEdits, lakes: app.lakes.list } );
 	app.koi = koi;
 	if ( koi.ponds.length ) {
 		scene.add( koi.group );
@@ -326,7 +339,10 @@ async function main() {
 	scene.add( underside.mesh );
 	app.underside = underside;
 	app.onFrame.push( ( dt ) => {
-		underwater.update( camera, WATER_LEVEL );
+		// a lake's own level when the camera is over one (world/lakeWater.js)
+		const wl = app.lakes.levelAt( camera.position.x, camera.position.z );
+		cam.waterLevel = wl;
+		underwater.update( camera, wl );
 		lens.update( dt, underwater.on.value > 0.5 );
 		snow.update( camera, underwater.on.value > 0.5 );
 		underside.update( underwater.on.value > 0.5 );

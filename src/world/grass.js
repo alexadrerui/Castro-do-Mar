@@ -15,7 +15,7 @@ import {
 } from 'three/tsl';
 import { mulberry32, smoothstep as ss } from '../core/noise.js';
 import { meadowTone } from './terrain.js';
-import { clearance } from './vegetation.js';
+import { clearance, inLake } from './vegetation.js';
 import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE } from './layout.js';
 
@@ -332,7 +332,7 @@ function buildDensity( app ) {
 		for ( let i = 0; i < res; i ++ ) {
 			const x = hf.x0 + ( i + 0.5 ) * DENSITY_TEXEL;
 			const h = hf.heightAt( x, z );
-			if ( h < 0.4 ) continue;
+			if ( h < 0.4 || inLake( x, z ) ) continue;
 			const slope = hf.slopeAt( x, z );
 			// the terrain's rock exposure (terrain.js rockM): slopes, the high ground, outcrops
 			const mi = Math.min( 1023, Math.floor( ( x - hf.x0 ) / hf.size * 1024 ) ), mj = Math.min( 1023, Math.floor( ( z - hf.z0 ) / hf.size * 1024 ) );

@@ -12,6 +12,7 @@
 // the rest (AO, vegetation, rocks, houses, grass) is rebuilt from the edited relief on the next
 // load: "Salvar e aplicar" writes public/terrain-edits.bin and reloads.
 //
+// Encher: pours a lake at its own level into the hollow under the click (world/lakeWater.js).
 // Water tools (after the shoreline tools of the Habitat Creator game): dig down to a depth below the
 // water level, fill up to a height above it; both leave a ramp of the chosen width between the new
 // level and the relief as it was before the stroke (natural banks, no step at the rim).
@@ -34,7 +35,8 @@ const TOOLS = [
 	{ id: 'restore', label: 'Restaurar', hint: 'Desfaz as edições sob o pincel: volta ao relevo procedural' },
 	{ id: 'dig', label: 'Cavar', hint: 'Cava até a profundidade abaixo do nível da água, com margem em rampa até o relevo de antes' },
 	{ id: 'fill', label: 'Aterrar', hint: 'Aterra até a altura acima do nível da água, com margem em rampa até o fundo de antes' },
-	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' }
+	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' },
+	{ id: 'lake', label: 'Encher', hint: 'Clique numa depressão: a água sobe até a borda mais baixa, menos 20 cm (lago com nível próprio, carpas e lótus ao salvar). Shift+clique: remove o lago' }
 ];
 const UNDO_MAX = 40;
 const UNDO_CELLS = 4e6; // ~48 MB of history at most
@@ -268,12 +270,45 @@ export class TerrainEditor {
 		} );
 	}
 
+	// "Encher": a lake at its own level in the hollow under the point (world/lakeWater.js), kept as a
+	// point in the world edits (saved with "Salvar e aplicar"; the koi and lotus come on the reload).
+	// Shift: removes the lake under the point.
+	_pour( p ) {
+		const lakes = this.app.lakes, obj = this.app.objectEditor;
+		if ( ! lakes || ! obj ) { this._toast( 'Encher precisa do editor de objetos (?edit).' ); return; }
+		const list = obj.edits.lakes ??= [];
+		if ( this.invert ) {
+			const lake = lakes.at( p.x, p.z );
+			if ( ! lake ) { this._toast( 'Nenhum lago aqui.' ); return; }
+			lakes.remove( lake );
+			obj.edits.lakes = list.filter( ( s ) => ! lake.cellSet.has( this._cellOf( s.x, s.z ) ) );
+			obj.changed = true;
+			this._toast( 'Lago removido (salve para aplicar).' );
+			return;
+		}
+		const res = lakes.add( { x: p.x, z: p.z } );
+		if ( res.error ) {
+			const msg = { fora: 'fora do mapa', mar: 'isto é mar', grande: 'a bacia é grande demais (a água escaparia longe daqui)', raso: 'não é uma depressão: a água escorreria daqui', repetido: 'já há um lago nesta depressão' }[ res.error ];
+			this._toast( `Não dá para encher aqui: ${ msg }.` );
+			return;
+		}
+		list.push( res.seed );
+		obj.changed = true;
+		this._toast( `Lago: nível ${ res.level.toFixed( 1 ) } m, ${ Math.round( res.area ) } m², até ${ res.deepest.toFixed( 1 ) } m de fundo. Salve para as carpas e o lótus.` );
+	}
+
+	_cellOf( x, z ) {
+		const hf = this.hf;
+		return Math.round( ( z - hf.z0 ) / hf.cell ) * hf.n + Math.round( ( x - hf.x0 ) / hf.cell );
+	}
+
 	// ------------------------------------------------------------------ strokes, undo
 
 	_begin() {
 		if ( ! this.hit ) return false;
 		this.stroke = { touched: new Map(), flattenTo: this.hit.y, noise: null, last: this.hit.clone() };
 		if ( this.tool === 'generate' ) { this._stamp( this.hit.x, this.hit.z ); this._end(); return false; }
+		if ( this.tool === 'lake' ) { this.stroke = null; this._pour( this.hit ); return false; }
 		return true;
 	}
 
@@ -413,7 +448,7 @@ export class TerrainEditor {
 		const water = this.tool === 'dig' || this.tool === 'fill';
 		fill( this.ringInner, Math.max( 0.5, water ? this.radius - Math.min( this.water.shore, this.radius ) : this.radius * this.hardness * 0.95 ) );
 		const neg = ( this.tool === 'lower' ) !== this.invert;
-		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : this.tool === 'dig' ? 0x5fc8e8 : this.tool === 'fill' ? 0xd8b56a : neg ? 0xff9a6a : 0xe6c987;
+		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : this.tool === 'dig' || this.tool === 'lake' ? 0x5fc8e8 : this.tool === 'fill' ? 0xd8b56a : neg ? 0xff9a6a : 0xe6c987;
 		this.ringOuter.material.color.setHex( c );
 		this.ringInner.material.color.setHex( c );
 	}

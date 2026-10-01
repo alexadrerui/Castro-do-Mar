@@ -7,15 +7,18 @@
 //
 //   {
 //     "objects": { "b3": { "x": -40, "z": 12, "yaw": 0.4, "scale": 1.2 }, "s5": { "removed": true } },
-//     "added": [ { "id": "a0", "kind": "building", "type": "round", "x": 10, "z": 40, "r": 5, "seed": 100, "yaw": 0, "scale": 1 } ]
+//     "added": [ { "id": "a0", "kind": "building", "type": "round", "x": 10, "z": 40, "r": 5, "seed": 100, "yaw": 0, "scale": 1 } ],
+//     "lakes": [ { "x": -18, "z": -48 } ]
 //   }
+// lakes: the points where the terrain editor's "Encher" poured water (world/lakeWater.js fills each
+// hollow up to its spill height on every load, so editing the relief reshapes the lake).
 // Ids: b<i> = BUILDINGS[ i ], s<i> = STALLS[ i ], p<i> = PROPS[ i ] (indices of the original lists),
 // a<n> = an added object. yaw is a turn added to the object's own rotation, scale is uniform.
 import { BUILDINGS, STALLS, PROPS } from './layout.js';
 
 export const WORLD_EDITS_URL = ( import.meta.env?.BASE_URL ?? '/' ) + 'world-edits.json';
 
-export const emptyWorldEdits = () => ( { objects: {}, added: [] } );
+export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [] } );
 
 // the edits, or null when there are none
 export async function loadWorldEdits() {
@@ -25,8 +28,9 @@ export async function loadWorldEdits() {
 			if ( ! res.ok || ! /json/.test( res.headers.get( 'content-type' ) || '' ) ) continue;
 			const e = await res.json();
 			if ( ! e || typeof e !== 'object' ) return null;
-			const out = { objects: e.objects || {}, added: Array.isArray( e.added ) ? e.added : [] };
-			return Object.keys( out.objects ).length || out.added.length ? out : null;
+			const lakes = Array.isArray( e.lakes ) ? e.lakes.filter( ( l ) => Number.isFinite( l?.x ) && Number.isFinite( l?.z ) ) : [];
+			const out = { objects: e.objects || {}, added: Array.isArray( e.added ) ? e.added : [], lakes };
+			return Object.keys( out.objects ).length || out.added.length || lakes.length ? out : null;
 		} catch ( err ) { /* try the next */ }
 	}
 	return null;

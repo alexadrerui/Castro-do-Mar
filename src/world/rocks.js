@@ -5,7 +5,7 @@ import {
 import { SURFACE } from './surfaceBake.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
-import { clearance, sampleMask } from './vegetation.js';
+import { clearance, sampleMask, inLake } from './vegetation.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, natureAt, texelSeed } from './natureEdits.js';
 import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
@@ -130,7 +130,7 @@ export function createRocks( app, progress ) {
 		for ( let x = hf.x0 + 20; x < hf.x0 + hf.size - 20; x += step ) {
 			const px = x + ( rnd() - 0.5 ) * step, pz = z + ( rnd() - 0.5 ) * step;
 			const h = hf.heightAt( px, pz );
-			if ( h < 2 || h > 700 ) continue;
+			if ( h < 2 || h > 700 || inLake( px, pz ) ) continue;
 			const slope = hf.slopeAt( px, pz );
 			const outcrop = ss( 0.05, 0.4, fbm( nR, px * 0.012, pz * 0.012, 3 ) );
 			const hill = ss( 30, 60, h );
@@ -156,7 +156,7 @@ export function createRocks( app, progress ) {
 		for ( let x = hf.x0 + 20; x < hf.x0 + hf.size - 20; x += 3 ) {
 			const px = x + ( rnd() - 0.5 ) * 3, pz = z + ( rnd() - 0.5 ) * 3;
 			const h = hf.heightAt( px, pz );
-			if ( h < - 2.2 || h > 5 ) continue;
+			if ( h < - 2.2 || h > 5 || inLake( px, pz ) ) continue;
 			const band = 1 - ss( 1.5, 5, Math.abs( h - 0.8 ) );
 			const n = 0.5 + 0.5 * nR( px * 0.05, pz * 0.05 );
 			if ( rnd() > band * ( 0.12 + 0.35 * n ) ) continue;
@@ -187,7 +187,7 @@ export function createRocks( app, progress ) {
 		for ( let x = - 320; x < 260; x += 1.3 ) {
 			const px = x + ( rnd() - 0.5 ) * 1.3, pz = z + ( rnd() - 0.5 ) * 1.3;
 			const h = hf.heightAt( px, pz );
-			if ( h < - 0.5 ) continue;
+			if ( h < - 0.5 || inLake( px, pz ) ) continue;
 			const [ path, dirt ] = sampleMask( app.mask, px, pz );
 			const edge = path > 0.05 && path < 0.85 ? 0.5 : path >= 0.85 ? 0.12 : 0;
 			const shore = h < 3 ? 0.3 : 0;

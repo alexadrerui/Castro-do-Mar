@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, cameraPosition, time, reflector,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, pow, dot, normalize, reflect, length, sin,
-	mx_noise_float
+	mx_noise_float, pmremTexture
 } from 'three/tsl';
 import { WATER_LEVEL } from './layout.js';
 
@@ -45,7 +45,12 @@ function createWaveTexture( size = 256, seed = 7 ) {
 	return tex;
 }
 
+// opts: waveStrength, foam (the surf; lakes are calmer), level (WATER_LEVEL; a lake's own level, world/lakeFill.js), geometry (a horizontal surface in
+// world space; the sea's endless plane when omitted), envMap (lakes: the sky's PMREM reflected instead
+// of a planar reflector, one extra scene pass per lake was too dear), reflectionScale.
 export function createWater( heightTex, sunDir, opts = {} ) {
+	const level = opts.level ?? WATER_LEVEL;
+	const planar = ! opts.envMap;
 
 	const waveTex = createWaveTexture();
 	const U = {
@@ -54,7 +59,8 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		deep: uniform( new THREE.Color( 0x173556 ) ),
 		mid: uniform( new THREE.Color( 0x17506b ) ),
 		shallow: uniform( new THREE.Color( 0x2f6f74 ) ),
-		waveStrength: uniform( 0.4 ),
+		waveStrength: uniform( opts.waveStrength ?? 0.4 ),
+		foam: uniform( opts.foam ?? 1 ), // the surf at the shore (a still lake: a thin wet line)
 		reflectivity: uniform( 1.0 )
 	};
 
@@ -63,10 +69,13 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	mat.depthWrite = true;
 	mat.name = 'WaterTSL';
 
-	const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 36000, 36000, 1, 1 ), mat );
-	mesh.rotation.x = - Math.PI / 2;
-	mesh.position.y = WATER_LEVEL;
-	mesh.name = 'water';
+	const geo = opts.geometry ?? new THREE.PlaneGeometry( 36000, 36000, 1, 1 );
+	const mesh = new THREE.Mesh( geo, mat );
+	if ( ! opts.geometry ) {
+		mesh.rotation.x = - Math.PI / 2;
+		mesh.position.y = level;
+	}
+	mesh.name = opts.geometry ? 'lakeWater' : 'water';
 	mesh.renderOrder = 1;
 
 	const hd = heightTex.userData;
@@ -80,7 +89,9 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	const huv = wp.xz.sub( vec2( hd.x0, hd.z0 ) ).div( hd.cell ).add( 0.5 ).div( hd.n );
 	const insideT = smoothstep( 0.0, 0.004, huv.x ).mul( smoothstep( 0.996, 1.0, huv.x ).oneMinus() ).mul( smoothstep( 0.0, 0.004, huv.y ) ).mul( smoothstep( 0.996, 1.0, huv.y ).oneMinus() );
 	const groundH = mix( float( - 40 ), texture( heightTex, huv ).r, insideT );
-	const depth = max( float( WATER_LEVEL ).sub( groundH ), 0.0 );
+	// the surface's own height (the sea plane at WATER_LEVEL, a lake at its level): every lake shares
+	// the same shader code
+	const depth = max( wp.y.sub( groundH ), 0.0 );
 
 	// Large-scale variation (as three's WaterMesh, which mixes samples at scales of hundreds of
 	// metres to hide the tiling): wind patches from low-frequency noise (~420 m and ~140 m
@@ -108,10 +119,17 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		.mul( smoothstep( 0.0, 1.5, depth ).mul( 0.7 ).add( 0.3 ) );
 	const N = normalize( vec3( slope.x.mul( strength ).negate(), 1.0, slope.y.mul( strength ).negate() ) );
 
-	// planar reflection with wave distortion
-	const refl = reflector( { resolutionScale: opts.reflectionScale ?? 0.45, generateMipmaps: false, bounces: false } );
-	refl.uvNode = refl.uvNode.add( N.xz.mul( 0.012 ).mul( smoothstep( 0, 3000, dist ).oneMinus().mul( 0.8 ).add( 0.2 ) ).mul( mix( 0.4, 1.7, windField ) ) );
-	mesh.add( refl.target );
+	// planar reflection with wave distortion (the sea); a lake reflects the sky's environment map
+	let refl = null, reflNode;
+	if ( planar ) {
+		refl = reflector( { resolutionScale: opts.reflectionScale ?? 0.45, generateMipmaps: false, bounces: false } );
+		refl.uvNode = refl.uvNode.add( N.xz.mul( 0.012 ).mul( smoothstep( 0, 3000, dist ).oneMinus().mul( 0.8 ).add( 0.2 ) ).mul( mix( 0.4, 1.7, windField ) ) );
+		mesh.add( refl.target );
+		reflNode = refl.rgb;
+	} else {
+		U.envGain = uniform( opts.envGain ?? 0.55 );
+		reflNode = pmremTexture( opts.envMap, reflect( V.negate(), N ), float( 0.04 ) ).rgb.mul( U.envGain );
+	}
 
 	mat.colorNode = Fn( () => {
 		const L = normalize( U.sunDir );
@@ -124,7 +142,7 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		const diffuse = max( dot( N, L ), 0.0 ).mul( 0.35 ).add( 0.45 );
 		const bodyLit = body.mul( U.sunColor ).mul( diffuse );
 
-		const reflCol = refl.rgb.min( vec3( 1.1 ) );
+		const reflCol = reflNode.min( vec3( 1.1 ) );
 		// wind patches read mostly through the reflection: calm slicks are a bright mirror, the
 		// rippled patches scatter it and show more of the darker water body
 		const kR = clamp( fres.mul( 1.15 ).add( 0.06 ), 0.0, 1.0 ).mul( U.reflectivity ).mul( mix( 1.0, 0.62, windField ) );
@@ -139,7 +157,7 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		const fn = mx_noise_float( wp.xz.mul( 0.35 ).add( time.mul( 0.08 ) ) ).mul( 0.5 ).add( 0.5 );
 		const band = sin( depth.mul( 9.0 ).sub( time.mul( 1.7 ) ).add( fn.mul( 5.0 ) ) ).mul( 0.5 ).add( 0.5 );
 		const foam = smoothstep( 0.0, 1.1, depth ).oneMinus().mul( smoothstep( 0.55, 0.95, band ).mul( 0.6 ).add( smoothstep( 0.0, 0.35, depth ).oneMinus() ) ).mul( fn.mul( 0.6 ).add( 0.5 ) );
-		col.assign( mix( col, vec3( 0.92, 0.95, 0.95 ), clamp( foam, 0, 0.9 ) ) );
+		col.assign( mix( col, vec3( 0.92, 0.95, 0.95 ), clamp( foam.mul( U.foam ), 0, 0.9 ) ) );
 		return col;
 	} )();
 
@@ -158,12 +176,13 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	// from under the water, not in the reflection).
 	const shadowMat = new THREE.ShadowNodeMaterial( { color: 0x06141c, opacity: 0.42, transparent: true, depthWrite: false } );
 	shadowMat.name = 'WaterShadow';
-	const shadowMesh = new THREE.Mesh( new THREE.PlaneGeometry( 36000, 36000, 1, 1 ), shadowMat );
+	const shadowMesh = new THREE.Mesh( opts.geometry ?? new THREE.PlaneGeometry( 36000, 36000, 1, 1 ), shadowMat );
 	shadowMesh.name = 'waterShadow';
 	shadowMesh.receiveShadow = true;
 	shadowMesh.renderOrder = 2;
 	mesh.add( shadowMesh );
-	shadowMesh.position.set( 0, 0, 0.02 ); // a child of the (rotated) water plane: 2 cm above it
+	// 2 cm above the water (the sea's shadow is a child of the rotated plane: its local z is up)
+	if ( opts.geometry ) shadowMesh.position.set( 0, 0.02, 0 ); else shadowMesh.position.set( 0, 0, 0.02 );
 
 	return { mesh, material: mat, uniforms: U, reflector: refl, shadowMesh };
 }
