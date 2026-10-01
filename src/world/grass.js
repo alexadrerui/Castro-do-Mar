@@ -16,6 +16,7 @@ import {
 import { mulberry32, smoothstep as ss } from '../core/noise.js';
 import { meadowTone } from './terrain.js';
 import { clearance } from './vegetation.js';
+import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE } from './layout.js';
 
 // The world is divided into CELL x CELL metre cells. Every visible cell near the camera draws one
@@ -343,11 +344,13 @@ function buildDensity( app ) {
 			// dune: the low, gentle shore strip
 			const dune = ss( 0.4, 1.0, h ) * ( 1 - ss( 3.5, 6.5, h ) ) * ( 1 - ss( 0.12, 0.35, slope ) ) * ( 1 - outcrop );
 			const meadow = ( 1 - rock ) * ss( 2.5, 5.5, h ) * ( 1 - ss( 220, 320, h ) ) * free;
+			// the nature brush (world/natureEdits.js): erasing thins every kind, painting adds meadow
+			const pv = natureAt( app.natureEdits, CH.grass, x, z ), keep = 1 + Math.min( 0, pv ), add = Math.max( 0, pv );
 			const k = ( j * res + i ) * 4;
-			data[ k ] = Math.round( 255 * dune * free );
-			data[ k + 1 ] = Math.round( 255 * Math.min( 1, meadow * 1.1 ) );
-			data[ k + 2 ] = Math.round( 255 * dune * 0.55 * free );
-			data[ k + 3 ] = Math.round( 255 * dune * ( 1 - ss( 1.8, 3.2, h ) ) * 0.6 * free );
+			data[ k ] = Math.round( 255 * dune * free * keep );
+			data[ k + 1 ] = Math.round( 255 * Math.max( Math.min( 1, meadow * 1.1 ) * keep, add * free ) );
+			data[ k + 2 ] = Math.round( 255 * dune * 0.55 * free * keep );
+			data[ k + 3 ] = Math.round( 255 * dune * ( 1 - ss( 1.8, 3.2, h ) ) * 0.6 * free * keep );
 		}
 	}
 	return { data, res };

@@ -7,6 +7,7 @@ import { ChunkedInstances } from '../core/chunked.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { clearance, sampleMask } from './vegetation.js';
 import { pathDistance } from './heightfield.js';
+import { NATURE, CH, erased, forPainted, natureAt, texelSeed } from './natureEdits.js';
 import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
 import { proceduralBump } from './terrain.js';
 import { buildRockGeometry, ROCK_STYLES } from './granite/geometry.js';
@@ -100,16 +101,21 @@ export function createRocks( app, progress ) {
 
 	const rnd = mulberry32( 77 );
 	const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
-	const tint = () => { const t = 0.85 + rnd() * 0.3; return [ t * ( 0.98 + rnd() * 0.04 ), t, t * ( 0.96 + rnd() * 0.06 ) ]; };
-	const put = ( list, x, z, s, sink = 0.25, squash = 1 ) => {
+	const tint = ( R = rnd ) => { const t = 0.85 + R() * 0.3; return [ t * ( 0.98 + R() * 0.04 ), t, t * ( 0.96 + R() * 0.06 ) ]; };
+	const nature = app.natureEdits;
+	const put = ( list, x, z, s, sink = 0.25, squash = 1, R = rnd ) => {
 		const y = hf.heightAt( x, z );
-		e.set( ( rnd() - 0.5 ) * 0.5, rnd() * Math.PI * 2, ( rnd() - 0.5 ) * 0.5 );
+		e.set( ( R() - 0.5 ) * 0.5, R() * Math.PI * 2, ( R() - 0.5 ) * 0.5 );
 		q.setFromEuler( e );
-		const sx = s * ( 0.8 + rnd() * 0.5 ), sz = s * ( 0.8 + rnd() * 0.5 ), sy = s * ( 0.6 + rnd() * 0.5 ) * squash;
+		const sx = s * ( 0.8 + R() * 0.5 ), sz = s * ( 0.8 + R() * 0.5 ), sy = s * ( 0.6 + R() * 0.5 ) * squash;
 		pos.set( x, y - sink * sy, z );
 		sc.set( sx, sy, sz );
 		m.compose( pos, q, sc );
-		list[ Math.floor( rnd() * list.length ) ].add_( m, [ tint() ] );
+		const item = list[ Math.floor( R() * list.length ) ], ex = [ tint( R ) ];
+		// erased by the nature brush: the draws above are used up all the same
+		if ( R === rnd && nature && erased( nature, CH.rocks, x, z ) ) return false;
+		item.add_( m, ex );
+		return true;
 	};
 	const counts = { boulders: 0, gravel: 0 };
 
@@ -134,8 +140,7 @@ export function createRocks( app, progress ) {
 				const a = rnd() * Math.PI * 2, r = i ? big * ( 0.8 + rnd() * 1.4 ) : 0;
 				const bx = px + Math.cos( a ) * r, bz = pz + Math.sin( a ) * r;
 				if ( distV < 380 && clearance( bx, bz, app.mask, 1 ) <= 0 ) continue;
-				put( tors, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) );
-				counts.boulders ++;
+				if ( put( tors, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) ) ) counts.boulders ++;
 			}
 		}
 		progress?.( 0.6 * ( z - hf.z0 ) / hf.size );
@@ -151,8 +156,7 @@ export function createRocks( app, progress ) {
 			const n = 0.5 + 0.5 * nR( px * 0.05, pz * 0.05 );
 			if ( rnd() > band * ( 0.12 + 0.35 * n ) ) continue;
 			if ( pathDistance( px, pz ).d < 3 ) continue;
-			put( shore, px, pz, 0.5 + Math.pow( rnd(), 2.2 ) * 3.2, 0.35 );
-			counts.boulders ++;
+			if ( put( shore, px, pz, 0.5 + Math.pow( rnd(), 2.2 ) * 3.2, 0.35 ) ) counts.boulders ++;
 		}
 		progress?.( 0.6 + 0.25 * ( z - hf.z0 ) / hf.size );
 	}
@@ -168,8 +172,7 @@ export function createRocks( app, progress ) {
 				const dx = px - MINE.x, dz = pz - MINE.z;
 				if ( Math.abs( dx * MINE.tx + dz * MINE.tz ) < MINE.width / 2 + 1 && Math.abs( dx * MINE.nx + dz * MINE.nz ) < MINE.depth / 2 + 11 ) continue;
 				if ( pathDistance( px, pz ).d < 3 ) continue;
-				put( talus, px, pz, ( off < 5 ? 2.2 : 1.3 ) + rnd() * 1.8, 0.3 );
-				counts.boulders ++;
+				if ( put( talus, px, pz, ( off < 5 ? 2.2 : 1.3 ) + rnd() * 1.8, 0.3 ) ) counts.boulders ++;
 			}
 		}
 	}
@@ -185,9 +188,25 @@ export function createRocks( app, progress ) {
 			const shore = h < 3 ? 0.3 : 0;
 			const p = edge + dirt * 0.05 + shore;
 			if ( p <= 0 || rnd() > p ) continue;
-			put( gravel, px, pz, 0.06 + Math.pow( rnd(), 2 ) * 0.28, 0.3 );
-			counts.gravel ++;
+			if ( put( gravel, px, pz, 0.06 + Math.pow( rnd(), 2 ) * 0.28, 0.3 ) ) counts.gravel ++;
 		}
+	}
+
+	// painted rocks (world/natureEdits.js): the size channel, written from the brush radius, sets how
+	// big the boulders get (a wide brush mixes in big ones)
+	if ( nature ) {
+		forPainted( nature, CH.rocks, ( tx, tz, v, i, j ) => {
+			const prnd = mulberry32( texelSeed( i, j, CH.rocks, 4343 ) );
+			const big = 0.4 + 5.5 * Math.max( 0, natureAt( nature, CH.rockSize, tx + 1, tz + 1 ) );
+			for ( let n = v * 0.35; n > 0; n -= 1 ) {
+				if ( prnd() >= Math.min( 1, n ) ) continue;
+				const x = tx + prnd() * NATURE.cell, z = tz + prnd() * NATURE.cell;
+				if ( hf.heightAt( x, z ) < - 30 ) continue;
+				if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 && clearance( x, z, app.mask, 1 ) <= 0 ) continue;
+				// many small ones, a few of the full size
+				if ( put( tors, x, z, big * ( 0.25 + 0.75 * Math.pow( prnd(), 2.5 ) ), 0.25, 1, prnd ) ) counts.boulders ++;
+			}
+		} );
 	}
 
 	for ( const s of [ ...variants, ...gravel ] ) { s.build(); group.add( s ); }

@@ -57,6 +57,14 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Pendências: barracas e adereços adicionados em campo aberto não abrem clareira na vegetação (a `clearance` só olha BUILDINGS); um objeto original removido só volta editando o JSON.
 - QA: `node tools/objectedit.mjs [prefixo] [--save]`: seleciona (caixa, gizmo, menu), move pelo eixo X arrastando o gizmo, testa a tecla 2, remove e desfaz, adiciona do catálogo. Com `--save`, confere no modo normal após recarregar e apaga o arquivo de teste.
 
+## Pincel de natureza (`?edit`, aba "Natureza")
+- `src/editor/natureEditor.js` (ideia do "Nature brush" do Habitat Creator): pinta ou apaga carvalho, pinheiro, bétula, tojo, fento, pedras e grama; "Tudo (apagar)" limpa todos. Tamanho e densidade; Shift alterna pintar/apagar; `[` `]`, T (vista de cima), Ctrl+Z/Y. A pintura aparece como uma camada colorida sobre o terreno (o `colorNode` do material do terreno ganha a mistura na primeira vez que a aba abre, só no editor). Plantas e pedras só mudam ao "Salvar e aplicar" (recarrega).
+- **Grade** (`src/world/natureEdits.js`): 700² texels de 4 m sobre o `TERRAIN`, 8 canais em bytes com sinal (0 carvalho, 1 pinheiro, 2 bétula, 3 tojo, 4 fento, 5 pedras, 6 grama, 7 tamanho das pedras). v > 0 acrescenta (densidade), v < 0 apaga (o procedural fica com probabilidade 1 + v). Fica em `public/nature-edits.bin` (`/__nature-edits` no servidor de desenvolvimento).
+- **Determinismo:** o apagar decide por um hash da posição (`hash01`) e só depois que a planta ou pedra já gastou seus sorteios, então o resto da distribuição fica idêntico. O pintado usa uma sequência própria por texel e por tipo (`texelSeed`), então pintar em outro lugar ou editar o relevo não embaralha o que já foi pintado. Sem pintura, o mundo sai igual ao de antes. "Tudo (apagar)" apaga 100%, qualquer que seja a densidade. Se a gravação no servidor falhar, cada arquivo editado é baixado.
+- Pedras: o canal de tamanho é gravado pelo raio do pincel (4–60 m → 0–1); um pincel largo mistura blocos maiores (até ~6 m). Grama: apagar afina todos os tipos, pintar acrescenta campo.
+- Abas: `src/editor/tabs.js` (`app.setEditorTab`) mostra um editor por vez e decide quem fica com o botão esquerdo. O "Salvar e aplicar" de qualquer aba grava relevo, objetos e natureza (só o que mudou).
+- QA: `node tools/natureedit.mjs [prefixo] [--save]` acha um bosque e um campo aberto perto da vila, apaga tudo no bosque, pinta pinheiros e pedras (pincel de 50 m) no campo, testa desfazer/refazer e, com `--save`, conta as instâncias depois de recarregar (miolo do pincel sem árvores, pinheiros e pedras grandes no campo).
+
 ## Câmera
 - `src/controls/freecam.js`: voo livre (WASD/QE, Shift, arrastar, roda do mouse, 1–6 vistas).
 - `src/controls/focus.js`: foco automático com profundidade de campo (`DepthOfFieldNode` de TSL sobre o pass da cena).

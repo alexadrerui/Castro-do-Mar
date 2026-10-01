@@ -28,6 +28,7 @@ import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
 import { loadTerrainEdits, hashEdits } from './world/terrainEdits.js';
 import { loadWorldEdits, applyWorldEdits } from './world/worldEdits.js';
+import { loadNatureEdits } from './world/natureEdits.js';
 import { BUILDINGS } from './world/layout.js';
 // the generated fields depend only on this code: its hash is the cache key
 import srcHeight from './world/heightfield.js?raw';
@@ -110,6 +111,8 @@ async function main() {
 	const worldEdits = await loadWorldEdits();
 	app.worldEdits = worldEdits;
 	applyWorldEdits( worldEdits );
+	// painted nature (public/nature-edits.bin, world/natureEdits.js): read by vegetation, rocks, grass
+	app.natureEdits = await loadNatureEdits();
 	// the generator reads only the houses of the edited layout (pads, trampled ground): moving a stall
 	// or a prop does not regenerate the fields
 	const houses = BUILDINGS.map( ( b ) => [ b.x, b.z, b.r, b.w, b.l, b.scale ] );
@@ -536,6 +539,11 @@ async function main() {
 		// and the village objects (tab "Objetos")
 		const { ObjectEditor } = await import( './editor/objectEditor.js' );
 		app.objectEditor = new ObjectEditor( app, app.editor );
+		// and the painted nature (tab "Natureza"), then the tabs over the three panels
+		const { NatureEditor } = await import( './editor/natureEditor.js' );
+		app.natureEditor = new NatureEditor( app, app.editor );
+		const { createEditorTabs } = await import( './editor/tabs.js' );
+		createEditorTabs( app );
 	}
 
 	addEventListener( 'resize', () => {

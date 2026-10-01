@@ -16,6 +16,7 @@ import srcTrees from './trees.js?raw';
 import srcVegetation from './vegetation.js?raw';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
+import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
 import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
 
 const nV = makeSimplex( 606 );
@@ -220,15 +221,22 @@ export async function createVegetation( app, progress ) {
 	const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
 	const up = new THREE.Vector3( 0, 1, 0 ), nrm = new THREE.Vector3();
 	const rnd = mulberry32( 890 );
-	const place = ( sp, x, z, s, tilt = 0.08 ) => {
+	// hand-painted nature (world/natureEdits.js): erased plants still use up their random draws
+	// (the rest of the scatter stays the same), painted ones come from a sequence of their own
+	const nature = app.natureEdits;
+	const place = ( sp, x, z, s, tilt = 0.08, R = rnd ) => {
 		const y = hf.heightAt( x, z );
 		hf.normalAt( x, z, nrm );
 		q.setFromUnitVectors( up, nrm.lerp( up, 1 - tilt ).normalize() );
-		q.multiply( new THREE.Quaternion().setFromAxisAngle( up, rnd() * Math.PI * 2 ) );
+		q.multiply( new THREE.Quaternion().setFromAxisAngle( up, R() * Math.PI * 2 ) );
 		pos.set( x, y - 0.25 * s, z );
-		sc.set( s * ( 0.9 + rnd() * 0.2 ), s * ( 0.85 + rnd() * 0.3 ), s * ( 0.9 + rnd() * 0.2 ) );
+		sc.set( s * ( 0.9 + R() * 0.2 ), s * ( 0.85 + R() * 0.3 ), s * ( 0.9 + R() * 0.2 ) );
 		m.compose( pos, q, sc );
-		species[ sp === 'gold' ? 'birch' : sp ].add_( m, [ sp === 'gold' ? [ 0.47, 0.32, 0.045 ] : tint( sp, rnd ) ] );
+		const kind = sp === 'gold' ? 'birch' : sp;
+		const extra = [ sp === 'gold' ? [ 0.47, 0.32, 0.045 ] : tint( sp, R ) ];
+		if ( R === rnd && nature && erased( nature, CH[ kind ], x, z ) ) return false;
+		species[ kind ].add_( m, extra );
+		return true;
 	};
 
 	// Jittered-grid scatter over the whole terrain.
@@ -238,7 +246,7 @@ export async function createVegetation( app, progress ) {
 	// understory: bracken in the woodland patches and the lowlands, gorse / broom on the high open hills
 	const shrub = ( x, z, s, patch, h ) => {
 		const fernP = ( 0.25 + 0.45 * patch ) * ( 1 - ss( 90, 220, h ) );
-		if ( rnd() < fernP ) { place( 'fern', x, z, 0.8 + rnd() * 0.5, 0.3 ); counts.fern ++; } else { place( 'bush', x, z, s, 0.5 ); counts.bush ++; }
+		if ( rnd() < fernP ) { if ( place( 'fern', x, z, 0.8 + rnd() * 0.5, 0.3 ) ) counts.fern ++; } else if ( place( 'bush', x, z, s, 0.5 ) ) counts.bush ++;
 	};
 	for ( let z = z0; z < z1; z += step ) {
 		for ( let x = x0; x < x1; x += step ) {
@@ -269,8 +277,7 @@ export async function createVegetation( app, progress ) {
 				else if ( pick < pinePref + 0.025 ) sp = 'birch';
 				else sp = 'oak';
 				const s = ( sp === 'pine' ? 0.6 + rnd() * 0.8 : 0.7 + rnd() * 0.6 ) * ( 1 - 0.3 * ss( 200, 420, h ) );
-				place( sp, px, pz, s );
-				counts[ sp ] ++;
+				if ( place( sp, px, pz, s ) ) counts[ sp ] ++;
 			} else if ( r < dens * 0.72 + ( 0.3 + 0.5 * patch ) * steep * altitude * c * 0.9 ) {
 				shrub( px, pz, 0.6 + rnd() * 0.9, patch, h );
 			}
@@ -289,7 +296,25 @@ export async function createVegetation( app, progress ) {
 		[ 'oak', 8, 58, 1.0 ], [ 'oak', - 28, 50, 0.9 ], [ 'pine', 55, - 55, 1.0 ], [ 'oak', 30, 58, 0.95 ],
 		[ 'gold', - 62, 58, 0.9 ], [ 'oak', 72, 22, 0.9 ], [ 'pine', - 95, - 40, 1.1 ], [ 'oak', - 5, 30, 0.8 ]
 	];
-	for ( const [ sp, x, z, s ] of featured ) { place( sp, x, z, s ); counts[ sp === 'gold' ? 'birch' : sp ] ++; }
+	for ( const [ sp, x, z, s ] of featured ) if ( place( sp, x, z, s ) ) counts[ sp === 'gold' ? 'birch' : sp ] ++;
+
+	// painted plants: per texel ( NATURE.cell m ) up to `per` plants at full density, each texel with
+	// its own random sequence (texelSeed)
+	if ( nature ) {
+		for ( const [ sp, per, s0, s1, tilt ] of [ [ 'oak', 0.35, 0.7, 1.3, 0.08 ], [ 'pine', 0.35, 0.6, 1.4, 0.08 ], [ 'birch', 0.3, 0.7, 1.3, 0.08 ], [ 'bush', 1.0, 0.5, 1.4, 0.5 ], [ 'fern', 1.3, 0.8, 1.3, 0.3 ] ] ) {
+			forPainted( nature, CH[ sp ], ( tx, tz, v, i, j ) => {
+				const prnd = mulberry32( texelSeed( i, j, CH[ sp ], 4242 ) );
+				for ( let n = v * per; n > 0; n -= 1 ) {
+					if ( prnd() >= Math.min( 1, n ) ) continue;
+					const x = tx + prnd() * NATURE.cell, z = tz + prnd() * NATURE.cell;
+					const h = hf.heightAt( x, z );
+					if ( h < 1.2 || hf.slopeAt( x, z ) > 1.1 ) continue;
+					if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 && clearance( x, z, app.mask ) <= 0 ) continue;
+					if ( place( sp, x, z, s0 + prnd() * ( s1 - s0 ), tilt, prnd ) ) counts[ sp ] ++;
+				}
+			} );
+		}
+	}
 
 	for ( const s of Object.values( species ) ) { s.build(); group.add( s ); }
 	app.onFrame.push( () => { for ( const s of Object.values( species ) ) s.update( app.camera ); } );

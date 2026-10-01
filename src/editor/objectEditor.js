@@ -105,16 +105,11 @@ export class ObjectEditor {
 
 	// ------------------------------------------------------------------ mode switch (tabs)
 
+	// the tab switch (editor/tabs.js) shows one editor at a time
 	setActive( on ) {
 		if ( this.dragging || on === this.active ) return;
-		if ( on ) this._terrainWasActive = this.terrain.active;
 		this.active = on;
 		this.panel.style.display = on ? '' : 'none';
-		this.terrain.panel.style.display = on ? 'none' : '';
-		this.terrain.setActive( on ? false : this._terrainWasActive !== false );
-		// with the objects, a drag on empty space looks around (the left button is shared)
-		this.app.freecam.leftLook = on || ! this.terrain.active;
-		for ( const b of this.tabs.querySelectorAll( 'button' ) ) b.classList.toggle( 'on', ( b.dataset.tab === 'objects' ) === on );
 		if ( ! on ) { this.select( null ); this.arm( null ); }
 	}
 
@@ -335,15 +330,6 @@ export class ObjectEditor {
 	// ------------------------------------------------------------------ UI
 
 	_buildUI() {
-		// tabs above the two panels
-		const tabs = document.createElement( 'div' );
-		tabs.id = 'editor-tabs';
-		tabs.className = 'panel';
-		tabs.innerHTML = '<button data-tab="relief" class="on">Relevo</button><button data-tab="objects">Objetos</button>';
-		document.body.appendChild( tabs );
-		this.tabs = tabs;
-		for ( const b of tabs.querySelectorAll( 'button' ) ) b.onclick = () => this.setActive( b.dataset.tab === 'objects' );
-
 		const el = document.createElement( 'div' );
 		el.id = 'object-editor';
 		el.className = 'panel';
@@ -383,18 +369,15 @@ export class ObjectEditor {
 
 		const style = document.createElement( 'style' );
 		style.textContent = `
-			#editor-tabs { position: fixed; top: 78px; left: 12px; width: 288px; padding: 4px; z-index: 12; display: flex; gap: 4px; }
-			#editor-tabs button { flex: 1; }
-			#terrain-editor { top: 122px !important; max-height: calc(100vh - 184px) !important; }
 			#object-editor { position: fixed; top: 122px; left: 12px; width: 288px; padding: 10px 12px; z-index: 12; font-size: 12px; color: var(--ink); }
 			#object-editor header { color: var(--gold-2); font-size: 13px; margin-bottom: 6px; }
 			#object-editor .cat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
 			#object-editor .armed { color: var(--gold-2); min-height: 16px; margin: 6px 0; }
 			#object-editor .row { display: flex; gap: 4px; margin-top: 5px; } #object-editor .row button { flex: 1; }
 			#object-editor .hint, #object-editor .keys { color: var(--ink-dim); margin: 6px 0; line-height: 1.35; }
-			#editor-tabs button, #object-editor button, #object-menu button { background: rgba(0,0,0,.35); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 5px 6px; cursor: pointer; font: 12px Inter, system-ui, sans-serif; }
-			#editor-tabs button:hover, #object-editor button:hover, #object-menu button:hover { border-color: var(--gold); }
-			#editor-tabs button.on, #object-editor button.on, #object-menu button.on { background: rgba(201,164,92,.35); border-color: var(--gold-2); color: #fff; }
+			#object-editor button, #object-menu button { background: rgba(0,0,0,.35); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 5px 6px; cursor: pointer; font: 12px Inter, system-ui, sans-serif; }
+			#object-editor button:hover, #object-menu button:hover { border-color: var(--gold); }
+			#object-editor button.on, #object-menu button.on { background: rgba(201,164,92,.35); border-color: var(--gold-2); color: #fff; }
 			#object-editor button.primary { background: rgba(60,90,42,.6); border-color: #7fae5a; }
 			#object-editor button:disabled { opacity: .4; cursor: default; }
 			#object-menu { position: fixed; left: 0; top: 0; z-index: 13; width: 158px; padding: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink); }
@@ -412,6 +395,14 @@ export class ObjectEditor {
 		if ( ! this.ui ) return;
 		this.ui.undo.disabled = ! this.undo.length;
 		this.ui.redo.disabled = ! this.redo.length;
+	}
+
+	exportFile() {
+		const a = document.createElement( 'a' );
+		a.href = URL.createObjectURL( new Blob( [ JSON.stringify( this.edits, null, '\t' ) ], { type: 'application/json' } ) );
+		a.download = 'world-edits.json';
+		a.click();
+		setTimeout( () => URL.revokeObjectURL( a.href ), 1000 );
 	}
 
 	async saveFile() {

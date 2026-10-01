@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { TERRAIN } from './src/world/layout.js';
+import { NATURE_BYTES } from './src/world/natureEdits.js';
 
 // Dev-only endpoint: the page POSTs canvas captures here so the QA agents can
 // read them from disk (shots/<name>.png).
@@ -110,12 +111,47 @@ function worldEditsEndpoint() {
 	};
 }
 
+// Dev-only endpoint: the nature brush (?edit, src/editor/natureEditor.js) saves its painted grid
+// here: public/nature-edits.bin (src/world/natureEdits.js: signed bytes, NATURE_BYTES exactly).
+function natureEditsEndpoint() {
+	return {
+		name: 'nature-edits-endpoint',
+		configureServer( server ) {
+			const file = path.join( server.config.publicDir, 'nature-edits.bin' );
+			server.middlewares.use( '/__nature-edits', ( req, res ) => {
+				const fail = ( code, msg ) => { res.statusCode = code; res.end( msg ); };
+				if ( req.method === 'GET' ) {
+					if ( ! fs.existsSync( file ) ) return fail( 204 );
+					res.setHeader( 'Content-Type', 'application/octet-stream' );
+					res.setHeader( 'Cache-Control', 'no-store' );
+					return res.end( fs.readFileSync( file ) );
+				}
+				if ( req.method !== 'POST' ) return fail( 405 );
+				if ( ! /application\/octet-stream/.test( req.headers[ 'content-type' ] || '' ) ) return fail( 415, 'octet-stream only' );
+				const origin = req.headers.origin;
+				if ( origin && new URL( origin ).host !== req.headers.host ) return fail( 403, 'other origin' );
+				const chunks = [];
+				let len = 0;
+				req.on( 'data', ( c ) => { len += c.length; if ( len <= NATURE_BYTES ) chunks.push( c ); } );
+				req.on( 'error', () => fail( 400, 'read error' ) );
+				req.on( 'end', () => {
+					if ( len !== NATURE_BYTES ) return fail( 400, `expected ${ NATURE_BYTES } bytes, got ${ len }` );
+					fs.mkdirSync( path.dirname( file ), { recursive: true } );
+					fs.writeFileSync( file + '.tmp', Buffer.concat( chunks ) );
+					fs.renameSync( file + '.tmp', file );
+					res.end( 'ok' );
+				} );
+			} );
+		}
+	};
+}
+
 export default defineConfig( {
-	plugins: [ captureEndpoint(), terrainEditsEndpoint(), worldEditsEndpoint() ],
+	plugins: [ captureEndpoint(), terrainEditsEndpoint(), worldEditsEndpoint(), natureEditsEndpoint() ],
 	// single three.js instance: addons and three-bvh-csg import "three"
 	resolve: { alias: [ { find: /^three$/, replacement: 'three/webgpu' } ] },
 	// the editor reloads by itself after saving the edits: no reload from the file watcher
-	server: { port: 5190, strictPort: true, watch: { ignored: [ '**/public/terrain-edits.bin', '**/public/terrain-edits.bin.tmp', '**/public/world-edits.json', '**/public/world-edits.json.tmp' ] } },
+	server: { port: 5190, strictPort: true, watch: { ignored: [ '**/public/terrain-edits.bin', '**/public/terrain-edits.bin.tmp', '**/public/world-edits.json', '**/public/world-edits.json.tmp', '**/public/nature-edits.bin', '**/public/nature-edits.bin.tmp' ] } },
 	build: { target: 'esnext' },
 	optimizeDeps: { rolldownOptions: { transform: { target: 'esnext' } } }
 } );

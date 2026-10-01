@@ -451,7 +451,7 @@ export class TerrainEditor {
 			if ( ( e.ctrlKey || e.metaKey ) && e.code === 'KeyY' ) { e.preventDefault(); this.redoStep(); }
 		} );
 		window.addEventListener( 'keyup', ( e ) => { if ( e.key === 'Shift' ) this.invert = false; } );
-		window.addEventListener( 'beforeunload', ( e ) => { if ( ( this.changed || this.app.objectEditor?.changed ) && ! this._saving ) { e.preventDefault(); e.returnValue = ''; } } );
+		window.addEventListener( 'beforeunload', ( e ) => { if ( ( this.changed || this.app.objectEditor?.changed || this.app.natureEditor?.changed ) && ! this._saving ) { e.preventDefault(); e.returnValue = ''; } } );
 	}
 
 	setActive( on ) {
@@ -463,7 +463,7 @@ export class TerrainEditor {
 	}
 
 	// View from above over the cursor (or the point the camera looks at), and back
-	toggleOverhead() {
+	toggleOverhead( radius = this.radius ) {
 		const fc = this.app.freecam, cam = this.camera;
 		if ( this.overhead ) {
 			const o = this.overhead;
@@ -475,7 +475,7 @@ export class TerrainEditor {
 			const target = this.hit ? this.hit.clone() : cam.position.clone().addScaledVector( fwd, 120 );
 			target.y = this.hf.heightAt( target.x, target.z );
 			this.overhead = { pos: cam.position.clone(), target: cam.position.clone().addScaledVector( fwd, 60 ) };
-			const H = Math.max( 120, this.radius * 7 );
+			const H = Math.max( 120, radius * 7 );
 			// almost straight down (an exact vertical has no heading); the top of the screen keeps the
 			// current heading
 			const h = new THREE.Vector3( fwd.x, 0, fwd.z ).normalize();
@@ -499,6 +499,8 @@ export class TerrainEditor {
 			// the village objects too (editor/objectEditor.js)
 			const obj = this.app.objectEditor;
 			if ( obj?.changed ) await obj.saveFile();
+			// and the painted nature (editor/natureEditor.js)
+			if ( this.app.natureEditor?.changed ) await this.app.natureEditor.saveFile();
 			// the relief only when edited (or already saved once): no empty 5 MB file
 			if ( this.changed || this.app.terrainEdits ) {
 				const res = await fetch( '/__terrain-edits', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: this.delta.buffer.slice( 0 ) } );
@@ -510,8 +512,11 @@ export class TerrainEditor {
 			setTimeout( () => location.reload(), 400 );
 		} catch ( e ) {
 			this._saving = false;
-			this._toast( 'Sem o servidor de desenvolvimento: baixando o arquivo (coloque em public/terrain-edits.bin).' );
-			this.exportFile();
+			// every edited file is downloaded instead: terrain-edits.bin, world-edits.json, nature-edits.bin
+			this._toast( 'Não foi possível gravar no servidor de desenvolvimento: baixando os arquivos editados (coloque-os em public/).' );
+			if ( this.changed ) this.exportFile();
+			if ( this.app.objectEditor?.changed ) this.app.objectEditor.exportFile();
+			if ( this.app.natureEditor?.changed ) this.app.natureEditor.exportFile();
 		}
 	}
 
