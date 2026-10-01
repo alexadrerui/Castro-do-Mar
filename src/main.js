@@ -562,11 +562,74 @@ async function main() {
 		};
 		// never block the loader forever (hidden tabs throttle the GPU queue)
 		const t0 = performance.now();
-		const all = compiles().then( () => console.info( 'precompile done (ms)', Math.round( performance.now() - t0 ) ) );
+		let compiled = false;
+		const all = compiles().then( () => { compiled = true; console.info( 'precompile done (ms)', Math.round( performance.now() - t0 ) ); } );
 		await Promise.race( [ all, new Promise( ( r ) => setTimeout( r, 12000 ) ) ] );
 		sky.sun.shadow.camera.layers.enable( 1 );
+		// and what only shows under the water (marine snow, the surface seen from below, the water's
+		// shadow layer from below...): one frame with the camera dived, every geometry drawing nothing
+		if ( compiled && ! params.has( 'nodiveprep' ) ) prepareDive();
 	} );
 
+
+	// Prepares the draws of the underwater view without drawing them (after Drusniel: Gods' End,
+	// rendering/DrawPreparation.js, MIT, licenses/LICENSE-Drusniel.md: render the real passes with the
+	// geometries drawing nothing, so the pipelines are built in the contexts the frames use; a
+	// standalone compileAsync builds other variants). The first dive used to build them, a ~0.1-0.2 s
+	// hitch (tools/divecost.mjs). Here only the draws that exist just under the water (the marine snow, the
+	// surface seen from below) are prepared, from a camera under the sea; the rest of the scene is
+	// hidden for that frame (preparing all of it, ~1000 objects, cost ~0.26 s of the load).
+	function prepareDive() {
+		const t0 = performance.now();
+		// a point of the sea at least 6 m deep, the nearest to the village on a coarse grid
+		let best = null;
+		for ( let z = hf.z0 + 50; z < hf.z0 + hf.size - 50; z += 20 ) for ( let x = hf.x0 + 50; x < hf.x0 + hf.size - 50; x += 20 ) {
+			if ( hf.heightAt( x, z ) > WATER_LEVEL - 6 ) continue;
+			const d = Math.hypot( x, z );
+			if ( ! best || d < best.d ) best = { x, z, d };
+		}
+		if ( ! best ) return;
+		const pos = camera.position.clone(), quat = camera.quaternion.clone();
+		const ranges = new Map(), culled = [], hidden = [];
+		// only the underwater state (the seabed and the fish are compiled with the scene already; their
+		// frame hooks would stream tiles at the dive point, ~0.3 s for nothing)
+		const hooks = ( under ) => {
+			underwater.update( camera, WATER_LEVEL );
+			snow.update( camera, under );
+			underside.update( under );
+		};
+		try {
+			camera.position.set( best.x, WATER_LEVEL - 3, best.z );
+			camera.lookAt( best.x + 10, WATER_LEVEL - 4, best.z );
+			camera.updateMatrixWorld();
+			hooks( true );
+			// only the draws that exist under the water alone (with the lights: they are part of the
+			// shader key), out of the frustum culling, drawing nothing
+			// (the water's shadow layer and the chimney smoke get other pipelines seen from under the
+			// water too: tools/divecost.mjs lists them; the water mesh carries its shadow layer)
+			const targets = [ snow.mesh, underside.mesh, app.water.mesh, app.smoke?.mesh ].filter( Boolean );
+			for ( const o of scene.children ) if ( o.visible && ! o.isLight && ! targets.includes( o ) ) { hidden.push( o ); o.visible = false; }
+			for ( const t of targets ) t.traverse( ( o ) => {
+				if ( o.frustumCulled ) { culled.push( o ); o.frustumCulled = false; }
+				const g = o.geometry;
+				if ( ! g || ranges.has( g ) ) return;
+				ranges.set( g, { start: g.drawRange.start, count: g.drawRange.count } );
+				g.setDrawRange( 0, 0 );
+			} );
+			sky.sun.shadow.needsUpdate = true; // the shadow pass too (its own pipelines)
+			app.renderFrame();
+		} finally {
+			for ( const [ g, r ] of ranges ) g.setDrawRange( r.start, r.count );
+			for ( const o of culled ) o.frustumCulled = true;
+			for ( const o of hidden ) o.visible = true;
+			camera.position.copy( pos ); camera.quaternion.copy( quat ); camera.updateMatrixWorld();
+			hooks( false );
+			// the dive was not real: no water on the lens when the camera "surfaces"
+			lens._wasUnder = false; lens.wet.value = 0;
+			sky.sun.shadow.needsUpdate = true;
+		}
+		console.info( 'dive prepared (ms)', Math.round( performance.now() - t0 ) );
+	}
 
 	const hud = new HUD( app );
 	app.hud = hud;
