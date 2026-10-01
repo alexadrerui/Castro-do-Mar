@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+import { uniform, vec4 } from 'three/tsl';
 
 // Preetham sky + procedural clouds (built into SkyMesh), sun light and
 // sky-derived image based lighting.
@@ -18,6 +19,12 @@ export function createSky( scene, renderer ) {
 	sky.cloudElevation.value = 0.55;
 	sky.cloudScale.value = 0.00028;
 	sky.cloudSpeed.value = 0.00003;
+	// The Preetham sky is far brighter than the sun-lit scene at our exposure: the whole sky went
+	// white around the sun (the reference has a deep blue sky with white clouds). Only the visible
+	// sky is scaled; the image based lighting (envSky below) keeps its own level.
+	const gain = uniform( 0.4 );
+	const skyColor = sky.material.colorNode;
+	sky.material.colorNode = vec4( skyColor.rgb.mul( gain ), 1 );
 	sky.frustumCulled = false;
 	sky.layers.enable( 2 );
 	scene.add( sky );
@@ -78,5 +85,5 @@ export function createSky( scene, renderer ) {
 	}
 	update( false );
 
-	return { sky, sun, hemi, state, update, buildEnv: () => update( true ) };
+	return { sky, sun, hemi, state, gain, update, buildEnv: () => update( true ) };
 }

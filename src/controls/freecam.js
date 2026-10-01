@@ -19,6 +19,7 @@ export class FreeCam {
 		this.waterLevel = opts.waterLevel ?? 0;
 		this.diveClearance = opts.diveClearance ?? 0.6; // m above the bottom when underwater
 		this.enabled = true;
+		this.leftLook = true; // false: the left button is left to another tool (terrain editor)
 
 		this.yaw = 0; this.pitch = 0;
 		this.vel = new THREE.Vector3();
@@ -54,6 +55,7 @@ export class FreeCam {
 	_down( e ) {
 		if ( ! this.enabled ) return;
 		this.tween = null;
+		if ( e.button === 0 && ! e.altKey && ! this.leftLook ) return;
 		if ( e.button === 2 || ( e.button === 0 && ! e.altKey ) ) this.mode = 'look';
 		else if ( e.button === 1 ) { this.mode = 'pan'; e.preventDefault(); }
 		else if ( e.button === 0 && e.altKey ) this.mode = 'orbit';

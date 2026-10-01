@@ -7,6 +7,9 @@ self.onmessage = async ( e ) => {
 	if ( e.data.cmd === 'height' ) {
 		hf = new HeightField();
 		await hf.build( ( p ) => self.postMessage( { type: 'progress', p } ), true );
+		// hand edits of the relief (world/terrainEdits.js), before the AO reads the heights
+		const ed = e.data.edits;
+		if ( ed && ed.length === hf.data.length ) for ( let k = 0; k < ed.length; k ++ ) hf.data[ k ] += ed[ k ];
 		self.postMessage( { type: 'height', data: hf.data.slice() } );
 	} else if ( e.data.cmd === 'ao' ) {
 		const data = bakeAO( hf, ( p ) => self.postMessage( { type: 'progress', p } ) );

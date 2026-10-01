@@ -1,90 +1,178 @@
 {
-	"note": "tools/verify.mjs baseline: per-view image statistics of a known-good build",
+	"note": "tools/verify.mjs baseline: per-view image statistics of a known-good build, per load mode",
 	"date": "2026-10-01",
-	"views": {
-		"0": {
-			"view": 0,
-			"label": "Panorâmica",
-			"luma": 126.8,
-			"spread": 61,
-			"chroma": 28.8,
-			"top": [
-				196,
-				207,
-				213
-			],
-			"clip": 0,
-			"black": 0
+	"modes": {
+		"cold": {
+			"0": {
+				"view": 0,
+				"label": "Panorâmica",
+				"luma": 107.4,
+				"spread": 44.8,
+				"chroma": 35.2,
+				"top": [
+					135,
+					149,
+					171
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"1": {
+				"view": 1,
+				"label": "Aérea",
+				"luma": 52.2,
+				"spread": 25,
+				"chroma": 23.6,
+				"top": [
+					34,
+					49,
+					45
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"2": {
+				"view": 2,
+				"label": "Vila",
+				"luma": 83.1,
+				"spread": 50.3,
+				"chroma": 31.6,
+				"top": [
+					123,
+					145,
+					170
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"3": {
+				"view": 3,
+				"label": "Minas",
+				"luma": 108.3,
+				"spread": 50.6,
+				"chroma": 31.6,
+				"top": [
+					92,
+					113,
+					132
+				],
+				"clip": 0,
+				"black": 0.001
+			},
+			"4": {
+				"view": 4,
+				"label": "Lago",
+				"luma": 113.1,
+				"spread": 41.1,
+				"chroma": 46.9,
+				"top": [
+					65,
+					109,
+					159
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"5": {
+				"view": 5,
+				"label": "Montanhas",
+				"luma": 120.9,
+				"spread": 64.4,
+				"chroma": 54.6,
+				"top": [
+					122,
+					144,
+					173
+				],
+				"clip": 0,
+				"black": 0
+			}
 		},
-		"1": {
-			"view": 1,
-			"label": "Aérea",
-			"luma": 52.6,
-			"spread": 24.9,
-			"chroma": 24.3,
-			"top": [
-				34,
-				50,
-				47
-			],
-			"clip": 0,
-			"black": 0
-		},
-		"2": {
-			"view": 2,
-			"label": "Vila",
-			"luma": 96.6,
-			"spread": 66.7,
-			"chroma": 26.2,
-			"top": [
-				194,
-				204,
-				209
-			],
-			"clip": 0,
-			"black": 0
-		},
-		"3": {
-			"view": 3,
-			"label": "Minas",
-			"luma": 116.1,
-			"spread": 56.5,
-			"chroma": 29.4,
-			"top": [
-				140,
-				157,
-				164
-			],
-			"clip": 0,
-			"black": 0.001
-		},
-		"4": {
-			"view": 4,
-			"label": "Lago",
-			"luma": 140.5,
-			"spread": 55.3,
-			"chroma": 37.8,
-			"top": [
-				151,
-				183,
-				208
-			],
-			"clip": 0,
-			"black": 0
-		},
-		"5": {
-			"view": 5,
-			"label": "Montanhas",
-			"luma": 164.5,
-			"spread": 69.8,
-			"chroma": 36.8,
-			"top": [
-				181,
-				197,
-				212
-			],
-			"clip": 0.008,
-			"black": 0
+		"warm": {
+			"0": {
+				"view": 0,
+				"label": "Panorâmica",
+				"luma": 107.7,
+				"spread": 44.9,
+				"chroma": 35,
+				"top": [
+					132,
+					148,
+					171
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"1": {
+				"view": 1,
+				"label": "Aérea",
+				"luma": 52.4,
+				"spread": 25,
+				"chroma": 23.4,
+				"top": [
+					34,
+					49,
+					45
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"2": {
+				"view": 2,
+				"label": "Vila",
+				"luma": 83.1,
+				"spread": 50.2,
+				"chroma": 31.2,
+				"top": [
+					116,
+					141,
+					169
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"3": {
+				"view": 3,
+				"label": "Minas",
+				"luma": 108,
+				"spread": 50.3,
+				"chroma": 32,
+				"top": [
+					109,
+					122,
+					134
+				],
+				"clip": 0,
+				"black": 0.001
+			},
+			"4": {
+				"view": 4,
+				"label": "Lago",
+				"luma": 116.4,
+				"spread": 40.7,
+				"chroma": 42.7,
+				"top": [
+					102,
+					129,
+					163
+				],
+				"clip": 0,
+				"black": 0
+			},
+			"5": {
+				"view": 5,
+				"label": "Montanhas",
+				"luma": 130.4,
+				"spread": 65.6,
+				"chroma": 42.4,
+				"top": [
+					37,
+					91,
+					156
+				],
+				"clip": 0,
+				"black": 0
+			}
 		}
 	}
 }

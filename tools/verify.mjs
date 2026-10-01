@@ -117,11 +117,14 @@ await browser.close();
 // ---- compare
 const base = fs.existsSync( BASE ) ? JSON.parse( fs.readFileSync( BASE, 'utf8' ) ) : null;
 const problems = [];
+// baseline per mode (cold / warm: the clouds differ between the two loads); older files had one set
+const baseOf = ( mode ) => base?.modes?.[ mode ] || base?.modes?.cold || base?.views || null;
 for ( const [ mode, r ] of Object.entries( results ) ) {
+	const bv = baseOf( mode );
 	console.log( `\n${ mode }: ready in ${ r.ready.toFixed( 1 ) } s; ${ r.precompile || 'precompile did NOT finish within the limit' }` );
 	for ( const e of r.errors ) problems.push( `${ mode}: console: ${ e }` );
 	for ( const v of r.views ) {
-		const ref = base?.views?.[ v.view ];
+		const ref = bv?.[ v.view ];
 		const bad = [];
 		if ( v.luma < SANE.lumaMin || v.luma > SANE.lumaMax ) bad.push( `luma ${ v.luma } out of ${ SANE.lumaMin }..${ SANE.lumaMax }` );
 		if ( v.chroma < SANE.chromaMin ) bad.push( `chroma ${ v.chroma } (washed out)` );
@@ -137,7 +140,7 @@ for ( const [ mode, r ] of Object.entries( results ) ) {
 	// the sky, over all the views that show it
 	const sky = skyMean( r.views );
 	if ( sky !== null ) {
-		const refSky = base ? skyMean( r.views.map( ( v ) => base.views[ v.view ] ).filter( Boolean ) ) : null;
+		const refSky = bv ? skyMean( r.views.map( ( v ) => bv[ v.view ] ).filter( Boolean ) ) : null;
 		const low = sky < 0 || ( refSky !== null && sky < refSky - TOL.sky );
 		console.log( `  ${ low ? 'FAIL' : 'ok  ' } sky blueness (blue - red of the top band, mean of the sky views) ${ sky.toFixed( 1 ) }${ refSky !== null ? ` (baseline ${ refSky.toFixed( 1 ) })` : '' }` );
 		if ( low ) problems.push( `${ mode }: the sky lost its blue (${ sky.toFixed( 1 ) }${ refSky !== null ? `, baseline ${ refSky.toFixed( 1 ) }` : '' })` );
@@ -154,9 +157,11 @@ if ( results.cold && results.warm ) {
 }
 
 if ( update ) {
-	const src = results.cold || results.warm;
-	const out = { note: 'tools/verify.mjs baseline: per-view image statistics of a known-good build', date: new Date().toISOString().slice( 0, 10 ), views: { ...( base?.views || {} ) } };
-	for ( const v of src.views ) out.views[ v.view ] = v;
+	const out = { note: 'tools/verify.mjs baseline: per-view image statistics of a known-good build, per load mode', date: new Date().toISOString().slice( 0, 10 ), modes: { ...( base?.modes || {} ) } };
+	for ( const [ mode, r ] of Object.entries( results ) ) {
+		out.modes[ mode ] = { ...( out.modes[ mode ] || {} ) };
+		for ( const v of r.views ) out.modes[ mode ][ v.view ] = v;
+	}
 	fs.writeFileSync( BASE, JSON.stringify( out, null, '\t' ) + '\n' );
 	console.log( `\nbaseline written: ${ BASE }` );
 }

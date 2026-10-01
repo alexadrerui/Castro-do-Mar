@@ -11,6 +11,7 @@ import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
 import { Mist } from './post/mist.js';
+import { Godrays } from './post/godrays.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
@@ -25,6 +26,7 @@ import { createWater } from './world/water.js';
 import { createHorizon } from './world/horizon.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
+import { loadTerrainEdits, hashEdits } from './world/terrainEdits.js';
 // the generated fields depend only on this code: its hash is the cache key
 import srcHeight from './world/heightfield.js?raw';
 import srcLayout from './world/layout.js?raw';
@@ -98,7 +100,10 @@ async function main() {
 	// Heightfield, splat mask, AO and macro noise: from the IndexedDB cache when
 	// the generator code is unchanged, otherwise baked in the worker and stored.
 	hf = new HeightField();
-	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker );
+	// hand edits of the relief (public/terrain-edits.bin, see world/terrainEdits.js and ?edit)
+	const terrainEdits = await loadTerrainEdits();
+	app.terrainEdits = terrainEdits;
+	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker ) + ':' + hashEdits( terrainEdits );
 	app.clearCache = cacheClear;
 	const cached = await cacheGet( genKey );
 	let mask, ao, macro;
@@ -112,7 +117,7 @@ async function main() {
 		const job = ( cmd, p ) => new Promise( ( resolve, reject ) => {
 			worker.onmessage = ( e ) => e.data.type === 'progress' ? p( e.data.p ) : resolve( e.data.data );
 			worker.onerror = reject;
-			worker.postMessage( { cmd } );
+			worker.postMessage( { cmd, edits: cmd === 'height' ? terrainEdits : null } );
 		} );
 		await loader.run( 'height', async ( p ) => { hf.data = await job( 'height', p ); } );
 		mask = await loader.run( 'mask', ( p ) => job( 'mask', p ) );
@@ -274,7 +279,7 @@ async function main() {
 			if ( e.button !== 0 || ! down ) return;
 			const moved = Math.hypot( e.clientX - down.x, e.clientY - down.y ), dt = performance.now() - down.t;
 			down = null;
-			if ( moved > 5 || dt > 350 || ! focus.enabled ) return;
+			if ( moved > 5 || dt > 350 || ! focus.enabled || app.editor?.active ) return; // the terrain editor owns the left button
 			const r = canvas.getBoundingClientRect();
 			const hit = focus.focusAt( ( e.clientX - r.left ) / r.width * 2 - 1, - ( ( e.clientY - r.top ) / r.height ) * 2 + 1 );
 			app.hud?.toast( hit ? `Foco em ${ focus.hit.toFixed( 1 ) } m` : 'Foco automático no centro' );
@@ -305,7 +310,9 @@ async function main() {
 	// Bloom (as in three's ocean example): a soft glow around what is brighter than white in the
 	// HDR scene (the sun's glitter on the water, the sun-lit sky near the horizon), from the scene
 	// pass at half resolution. Toggled in the panel; when off the output is rebuilt without it.
-	const bloomPass = bloom( scenePass.getTextureNode(), 0.16, 0.35, 1.05 );
+	// The input is clamped: the sun disc of the SkyMesh is thousands of times brighter than white
+	// and turned the bloom into a glare over half of the frame (the sky went white around the sun).
+	const bloomPass = bloom( scenePass.getTextureNode().min( vec4( 6 ) ), 0.16, 0.35, 1.05 );
 	app.bloom = bloomPass;
 	let bloomOn = true;
 
@@ -316,6 +323,15 @@ async function main() {
 		mist.update( dt );
 		mist.color.value.copy( hazeColor.value ).multiplyScalar( 1.25 ); // lit like the haze
 		mist.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1; // not under the water
+	} );
+
+	// Sun shafts (screen-space light scattering, post/godrays.js): the sky around the sun, cut by
+	// the mountains, clouds and trees, blurred radially from the sun. ?godrays=0 leaves them out.
+	const godrays = params.get( 'godrays' ) === '0' ? null : new Godrays( { scenePass, sunDir: sky.state.sunDir } );
+	app.godrays = godrays;
+	if ( godrays ) app.onFrame.push( () => {
+		const sunUp = THREE.MathUtils.smoothstep( sky.state.elevation, - 1, 6 );
+		godrays.update( camera, app.underwater?.on.value > 0.5 ? 0 : sunUp );
 	} );
 
 	// Fog scattering (three's webgpu_custom_fog_scattering): light scattered by the humid air
@@ -334,7 +350,8 @@ async function main() {
 	};
 
 	const graded = ( input, withBloom ) => Fn( () => {
-		const src0 = mist ? mist.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const misty = mist ? mist.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const src0 = godrays ? godrays.apply( misty ) : misty;
 		const src = withBloom ? src0.add( bloomPass.rgb ) : src0;
 		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV );
 		const c = renderOutput( vec4( wetRGB, 1.0 ) ).toVar();
@@ -502,6 +519,11 @@ async function main() {
 
 	const hud = new HUD( app );
 	app.hud = hud;
+	// terrain editor (?edit): sculpt the relief, save it into public/terrain-edits.bin
+	if ( params.has( 'edit' ) ) {
+		const { TerrainEditor } = await import( './editor/terrainEditor.js' );
+		app.editor = new TerrainEditor( app );
+	}
 
 	addEventListener( 'resize', () => {
 		camera.aspect = innerWidth / innerHeight;

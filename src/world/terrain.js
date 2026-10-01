@@ -212,7 +212,38 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 		}
 	};
 
-	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, macroTex, detailTex, update };
+	// After the heights changed inside the grid rectangle [ i0, i1 ] x [ j0, j1 ] (terrain editor):
+	// normals around it, the vertices of the chunks it touches (every LOD) and their bounds. The
+	// height texture is rewritten too when heightTex is true (the caller throttles it: a full
+	// upload). The baked AO is left as it was until the fields are generated again.
+	const refresh = ( i0, j0, i1, j1, heightTexToo = true ) => {
+		i0 = Math.max( 0, i0 - 1 ); j0 = Math.max( 0, j0 - 1 ); i1 = Math.min( n - 1, i1 + 1 ); j1 = Math.min( n - 1, j1 + 1 );
+		updateGridNormals( hf, normals, i0, j0, i1, j1 );
+		const d = hf.data;
+		for ( const c of chunks ) {
+			if ( c.i1 < i0 || c.i0 > i1 || c.j1 < j0 || c.j0 > j1 ) continue;
+			let lo = Infinity, hi = - Infinity;
+			for ( const g of c.lods ) {
+				const { src, drops } = g.userData;
+				const pos = g.attributes.position.array, nor = g.attributes.normal.array;
+				for ( let v = 0; v < src.length; v ++ ) {
+					const k = src[ v ], y = d[ k ] - drops[ v ];
+					pos[ v * 3 + 1 ] = y;
+					nor[ v * 3 ] = normals[ k * 3 ]; nor[ v * 3 + 1 ] = normals[ k * 3 + 1 ]; nor[ v * 3 + 2 ] = normals[ k * 3 + 2 ];
+					if ( drops[ v ] === 0 ) { if ( y < lo ) lo = y; if ( y > hi ) hi = y; }
+				}
+				g.attributes.position.needsUpdate = true;
+				g.attributes.normal.needsUpdate = true;
+			}
+			c.box.min.y = lo; c.box.max.y = hi;
+			for ( const g of c.lods ) { g.boundingBox.copy( c.box ); c.box.getBoundingSphere( g.boundingSphere ); }
+		}
+		if ( heightTexToo ) updateHeightTexture( heightTex, hf );
+	};
+
+	const refreshHeightTex = ( i0, j0, i1, j1 ) => updateHeightTexture( heightTex, hf, i0, j0, i1, j1 );
+
+	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, macroTex, detailTex, update, refresh, refreshHeightTex };
 }
 
 function computeGridNormals( hf ) {
@@ -229,6 +260,19 @@ function computeGridNormals( hf ) {
 	return out;
 }
 
+// normals of the grid rectangle [ i0, i1 ] x [ j0, j1 ] only (terrain editor)
+function updateGridNormals( hf, out, i0, j0, i1, j1 ) {
+	const n = hf.n, d = hf.data, e = hf.cell;
+	for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) {
+		const hl = d[ j * n + Math.max( 0, i - 1 ) ], hr = d[ j * n + Math.min( n - 1, i + 1 ) ];
+		const hd = d[ Math.max( 0, j - 1 ) * n + i ], hu = d[ Math.min( n - 1, j + 1 ) * n + i ];
+		const nx = hl - hr, ny = 2 * e, nz = hd - hu;
+		const l = Math.hypot( nx, ny, nz );
+		const k = ( j * n + i ) * 3;
+		out[ k ] = nx / l; out[ k + 1 ] = ny / l; out[ k + 2 ] = nz / l;
+	}
+}
+
 // 11 x 11 chunks of 80 cells, LOD strides 1/2/4/8/16, with skirts to hide cracks.
 function buildChunks( hf, normals, ao ) {
 	const n = hf.n, CH = 80, NC = hf.seg / CH;
@@ -241,9 +285,12 @@ function buildChunks( hf, normals, ao ) {
 			const m = CH / st + 1; // verts per side
 			const vcount = m * m + 4 * ( m - 1 );
 			const pos = new Float32Array( vcount * 3 ), nor = new Float32Array( vcount * 3 ), a = new Float32Array( vcount );
+			// grid vertex and skirt drop of every vertex: refresh() rewrites heights and normals in place
+			const src = new Int32Array( vcount ), drops = new Float32Array( vcount );
 			let v = 0;
 			const put = ( gi, gj, drop ) => {
 				const k = gj * n + gi;
+				src[ v ] = k; drops[ v ] = drop;
 				pos[ v * 3 ] = hf.x0 + gi * hf.cell; pos[ v * 3 + 1 ] = hf.data[ k ] - drop; pos[ v * 3 + 2 ] = hf.z0 + gj * hf.cell;
 				nor[ v * 3 ] = normals[ k * 3 ]; nor[ v * 3 + 1 ] = normals[ k * 3 + 1 ]; nor[ v * 3 + 2 ] = normals[ k * 3 + 2 ];
 				a[ v ] = ao[ k ];
@@ -274,13 +321,14 @@ function buildChunks( hf, normals, ao ) {
 			g.setAttribute( 'normal', new THREE.BufferAttribute( nor, 3 ) );
 			g.setAttribute( 'ao', new THREE.BufferAttribute( a, 1 ) );
 			g.setIndex( idx );
+			g.userData.src = src; g.userData.drops = drops;
 			g.computeBoundingBox();
 			if ( st === 1 ) box.copy( g.boundingBox );
 			lods.push( g );
 		}
 		// all LODs share the full-res bounds so culling never flickers
 		for ( const g of lods ) { g.boundingBox = box.clone(); g.boundingSphere = box.getBoundingSphere( new THREE.Sphere() ); }
-		chunks.push( { lods, box, lod: 0 } );
+		chunks.push( { lods, box, lod: 0, i0: ci * CH, j0: cj * CH, i1: ci * CH + CH, j1: cj * CH + CH } );
 	}
 	return chunks;
 }
@@ -306,4 +354,13 @@ export function createHeightTexture( hf ) {
 	tex.needsUpdate = true;
 	tex.userData = { x0: hf.x0, z0: hf.z0, size: hf.size, cell: hf.cell, n: hf.n };
 	return tex;
+}
+
+// rewrite the height texture from the heightfield (terrain editor)
+// (only the grid rectangle [ i0, i1 ] x [ j0, j1 ] is converted when given; the upload is whole)
+export function updateHeightTexture( tex, hf, i0 = 0, j0 = 0, i1 = hf.n - 1, j1 = hf.n - 1 ) {
+	const buf = tex.image.data, d = hf.data, n = hf.n;
+	i0 = Math.max( 0, i0 - 1 ); j0 = Math.max( 0, j0 - 1 ); i1 = Math.min( n - 1, i1 + 1 ); j1 = Math.min( n - 1, j1 + 1 );
+	for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) buf[ j * n + i ] = THREE.DataUtils.toHalfFloat( d[ j * n + i ] );
+	tex.needsUpdate = true;
 }

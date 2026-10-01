@@ -1,0 +1,600 @@
+// Terrain editor (?edit): sculpts the relief live and saves the edits into the project.
+//
+// The brushes follow three's webgpu_sculpt example (addons/misc/Sculptor.js, after SculptGL):
+// tool, size, strength, a soft falloff, Shift to invert, and a ring cursor lying on the surface.
+// Sculptor itself edits a free mesh; our relief is a heightfield, so the tools are the heightfield
+// versions: raise / lower, smooth, flatten, noise and restore (back to the procedural relief).
+// The "Gerar" tool stamps procedural relief after void032/shader-studio (MIT): Perlin fbm, or an
+// island (the fbm under a radial falloff, sinking below the water at the rim).
+//
+// What changes is a grid of height differences over the procedural relief (world/terrainEdits.js).
+// While editing, the heightfield, the terrain chunks and the height texture follow every stroke;
+// the rest (AO, vegetation, rocks, houses, grass) is rebuilt from the edited relief on the next
+// load: "Salvar e aplicar" writes public/terrain-edits.bin and reloads.
+//
+// Mouse: left = sculpt, right drag = look, WASD/QE = fly, Alt + left = orbit. Shift: invert.
+// [ ] size. Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z): undo / redo.
+import * as THREE from 'three/webgpu';
+import { makeSimplex, fbm } from '../core/noise.js';
+import { WATER_LEVEL } from '../world/layout.js';
+import { EDITS_N } from '../world/terrainEdits.js';
+
+const TOOLS = [
+	{ id: 'raise', label: 'Elevar', hint: 'Levanta o relevo (Shift: baixa)' },
+	{ id: 'lower', label: 'Baixar', hint: 'Afunda o relevo (Shift: levanta)' },
+	{ id: 'smooth', label: 'Suavizar', hint: 'Média com os vizinhos: arredonda arestas e degraus' },
+	{ id: 'flatten', label: 'Aplanar', hint: 'Leva à altura do ponto onde a pincelada começou' },
+	{ id: 'noise', label: 'Ruído', hint: 'Soma ruído fbm: rugosidade natural (Shift: subtrai)' },
+	{ id: 'restore', label: 'Restaurar', hint: 'Desfaz as edições sob o pincel: volta ao relevo procedural' },
+	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' }
+];
+const UNDO_MAX = 40;
+const UNDO_CELLS = 4e6; // ~48 MB of history at most
+const HEIGHT_TEX_EVERY = 0.2; // s between height-texture uploads during a stroke (a full upload)
+
+export class TerrainEditor {
+
+	// app: hf, terrain, camera, canvas (renderer.domElement), freecam, sky, terrainEdits
+	constructor( app ) {
+		this.app = app;
+		this.hf = app.hf;
+		this.terrain = app.terrain;
+		this.camera = app.camera;
+		this.dom = app.renderer.domElement;
+		const n = this.hf.n;
+		if ( n !== EDITS_N ) throw new Error( 'terrain editor: heightfield size does not match the edits grid' );
+		this.delta = app.terrainEdits ? app.terrainEdits.slice() : new Float32Array( n * n );
+		// the procedural relief under the edits: delta is always data - base, computed, not summed
+		// (summing the steps let float32 rounding drift, and a restored area never came back to 0)
+		this.base = new Float32Array( n * n );
+		for ( let k = 0; k < n * n; k ++ ) this.base[ k ] = this.hf.data[ k ] - this.delta[ k ];
+		this._tmp = new Float32Array( 0 ); // scratch for the smooth brush
+
+		this.tool = 'raise';
+		this.radius = 24;       // m
+		this.strength = 0.5;    // 0..1
+		this.hardness = 0.35;   // 0 = all falloff, 1 = hard edge
+		this.gen = { kind: 'island', freq: 1.2, octaves: 5, height: 14, depth: 6, seed: 7 };
+
+		this.active = true;
+		this.down = false;
+		this.invert = false;
+		this.hit = null;        // THREE.Vector3 under the pointer, or null
+		this.pointer = { x: 0, y: 0, inside: false };
+		this.stroke = null;     // { touched: Map<k, old>, flattenTo }
+		this.undo = []; this.redo = [];
+		this.dirty = null;      // [ i0, j0, i1, j1 ] waiting for terrain.refresh
+		this.texTimer = 0; this.texDue = false;
+		this.changed = false;   // unsaved edits
+
+		this._raycaster = new THREE.Raycaster();
+		this._ndc = new THREE.Vector2();
+		this._buildCursor();
+		this._buildPanel();
+		this._bind();
+		app.freecam.leftLook = false;
+		app.onFrame.push( ( dt ) => this.update( dt ) );
+		this._status();
+	}
+
+	// ------------------------------------------------------------------ picking
+
+	// the point of the relief under the pointer: march the view ray over the heightfield
+	_pick() {
+		const { hf } = this;
+		const r = this.dom.getBoundingClientRect();
+		this._ndc.set( ( this.pointer.x - r.left ) / r.width * 2 - 1, - ( ( this.pointer.y - r.top ) / r.height ) * 2 + 1 );
+		this._raycaster.setFromCamera( this._ndc, this.camera );
+		const o = this._raycaster.ray.origin, d = this._raycaster.ray.direction;
+		const x1 = hf.x0 + hf.size, z1 = hf.z0 + hf.size;
+		const above = ( t ) => {
+			const x = o.x + d.x * t, z = o.z + d.z * t;
+			if ( x < hf.x0 || z < hf.z0 || x > x1 || z > z1 ) return null;
+			return o.y + d.y * t - hf.heightAt( x, z );
+		};
+		let t0 = 0, t = 0.5, prev = above( 0 );
+		for ( let s = 0; s < 4000 && t < 6000; s ++ ) {
+			const h = above( t );
+			if ( h !== null && h < 0 && prev !== null && prev >= 0 ) {
+				let a = t0, b = t; // bisection
+				for ( let k = 0; k < 18; k ++ ) { const m = ( a + b ) / 2; if ( above( m ) >= 0 ) a = m; else b = m; }
+				return new THREE.Vector3( o.x + d.x * b, 0, o.z + d.z * b ).setY( hf.heightAt( o.x + d.x * b, o.z + d.z * b ) );
+			}
+			prev = h; t0 = t;
+			t += h === null ? 2 : Math.min( 25, Math.max( 0.4, h * 0.5 ) );
+		}
+		return null;
+	}
+
+	_pickPlane( y ) {
+		const r = this.dom.getBoundingClientRect();
+		this._ndc.set( ( this.pointer.x - r.left ) / r.width * 2 - 1, - ( ( this.pointer.y - r.top ) / r.height ) * 2 + 1 );
+		this._raycaster.setFromCamera( this._ndc, this.camera );
+		const o = this._raycaster.ray.origin, d = this._raycaster.ray.direction;
+		if ( Math.abs( d.y ) < 1e-4 ) return null;
+		const t = ( y - o.y ) / d.y;
+		if ( t <= 0 ) return null;
+		return ( this._planeHit ??= new THREE.Vector3() ).set( o.x + d.x * t, y, o.z + d.z * t );
+	}
+
+	// ------------------------------------------------------------------ brushes
+
+	// falloff weight at distance d from the centre (1 inside the hard core, 0 at the radius)
+	_weight( d ) {
+		const t = d / this.radius;
+		if ( t >= 1 ) return 0;
+		const inner = this.hardness * 0.95;
+		if ( t <= inner ) return 1;
+		const u = ( t - inner ) / ( 1 - inner );
+		return 0.5 + 0.5 * Math.cos( Math.PI * u );
+	}
+
+	// cells of the brush around world (cx, cz): calls fn( k, x, z, w ) and grows the dirty box
+	_forCells( cx, cz, fn ) {
+		const { hf } = this, n = hf.n, R = this.radius;
+		const i0 = Math.max( 0, Math.floor( ( cx - R - hf.x0 ) / hf.cell ) ), i1 = Math.min( n - 1, Math.ceil( ( cx + R - hf.x0 ) / hf.cell ) );
+		const j0 = Math.max( 0, Math.floor( ( cz - R - hf.z0 ) / hf.cell ) ), j1 = Math.min( n - 1, Math.ceil( ( cz + R - hf.z0 ) / hf.cell ) );
+		if ( i0 > i1 || j0 > j1 ) return;
+		for ( let j = j0; j <= j1; j ++ ) {
+			const z = hf.z0 + j * hf.cell;
+			for ( let i = i0; i <= i1; i ++ ) {
+				const x = hf.x0 + i * hf.cell;
+				const w = this._weight( Math.hypot( x - cx, z - cz ) );
+				if ( w > 0 ) fn( j * n + i, x, z, w, i, j );
+			}
+		}
+		this._markDirty( i0, j0, i1, j1 );
+	}
+
+	_markDirty( i0, j0, i1, j1 ) {
+		const d = this.dirty;
+		this.dirty = d ? [ Math.min( d[ 0 ], i0 ), Math.min( d[ 1 ], j0 ), Math.max( d[ 2 ], i1 ), Math.max( d[ 3 ], j1 ) ] : [ i0, j0, i1, j1 ];
+		this.texDue = true;
+		this.changed = true;
+	}
+
+	// the one way heights change: keeps the edit layer and remembers the value for undo
+	_set( k, h ) {
+		const st = this.stroke;
+		if ( st && ! st.touched.has( k ) ) st.touched.set( k, this.delta[ k ] );
+		this.hf.data[ k ] = h;
+		this.delta[ k ] = this.hf.data[ k ] - this.base[ k ];
+	}
+
+	// one application of the brush at (cx, cz) over dt seconds
+	_dab( cx, cz, dt ) {
+		const d = this.hf.data, s = this.strength;
+		const sign = ( this.tool === 'lower' ? - 1 : 1 ) * ( this.invert ? - 1 : 1 );
+		switch ( this.tool ) {
+			case 'raise':
+			case 'lower': {
+				const rate = 10 * s * s * sign * dt; // m per second at the centre
+				this._forCells( cx, cz, ( k, x, z, w ) => this._set( k, d[ k ] + rate * w ) );
+				break;
+			}
+			case 'smooth': {
+				// 5 x 5 averages computed first (the result does not depend on the scan order), into a
+				// reused scratch array: [ k, average, weight ] per cell
+				const n = this.hf.n, cells = Math.ceil( 2 * this.radius / this.hf.cell + 3 ) ** 2 * 3;
+				if ( this._tmp.length < cells ) this._tmp = new Float32Array( cells );
+				const tmp = this._tmp;
+				let m = 0;
+				this._forCells( cx, cz, ( k, x, z, w, i, j ) => {
+					let sum = 0, c = 0;
+					for ( let b = - 2; b <= 2; b ++ ) for ( let a = - 2; a <= 2; a ++ ) {
+						const ii = i + a, jj = j + b;
+						if ( ii < 0 || jj < 0 || ii >= n || jj >= n ) continue;
+						sum += d[ jj * n + ii ]; c ++;
+					}
+					tmp[ m ++ ] = k; tmp[ m ++ ] = sum / c; tmp[ m ++ ] = w;
+				} );
+				const f = Math.min( 1, 12 * s * dt );
+				for ( let q = 0; q < m; q += 3 ) { const k = tmp[ q ], avg = tmp[ q + 1 ]; this._set( k, d[ k ] + ( avg - d[ k ] ) * f * tmp[ q + 2 ] ); }
+				break;
+			}
+			case 'flatten': {
+				const target = this.stroke.flattenTo, f = Math.min( 1, 10 * s * dt );
+				this._forCells( cx, cz, ( k, x, z, w ) => this._set( k, d[ k ] + ( target - d[ k ] ) * f * w ) );
+				break;
+			}
+			case 'noise': {
+				const n2 = this.stroke.noise ??= makeSimplex( this.gen.seed );
+				const fr = this.gen.freq / 100, rate = 8 * s * sign * dt;
+				this._forCells( cx, cz, ( k, x, z, w ) => this._set( k, d[ k ] + fbm( n2, x * fr, z * fr, this.gen.octaves ) * rate * w ) );
+				break;
+			}
+			case 'restore': {
+				const f = Math.min( 1, 8 * s * dt );
+				// lands exactly on the procedural relief once the remaining edit is negligible
+				this._forCells( cx, cz, ( k, x, z, w ) => {
+					const r = this.delta[ k ] * ( 1 - f * w );
+					this._set( k, this.base[ k ] + ( Math.abs( r ) < 1e-3 ? 0 : r ) );
+				} );
+				break;
+			}
+		}
+	}
+
+	// the "Gerar" stamp (shader-studio's terrain): Perlin fbm, or an island (fbm under a radial
+	// falloff, below the water at the rim), blended into the relief by the brush falloff
+	_stamp( cx, cz ) {
+		const g = this.gen, d = this.hf.data, R = this.radius;
+		const n2 = makeSimplex( g.seed );
+		const fr = g.freq / 100;
+		const sign = this.invert ? - 1 : 1;
+		this._forCells( cx, cz, ( k, x, z, w ) => {
+			const f = fbm( n2, ( x - cx ) * fr, ( z - cz ) * fr, g.octaves ); // about -1..1
+			if ( g.kind === 'perlin' ) {
+				this._set( k, d[ k ] + f * g.height * sign * w * this.strength * 2 );
+			} else {
+				// shader-studio's island: fbm under a radial falloff, below the water at the rim. Here
+				// the coastline is made irregular (the distance warped by a low-frequency fbm) and
+				// the fbm only modulates the height, so it reads as an island rather than a dome
+				const coast = fbm( n2, ( x - cx ) * fr * 0.35 + 31.7, ( z - cz ) * fr * 0.35 - 12.3, 3 );
+				const t = Math.hypot( x - cx, z - cz ) / R * ( 1 + 0.35 * coast );
+				const fall = Math.max( 0, 1 - t * t );
+				const island = WATER_LEVEL + ( 0.15 + 0.85 * ( f * 0.5 + 0.5 ) ) * g.height * Math.pow( fall, 1.4 ) - ( 1 - fall ) * g.depth;
+				this._set( k, d[ k ] + ( island - d[ k ] ) * w );
+			}
+		} );
+	}
+
+	// ------------------------------------------------------------------ strokes, undo
+
+	_begin() {
+		if ( ! this.hit ) return false;
+		this.stroke = { touched: new Map(), flattenTo: this.hit.y, noise: null, last: this.hit.clone() };
+		if ( this.tool === 'generate' ) { this._stamp( this.hit.x, this.hit.z ); this._end(); return false; }
+		return true;
+	}
+
+	_end() {
+		const st = this.stroke;
+		this.stroke = null;
+		if ( ! st || ! st.touched.size ) return;
+		const keys = Int32Array.from( st.touched.keys() );
+		const before = Float32Array.from( st.touched.values() );
+		const after = new Float32Array( keys.length );
+		for ( let q = 0; q < keys.length; q ++ ) after[ q ] = this.delta[ keys[ q ] ];
+		this._pushUndo( { keys, before, after } );
+		this.texDue = true; this.texTimer = HEIGHT_TEX_EVERY; // upload now
+		this._status();
+	}
+
+	// put the edit layer of a step back (undo: before, redo: after)
+	_applyStep( step, values ) {
+		const { hf } = this, n = hf.n;
+		let i0 = n, j0 = n, i1 = 0, j1 = 0;
+		for ( let q = 0; q < step.keys.length; q ++ ) {
+			const k = step.keys[ q ];
+			hf.data[ k ] = this.base[ k ] + values[ q ];
+			this.delta[ k ] = hf.data[ k ] - this.base[ k ];
+			const i = k % n, j = ( k - i ) / n;
+			if ( i < i0 ) i0 = i; if ( i > i1 ) i1 = i; if ( j < j0 ) j0 = j; if ( j > j1 ) j1 = j;
+		}
+		if ( step.keys.length ) this._markDirty( i0, j0, i1, j1 );
+		this.texTimer = HEIGHT_TEX_EVERY;
+	}
+
+	// at most UNDO_MAX steps and ~UNDO_CELLS edited cells kept (an import / clear can be the whole grid)
+	_pushUndo( step ) {
+		this.undo.push( step );
+		this.redo.length = 0;
+		let cells = 0;
+		for ( const u of this.undo ) cells += u.keys.length;
+		while ( this.undo.length > 1 && ( this.undo.length > UNDO_MAX || cells > UNDO_CELLS ) ) cells -= this.undo.shift().keys.length;
+	}
+
+	undoStep() { if ( this.down || this.stroke ) return; const s = this.undo.pop(); if ( s ) { this._applyStep( s, s.before ); this.redo.push( s ); } this._status(); }
+	redoStep() { if ( this.down || this.stroke ) return; const s = this.redo.pop(); if ( s ) { this._applyStep( s, s.after ); this.undo.push( s ); } this._status(); }
+
+	// replace the whole edit layer (import / clear), undoable
+	_replaceAll( next ) {
+		const keys = [], before = [], after = [];
+		for ( let k = 0; k < next.length; k ++ ) if ( next[ k ] !== this.delta[ k ] ) { keys.push( k ); before.push( this.delta[ k ] ); after.push( next[ k ] ); }
+		if ( ! keys.length ) return;
+		const step = { keys: Int32Array.from( keys ), before: Float32Array.from( before ), after: Float32Array.from( after ) };
+		this._applyStep( step, step.after );
+		this._pushUndo( step );
+		this._status();
+	}
+
+	// ------------------------------------------------------------------ frame
+
+	update( dt ) {
+		this.frames = ( this.frames || 0 ) + 1;
+		if ( this.down ) this.dabFrames = ( this.dabFrames || 0 ) + 1;
+		if ( this.active && this.pointer.inside && ! this.down ) this.hit = this._pick();
+		if ( this.down && this.stroke ) {
+			// on the horizontal plane at the stroke's start height: picking the relief being edited
+			// made the brush crawl towards the camera as the slope rose under a still pointer
+			const h = this._pickPlane( this.stroke.flattenTo );
+			if ( h ) {
+				// dabs along the path (spacing ~ a quarter of the radius) so fast strokes stay smooth
+				const last = this.stroke.last, dist = Math.hypot( h.x - last.x, h.z - last.z );
+				const steps = Math.max( 1, Math.min( 32, Math.ceil( dist / ( this.radius * 0.25 ) ) ) );
+				const step = Math.min( dt, 0.05 ) / steps;
+				for ( let q = 1; q <= steps; q ++ ) this._dab( last.x + ( h.x - last.x ) * q / steps, last.z + ( h.z - last.z ) * q / steps, step );
+				this.stroke.last.copy( h );
+				this.hit = h;
+			}
+		}
+		this.texTimer += dt;
+		if ( this.dirty ) {
+			const [ i0, j0, i1, j1 ] = this.dirty;
+			this.dirty = null;
+			this.terrain.refresh( i0, j0, i1, j1, false );
+			const t = this.texRect;
+			this.texRect = t ? [ Math.min( t[ 0 ], i0 ), Math.min( t[ 1 ], j0 ), Math.max( t[ 2 ], i1 ), Math.max( t[ 3 ], j1 ) ] : [ i0, j0, i1, j1 ];
+			if ( this.texDue && this.texTimer >= HEIGHT_TEX_EVERY ) this._uploadTex();
+			this.app.sky.sun.shadow.needsUpdate = true;
+		} else if ( this.texDue && this.texTimer >= HEIGHT_TEX_EVERY && ! this.down ) {
+			this._uploadTex();
+		}
+		this._updateCursor();
+		this._info();
+	}
+
+	// the height texture: only the rectangle edited since the last upload is converted
+	_uploadTex() {
+		const t = this.texRect;
+		this.texRect = null;
+		this.texDue = false; this.texTimer = 0;
+		if ( t ) this.terrain.refreshHeightTex( t[ 0 ], t[ 1 ], t[ 2 ], t[ 3 ] );
+	}
+
+	// ------------------------------------------------------------------ cursor
+
+	_buildCursor() {
+		const SEG = 96;
+		const mat = new THREE.LineBasicNodeMaterial( { color: 0xe6c987, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9 } );
+		const inner = new THREE.LineBasicNodeMaterial( { color: 0xe6c987, depthTest: false, depthWrite: false, transparent: true, opacity: 0.45 } );
+		const ring = ( m ) => {
+			const g = new THREE.BufferGeometry();
+			// closed by repeating the first point (WebGPU has no LineLoop)
+			g.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( ( SEG + 1 ) * 3 ), 3 ) );
+			const l = new THREE.Line( g, m );
+			l.frustumCulled = false; l.renderOrder = 999;
+			return l;
+		};
+		this.cursor = new THREE.Group();
+		this.cursor.name = 'terrainEditorCursor';
+		this.ringOuter = ring( mat );
+		this.ringInner = ring( inner );
+		this.cursor.add( this.ringOuter, this.ringInner );
+		this.cursor.visible = false;
+		this.app.scene.add( this.cursor );
+		this._seg = SEG;
+	}
+
+	_updateCursor() {
+		const h = this.hit;
+		this.cursor.visible = !! ( this.active && h && this.pointer.inside );
+		if ( ! this.cursor.visible ) return;
+		const fill = ( line, r ) => {
+			const a = line.geometry.attributes.position;
+			for ( let q = 0; q <= this._seg; q ++ ) {
+				const t = q / this._seg * Math.PI * 2;
+				const x = h.x + Math.cos( t ) * r, z = h.z + Math.sin( t ) * r;
+				a.setXYZ( q, x, Math.max( this.hf.heightAt( x, z ), WATER_LEVEL ) + 0.35, z ); // on the water over the lake
+			}
+			a.needsUpdate = true;
+		};
+		fill( this.ringOuter, this.radius );
+		fill( this.ringInner, Math.max( 0.5, this.radius * this.hardness * 0.95 ) );
+		const neg = ( this.tool === 'lower' ) !== this.invert;
+		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : neg ? 0xff9a6a : 0xe6c987;
+		this.ringOuter.material.color.setHex( c );
+		this.ringInner.material.color.setHex( c );
+	}
+
+	// ------------------------------------------------------------------ input
+
+	_bind() {
+		const dom = this.dom;
+		dom.addEventListener( 'pointermove', ( e ) => { this.pointer.x = e.clientX; this.pointer.y = e.clientY; this.pointer.inside = true; this.invert = e.shiftKey; } );
+		dom.addEventListener( 'pointerleave', () => { this.pointer.inside = false; } );
+		dom.addEventListener( 'pointerdown', ( e ) => {
+			if ( ! this.active || e.button !== 0 || e.altKey ) return;
+			this.pointer.x = e.clientX; this.pointer.y = e.clientY; this.pointer.inside = true;
+			this.invert = e.shiftKey;
+			this.hit = this._pick();
+			if ( this._begin() ) { this.down = true; dom.setPointerCapture?.( e.pointerId ); }
+		} );
+		// the stroke ends whenever the left button is no longer held: a chord with the right
+		// button releases the left one in a pointermove, not a pointerup; also cancel / lost capture
+		// / leaving the window
+		const release = () => { if ( this.down ) { this.down = false; this._end(); } };
+		window.addEventListener( 'pointerup', ( e ) => { if ( ( e.buttons & 1 ) === 0 ) release(); } );
+		window.addEventListener( 'pointermove', ( e ) => { if ( this.down && ( e.buttons & 1 ) === 0 ) release(); } );
+		dom.addEventListener( 'pointercancel', release );
+		dom.addEventListener( 'lostpointercapture', release );
+		window.addEventListener( 'blur', release );
+		window.addEventListener( 'keydown', ( e ) => {
+			if ( e.target.closest && e.target.closest( 'input,select,textarea' ) ) return;
+			if ( e.key === 'Shift' ) this.invert = true;
+			if ( ! this.active ) return;
+			if ( e.code === 'BracketLeft' ) this._setRadius( this.radius / 1.15 );
+			if ( e.code === 'BracketRight' ) this._setRadius( this.radius * 1.15 );
+			if ( ( e.ctrlKey || e.metaKey ) && e.code === 'KeyZ' ) { e.preventDefault(); e.shiftKey ? this.redoStep() : this.undoStep(); }
+			if ( ( e.ctrlKey || e.metaKey ) && e.code === 'KeyY' ) { e.preventDefault(); this.redoStep(); }
+		} );
+		window.addEventListener( 'keyup', ( e ) => { if ( e.key === 'Shift' ) this.invert = false; } );
+		window.addEventListener( 'beforeunload', ( e ) => { if ( this.changed && ! this._saving ) { e.preventDefault(); e.returnValue = ''; } } );
+	}
+
+	setActive( on ) {
+		this.active = on;
+		this.app.freecam.leftLook = ! on;
+		if ( ! on ) { this.down = false; this._end(); }
+		this.panel.classList.toggle( 'paused', ! on );
+		this.ui.toggle.textContent = on ? 'Pausar edição' : 'Retomar edição';
+	}
+
+	_setRadius( r ) {
+		this.radius = Math.min( 300, Math.max( 3, r ) );
+		this.ui.size.value = this.radius; this.ui.sizeOut.textContent = this.radius.toFixed( 0 ) + ' m';
+	}
+
+	// ------------------------------------------------------------------ save / load
+
+	async save() {
+		this._saving = true;
+		try {
+			const res = await fetch( '/__terrain-edits', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: this.delta.buffer.slice( 0 ) } );
+			if ( ! res.ok ) throw new Error( res.status );
+			this.changed = false;
+			this._toast( 'Edições salvas em public/terrain-edits.bin. Recarregando…' );
+			// a fresh load builds everything (AO, vegetation, houses) on the edited relief
+			setTimeout( () => location.reload(), 400 );
+		} catch ( e ) {
+			this._saving = false;
+			this._toast( 'Sem o servidor de desenvolvimento: baixando o arquivo (coloque em public/terrain-edits.bin).' );
+			this.exportFile();
+		}
+	}
+
+	exportFile() {
+		const a = document.createElement( 'a' );
+		a.href = URL.createObjectURL( new Blob( [ this.delta ], { type: 'application/octet-stream' } ) );
+		a.download = 'terrain-edits.bin';
+		a.click();
+		setTimeout( () => URL.revokeObjectURL( a.href ), 1000 );
+	}
+
+	async importFile( file ) {
+		const buf = await file.arrayBuffer();
+		if ( buf.byteLength !== this.delta.byteLength ) { this._toast( `Arquivo inválido: ${ buf.byteLength } bytes (esperado ${ this.delta.byteLength })` ); return; }
+		const next = new Float32Array( buf );
+		for ( let k = 0; k < next.length; k ++ ) if ( ! Number.isFinite( next[ k ] ) ) { this._toast( 'Arquivo inválido: contém valores não numéricos.' ); return; }
+		this._replaceAll( next );
+		this._toast( 'Edições importadas (Ctrl+Z desfaz).' );
+	}
+
+	clearAll() { this._replaceAll( new Float32Array( this.delta.length ) ); this._toast( 'Todas as edições removidas (Ctrl+Z desfaz).' ); }
+
+	// ------------------------------------------------------------------ panel
+
+	_buildPanel() {
+		const el = document.createElement( 'div' );
+		el.id = 'terrain-editor';
+		el.className = 'panel';
+		el.innerHTML = `
+			<header><b>Editor de relevo</b><button data-act="toggle" class="small"></button></header>
+			<div class="tools">${ TOOLS.map( ( t ) => `<button data-tool="${ t.id }" title="${ t.hint }">${ t.label }</button>` ).join( '' ) }</div>
+			<p class="hint"></p>
+			<label>Tamanho <input data-k="size" type="range" min="3" max="300" step="1"><output></output></label>
+			<label>Força <input data-k="strength" type="range" min="0.02" max="1" step="0.01"><output></output></label>
+			<label>Dureza <input data-k="hardness" type="range" min="0" max="1" step="0.01"><output></output></label>
+			<fieldset class="gen">
+				<legend>Procedural (Gerar e Ruído)</legend>
+				<label>Tipo <select data-k="kind"><option value="island">Ilha</option><option value="perlin">Perlin</option></select></label>
+				<label>Frequência <input data-k="freq" type="range" min="0.1" max="8" step="0.05"><output></output></label>
+				<label>Oitavas <input data-k="octaves" type="range" min="1" max="8" step="1"><output></output></label>
+				<label>Altura <input data-k="height" type="range" min="1" max="160" step="1"><output></output></label>
+				<label>Profundidade <input data-k="depth" type="range" min="0" max="40" step="0.5"><output></output></label>
+				<label>Semente <input data-k="seed" type="number" min="1" max="99999" step="1"><button data-act="dice" class="small" title="Semente aleatória">🎲</button></label>
+			</fieldset>
+			<p class="info"></p>
+			<div class="row"><button data-act="undo">Desfazer</button><button data-act="redo">Refazer</button></div>
+			<div class="row"><button data-act="save" class="primary">Salvar e aplicar</button></div>
+			<div class="row"><button data-act="export">Exportar</button><button data-act="import">Importar</button><button data-act="clear">Limpar tudo</button></div>
+			<p class="keys">Esq.: esculpir · Dir. arrastar: olhar · WASD/QE: voar · Shift: inverter · [ ]: tamanho · Ctrl+Z/Y</p>
+			<input type="file" accept=".bin" hidden>`;
+		document.body.appendChild( el );
+		this.panel = el;
+		const q = ( s ) => el.querySelector( s );
+		this.ui = { toggle: q( '[data-act=toggle]' ), hint: q( '.hint' ), info: q( '.info' ), size: q( '[data-k=size]' ), sizeOut: q( '[data-k=size]' ).nextElementSibling, undo: q( '[data-act=undo]' ), redo: q( '[data-act=redo]' ) };
+		const style = document.createElement( 'style' );
+		style.textContent = `
+			#terrain-editor { position: fixed; top: 78px; left: 12px; width: 288px; padding: 10px 12px; z-index: 12; font-size: 12px; color: var(--ink); max-height: calc(100vh - 140px); overflow: auto; }
+			#terrain-editor header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--gold-2); font-size: 13px; }
+			#terrain-editor .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+			#terrain-editor button { background: rgba(0,0,0,.35); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 5px 4px; cursor: pointer; font: inherit; }
+			#terrain-editor button:hover { border-color: var(--gold); }
+			#terrain-editor button.on { background: rgba(201,164,92,.35); border-color: var(--gold-2); color: #fff; }
+			#terrain-editor button.primary { background: rgba(60,90,42,.6); border-color: #7fae5a; width: 100%; }
+			#terrain-editor button.small { padding: 2px 8px; }
+			#terrain-editor button:disabled { opacity: .4; cursor: default; }
+			#terrain-editor label { display: grid; grid-template-columns: 78px 1fr 46px; align-items: center; gap: 6px; margin: 5px 0; }
+			#terrain-editor input[type=range] { width: 100%; accent-color: var(--gold); }
+			#terrain-editor input[type=number], #terrain-editor select { background: rgba(0,0,0,.35); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 2px 4px; font: inherit; }
+			#terrain-editor output { text-align: right; color: var(--ink-dim); }
+			#terrain-editor fieldset { border: 1px solid var(--panel-edge); border-radius: 8px; margin: 8px 0; padding: 4px 8px; }
+			#terrain-editor legend { color: var(--ink-dim); padding: 0 4px; }
+			#terrain-editor .row { display: flex; gap: 4px; margin-top: 5px; } #terrain-editor .row button { flex: 1; }
+			#terrain-editor .hint, #terrain-editor .keys { color: var(--ink-dim); margin: 6px 0; line-height: 1.35; }
+			#terrain-editor .info { font-family: ui-monospace, monospace; margin: 6px 0; min-height: 30px; }
+			#terrain-editor.paused .tools, #terrain-editor.paused label, #terrain-editor.paused fieldset { opacity: .45; pointer-events: none; }
+			#terrain-editor .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); }`;
+		document.head.appendChild( style );
+
+		// tools
+		const setTool = ( id ) => {
+			this.tool = id;
+			for ( const b of el.querySelectorAll( '[data-tool]' ) ) b.classList.toggle( 'on', b.dataset.tool === id );
+			this.ui.hint.textContent = TOOLS.find( ( t ) => t.id === id ).hint;
+		};
+		for ( const b of el.querySelectorAll( '[data-tool]' ) ) b.onclick = () => setTool( b.dataset.tool );
+		setTool( this.tool );
+		// sliders
+		const bind = ( k, get, set, fmt ) => {
+			const input = el.querySelector( `[data-k=${ k }]` ), out = input.nextElementSibling;
+			input.value = get();
+			const show = () => { if ( out?.tagName === 'OUTPUT' ) out.textContent = fmt( get() ); };
+			input.oninput = () => { set( input.type === 'range' || input.type === 'number' ? Number( input.value ) : input.value ); show(); };
+			show();
+			return input;
+		};
+		bind( 'size', () => this.radius, ( v ) => { this.radius = v; }, ( v ) => v.toFixed( 0 ) + ' m' );
+		bind( 'strength', () => this.strength, ( v ) => { this.strength = v; }, ( v ) => Math.round( v * 100 ) + '%' );
+		bind( 'hardness', () => this.hardness, ( v ) => { this.hardness = v; }, ( v ) => Math.round( v * 100 ) + '%' );
+		bind( 'kind', () => this.gen.kind, ( v ) => { this.gen.kind = v; }, String );
+		bind( 'freq', () => this.gen.freq, ( v ) => { this.gen.freq = v; }, ( v ) => v.toFixed( 2 ) );
+		bind( 'octaves', () => this.gen.octaves, ( v ) => { this.gen.octaves = v; }, String );
+		bind( 'height', () => this.gen.height, ( v ) => { this.gen.height = v; }, ( v ) => v.toFixed( 0 ) + ' m' );
+		bind( 'depth', () => this.gen.depth, ( v ) => { this.gen.depth = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
+		const seed = bind( 'seed', () => this.gen.seed, ( v ) => { this.gen.seed = Math.max( 1, Math.floor( v ) || 1 ); }, String );
+		// actions
+		const file = el.querySelector( 'input[type=file]' );
+		file.onchange = () => { if ( file.files[ 0 ] ) this.importFile( file.files[ 0 ] ); file.value = ''; };
+		let clearArmed = 0;
+		const acts = {
+			toggle: () => this.setActive( ! this.active ),
+			dice: () => { this.gen.seed = 1 + Math.floor( Math.random() * 99998 ); seed.value = this.gen.seed; },
+			undo: () => this.undoStep(), redo: () => this.redoStep(),
+			save: () => this.save(), export: () => this.exportFile(), import: () => file.click(),
+			// two clicks within 3 s (no browser dialog)
+			clear: ( b ) => {
+				if ( performance.now() - clearArmed < 3000 ) { clearArmed = 0; b.textContent = 'Limpar tudo'; this.clearAll(); return; }
+				clearArmed = performance.now(); b.textContent = 'Confirmar?';
+				setTimeout( () => { b.textContent = 'Limpar tudo'; }, 3000 );
+			}
+		};
+		for ( const b of el.querySelectorAll( '[data-act]' ) ) b.onclick = () => acts[ b.dataset.act ]( b );
+		this.ui.toggle.textContent = 'Pausar edição';
+	}
+
+	_status() {
+		if ( ! this.ui ) return;
+		this.ui.undo.disabled = ! this.undo.length;
+		this.ui.redo.disabled = ! this.redo.length;
+	}
+
+	_info() {
+		if ( ! this.ui ) return;
+		const h = this.hit;
+		if ( ! h ) { this.ui.info.textContent = this.changed ? 'edições não salvas' : ''; return; }
+		const { hf } = this, n = hf.n;
+		const i = Math.round( ( h.x - hf.x0 ) / hf.cell ), j = Math.round( ( h.z - hf.z0 ) / hf.cell );
+		const dl = this.delta[ Math.min( n - 1, Math.max( 0, j ) ) * n + Math.min( n - 1, Math.max( 0, i ) ) ];
+		this.ui.info.textContent = `x ${ h.x.toFixed( 0 ) }  z ${ h.z.toFixed( 0 ) }  altura ${ h.y.toFixed( 1 ) } m\nedição ${ dl >= 0 ? '+' : '' }${ dl.toFixed( 2 ) } m${ this.changed ? '  · não salvo' : '' }`;
+		this.ui.info.style.whiteSpace = 'pre';
+	}
+
+	_toast( msg ) {
+		if ( this.app.hud?.toast ) return this.app.hud.toast( msg );
+		console.info( msg );
+	}
+
+}
