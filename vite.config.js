@@ -72,12 +72,50 @@ function terrainEditsEndpoint() {
 	};
 }
 
+// Dev-only endpoint: the object editor (?edit, src/editor/objectEditor.js) saves the village object
+// edits here: public/world-edits.json (see src/world/worldEdits.js). GET answers 204 without a file.
+function worldEditsEndpoint() {
+	return {
+		name: 'world-edits-endpoint',
+		configureServer( server ) {
+			const file = path.join( server.config.publicDir, 'world-edits.json' );
+			server.middlewares.use( '/__world-edits', ( req, res ) => {
+				const fail = ( code, msg ) => { res.statusCode = code; res.end( msg ); };
+				if ( req.method === 'GET' ) {
+					if ( ! fs.existsSync( file ) ) return fail( 204 );
+					res.setHeader( 'Content-Type', 'application/json' );
+					res.setHeader( 'Cache-Control', 'no-store' );
+					return res.end( fs.readFileSync( file ) );
+				}
+				if ( req.method !== 'POST' ) return fail( 405 );
+				if ( ! /application\/json/.test( req.headers[ 'content-type' ] || '' ) ) return fail( 415, 'json only' );
+				const origin = req.headers.origin;
+				if ( origin && new URL( origin ).host !== req.headers.host ) return fail( 403, 'other origin' );
+				const chunks = [];
+				let len = 0;
+				req.on( 'data', ( c ) => { len += c.length; if ( len <= 2e6 ) chunks.push( c ); } );
+				req.on( 'error', () => fail( 400, 'read error' ) );
+				req.on( 'end', () => {
+					if ( len > 2e6 ) return fail( 413, 'too big' );
+					let data;
+					try { data = JSON.parse( Buffer.concat( chunks ).toString( 'utf8' ) ); } catch ( e ) { return fail( 400, 'bad json' ); }
+					if ( ! data || typeof data !== 'object' || typeof data.objects !== 'object' || ! Array.isArray( data.added ) ) return fail( 400, 'bad shape' );
+					fs.mkdirSync( path.dirname( file ), { recursive: true } );
+					fs.writeFileSync( file + '.tmp', JSON.stringify( data, null, '\t' ) + '\n' );
+					fs.renameSync( file + '.tmp', file );
+					res.end( 'ok' );
+				} );
+			} );
+		}
+	};
+}
+
 export default defineConfig( {
-	plugins: [ captureEndpoint(), terrainEditsEndpoint() ],
+	plugins: [ captureEndpoint(), terrainEditsEndpoint(), worldEditsEndpoint() ],
 	// single three.js instance: addons and three-bvh-csg import "three"
 	resolve: { alias: [ { find: /^three$/, replacement: 'three/webgpu' } ] },
 	// the editor reloads by itself after saving the edits: no reload from the file watcher
-	server: { port: 5190, strictPort: true, watch: { ignored: [ '**/public/terrain-edits.bin', '**/public/terrain-edits.bin.tmp' ] } },
+	server: { port: 5190, strictPort: true, watch: { ignored: [ '**/public/terrain-edits.bin', '**/public/terrain-edits.bin.tmp', '**/public/world-edits.json', '**/public/world-edits.json.tmp' ] } },
 	build: { target: 'esnext' },
 	optimizeDeps: { rolldownOptions: { transform: { target: 'esnext' } } }
 } );

@@ -1,9 +1,12 @@
 // Off-main-thread generation of the heightfield and splat mask.
 import { HeightField, buildMask, bakeAO, buildMacro } from './heightfield.js';
+import { applyWorldEdits } from './worldEdits.js';
 
 let hf = null;
 
 self.onmessage = async ( e ) => {
+	// the edited village (moved / added / removed houses): pads in the relief, trampled ground
+	applyWorldEdits( e.data.world || null );
 	if ( e.data.cmd === 'height' ) {
 		hf = new HeightField();
 		await hf.build( ( p ) => self.postMessage( { type: 'progress', p } ), true );

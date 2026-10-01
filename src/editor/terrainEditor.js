@@ -451,7 +451,7 @@ export class TerrainEditor {
 			if ( ( e.ctrlKey || e.metaKey ) && e.code === 'KeyY' ) { e.preventDefault(); this.redoStep(); }
 		} );
 		window.addEventListener( 'keyup', ( e ) => { if ( e.key === 'Shift' ) this.invert = false; } );
-		window.addEventListener( 'beforeunload', ( e ) => { if ( this.changed && ! this._saving ) { e.preventDefault(); e.returnValue = ''; } } );
+		window.addEventListener( 'beforeunload', ( e ) => { if ( ( this.changed || this.app.objectEditor?.changed ) && ! this._saving ) { e.preventDefault(); e.returnValue = ''; } } );
 	}
 
 	setActive( on ) {
@@ -496,10 +496,16 @@ export class TerrainEditor {
 	async save() {
 		this._saving = true;
 		try {
-			const res = await fetch( '/__terrain-edits', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: this.delta.buffer.slice( 0 ) } );
-			if ( ! res.ok ) throw new Error( res.status );
+			// the village objects too (editor/objectEditor.js)
+			const obj = this.app.objectEditor;
+			if ( obj?.changed ) await obj.saveFile();
+			// the relief only when edited (or already saved once): no empty 5 MB file
+			if ( this.changed || this.app.terrainEdits ) {
+				const res = await fetch( '/__terrain-edits', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: this.delta.buffer.slice( 0 ) } );
+				if ( ! res.ok ) throw new Error( res.status );
+			}
 			this.changed = false;
-			this._toast( 'Edições salvas em public/terrain-edits.bin. Recarregando…' );
+			this._toast( 'Edições salvas em public/. Recarregando…' );
 			// a fresh load builds everything (AO, vegetation, houses) on the edited relief
 			setTimeout( () => location.reload(), 400 );
 		} catch ( e ) {

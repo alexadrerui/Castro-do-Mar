@@ -1,5 +1,5 @@
 import { makeSimplex, fbm, ridged, smoothstep, lerp, clamp } from '../core/noise.js';
-import { TERRAIN, MASK, VILLAGE, FORT, MINE, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS } from './layout.js';
+import { TERRAIN, MASK, VILLAGE, FORT, MINE, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS, footprintR } from './layout.js';
 
 const nA = makeSimplex( 890 );
 const nB = makeSimplex( 31 );
@@ -285,7 +285,7 @@ function sculpt( x, z, h ) {
 
 	// Flatten building pads.
 	for ( const b of BUILDINGS ) {
-		const r = ( b.r || Math.max( b.w || 4, b.l || 4 ) * 0.6 ) + 2.5;
+		const r = footprintR( b ) + 2.5;
 		const dx = x - b.x, dz = z - b.z;
 		const dd = Math.sqrt( dx * dx + dz * dz );
 		if ( dd < r + 6 ) {
@@ -467,7 +467,7 @@ export function buildMask( onProgress ) {
 			const fd = Math.hypot( x - FORT.x, z - FORT.z );
 			g = Math.max( g, 1 - smoothstep( FORT.radius - 4, FORT.radius + 3, fd ) );
 			for ( const b of BUILDINGS ) {
-				const r = ( b.r || Math.max( b.w || 4, b.l || 4 ) * 0.6 ) + 2.5;
+				const r = footprintR( b ) + 2.5;
 				const bd = Math.hypot( x - b.x, z - b.z );
 				g = Math.max( g, 0.85 * ( 1 - smoothstep( r - 2, r + 2.5 + vn * 3, bd ) ) );
 			}

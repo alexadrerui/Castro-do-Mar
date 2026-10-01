@@ -25,7 +25,8 @@ export async function populate( app, progress ) {
 	console.info( 'rocks', rocks.userData.counts );
 	const mats = createBuildingMaterials();
 	app.buildingMaterials = mats;
-	const bld = createBuildings( app, mats, ( p ) => progress( 0.8 + p * 0.1 ) );
+	// in the editor (?edit) every house / stall / prop is its own group, so it can be selected
+	const bld = createBuildings( app, mats, ( p ) => progress( 0.8 + p * 0.1 ), { separate: new URLSearchParams( location.search ).has( 'edit' ) } );
 	app.scene.add( bld );
 	app.layers.buildings = { label: 'Casas', object: bld };
 	const fort = createFort( app, mats, createRockMaterial( 1.0, false, { tintScale: 0.62, jointScale: 0.22 } ) );

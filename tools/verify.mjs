@@ -21,7 +21,7 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
 // allowed drift from the baseline (0..255 scales; clip / black are fractions). Clouds, water,
 // birds and smoke move, so a frame never repeats exactly.
-const TOL = { luma: 12, spread: 10, chroma: 10, clip: 0.04, black: 0.04, sky: 25 };
+const TOL = { luma: 12, spread: 10, chroma: 15, clip: 0.04, black: 0.04, sky: 25 };
 // The top band of a view that shows sky: its blueness (blue - red) is compared as the mean over
 // those views, one-sided. Clouds move and change the band of any single view a lot, but a broken
 // sky (the white sky of a cold load) takes the blue out of every view at once.

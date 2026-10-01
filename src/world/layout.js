@@ -121,6 +121,10 @@ export const BUILDINGS = [
 	{ type: 'lookout', x: - 170, z: - 230, seed: 32 }
 ];
 
+// Ground footprint radius of a building (pads in the relief, trampled ground, vegetation clearance);
+// scale: a resize from the object editor (world/worldEdits.js).
+export const footprintR = ( b, k = 0.6 ) => ( b.r || Math.max( b.w || 4, b.l || 4 ) * k ) * ( b.scale || 1 );
+
 export const STALLS = [
 	[ - 15, - 26, 0.1 ], [ - 8, - 22, 0.3 ], [ - 12, - 16, 0.2 ], [ - 3, - 14, 0.5 ],
 	[ - 22, 0, 0.0 ], [ - 26, 6, 0.4 ], [ - 18, 8, - 0.2 ], [ - 28, 12, 0.1 ],

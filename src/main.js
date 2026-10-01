@@ -27,6 +27,8 @@ import { createHorizon } from './world/horizon.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
 import { loadTerrainEdits, hashEdits } from './world/terrainEdits.js';
+import { loadWorldEdits, applyWorldEdits } from './world/worldEdits.js';
+import { BUILDINGS } from './world/layout.js';
 // the generated fields depend only on this code: its hash is the cache key
 import srcHeight from './world/heightfield.js?raw';
 import srcLayout from './world/layout.js?raw';
@@ -103,7 +105,15 @@ async function main() {
 	// hand edits of the relief (public/terrain-edits.bin, see world/terrainEdits.js and ?edit)
 	const terrainEdits = await loadTerrainEdits();
 	app.terrainEdits = terrainEdits;
-	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker ) + ':' + hashEdits( terrainEdits );
+	// edits of the village objects (public/world-edits.json, see world/worldEdits.js): applied to the
+	// layout lists before anything reads them
+	const worldEdits = await loadWorldEdits();
+	app.worldEdits = worldEdits;
+	applyWorldEdits( worldEdits );
+	// the generator reads only the houses of the edited layout (pads, trampled ground): moving a stall
+	// or a prop does not regenerate the fields
+	const houses = BUILDINGS.map( ( b ) => [ b.x, b.z, b.r, b.w, b.l, b.scale ] );
+	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker, JSON.stringify( houses ) ) + ':' + hashEdits( terrainEdits );
 	app.clearCache = cacheClear;
 	const cached = await cacheGet( genKey );
 	let mask, ao, macro;
@@ -117,7 +127,7 @@ async function main() {
 		const job = ( cmd, p ) => new Promise( ( resolve, reject ) => {
 			worker.onmessage = ( e ) => e.data.type === 'progress' ? p( e.data.p ) : resolve( e.data.data );
 			worker.onerror = reject;
-			worker.postMessage( { cmd, edits: cmd === 'height' ? terrainEdits : null } );
+			worker.postMessage( { cmd, edits: cmd === 'height' ? terrainEdits : null, world: worldEdits } );
 		} );
 		await loader.run( 'height', async ( p ) => { hf.data = await job( 'height', p ); } );
 		mask = await loader.run( 'mask', ( p ) => job( 'mask', p ) );
@@ -279,7 +289,7 @@ async function main() {
 			if ( e.button !== 0 || ! down ) return;
 			const moved = Math.hypot( e.clientX - down.x, e.clientY - down.y ), dt = performance.now() - down.t;
 			down = null;
-			if ( moved > 5 || dt > 350 || ! focus.enabled || app.editor?.active ) return; // the terrain editor owns the left button
+			if ( moved > 5 || dt > 350 || ! focus.enabled || app.editor ) return; // in the editors the left button selects and sculpts
 			const r = canvas.getBoundingClientRect();
 			const hit = focus.focusAt( ( e.clientX - r.left ) / r.width * 2 - 1, - ( ( e.clientY - r.top ) / r.height ) * 2 + 1 );
 			app.hud?.toast( hit ? `Foco em ${ focus.hit.toFixed( 1 ) } m` : 'Foco automático no centro' );
@@ -523,6 +533,9 @@ async function main() {
 	if ( params.has( 'edit' ) ) {
 		const { TerrainEditor } = await import( './editor/terrainEditor.js' );
 		app.editor = new TerrainEditor( app );
+		// and the village objects (tab "Objetos")
+		const { ObjectEditor } = await import( './editor/objectEditor.js' );
+		app.objectEditor = new ObjectEditor( app, app.editor );
 	}
 
 	addEventListener( 'resize', () => {

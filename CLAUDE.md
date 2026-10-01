@@ -45,6 +45,18 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - Durante a edição, só o heightfield, os blocos do terreno (`terrain.refresh`, no lugar, todos os LODs) e a textura de alturas acompanham. AO, vegetação, pedras, casas e grama são refeitos na carga seguinte: "Salvar e aplicar" grava e recarrega. Exportar/Importar/Limpar também existem (limpar pede dois cliques).
 - QA: `node tools/terrainedit.mjs [prefixo] [--save]` usa o mouse de verdade: eleva, desfaz e refaz, suaviza, carimba uma ilha no lago e restaura; cava um lago em terra, aterra um raso e testa a vista de cima (T, W no plano, volta). Com `--save`, salva, recarrega, confere a ilha e apaga o arquivo de teste (não roda se já existir um `public/terrain-edits.bin`).
 
+## Editor de objetos (`?edit`, aba "Objetos")
+- `src/editor/objectEditor.js` (ideia do editor de decorações do Habitat Creator). Um clique seleciona uma casa, barraca ou adereço. O objeto ganha uma caixa ciano (`BoxHelper`), o gizmo `TransformControls` (mover no chão com a altura presa ao relevo, girar em torno do vertical, escala uniforme) e um menu flutuante ao lado: 1 Mover, 2 Girar, 3 Escalar, × e Remover. Teclas com seleção: 1/2/3 (no lugar das vistas da câmera), Delete, Esc; Ctrl+Z/Y. Arrastar o espaço vazio gira a câmera (`freecam.leftBlocker` evita isso sobre o gizmo). O catálogo do painel adiciona objetos: escolha um e clique no chão.
+- **Edições** em `public/world-edits.json` (`src/world/worldEdits.js`): `objects` (`b<i>`/`s<i>`/`p<i>`, índices das listas originais de `layout.js`: `x`, `z`, `yaw`, `scale` ou `removed`) e `added` (objetos novos, ids `a<n>`). `applyWorldEdits` altera BUILDINGS/STALLS/PROPS na página e no worker antes de qualquer leitura, então pads no relevo, chão pisado, clareiras da vegetação e poleiros das aves acompanham. O hash entra na chave do cache. As barracas removidas continuam na lista com `removed`, porque compartilham uma sequência aleatória.
+- `buildings.js`: cada objeto é construído sozinho (`buildObject`), com o giro e a escala aplicados em volta da âncora no chão. No modo normal tudo é fundido por material, como antes; no editor cada objeto vira um grupo (`objectGroup`, ~1.000 chamadas de desenho em vez de ~350). "Salvar e aplicar" (compartilhado com o relevo) grava e recarrega.
+- Detalhes:
+  - Casas redondas e cabanas movidas guardam a porta com que foram construídas (`door`); sem isso, a porta se reorientava para o centro da vila na carga seguinte.
+  - Casa longa, cercado, carroça, varal, lenha e barraca recebem o giro no próprio ângulo, e a casa longa e o cercado recebem a escala nas dimensões. Assim são reconstruídos assentados no relevo (uma matriz deixaria postes flutuando).
+  - Cada edição guarda a posição original (`ox`, `oz`); se o `layout.js` mudar e o objeto não estiver mais lá, a edição é ignorada com aviso.
+  - A chave do cache dos campos só depende das casas, então mover barraca ou adereço não regera o relevo.
+  - Pendências: barracas e adereços adicionados em campo aberto não abrem clareira na vegetação (a `clearance` só olha BUILDINGS); um objeto original removido só volta editando o JSON.
+- QA: `node tools/objectedit.mjs [prefixo] [--save]`: seleciona (caixa, gizmo, menu), move pelo eixo X arrastando o gizmo, testa a tecla 2, remove e desfaz, adiciona do catálogo. Com `--save`, confere no modo normal após recarregar e apaga o arquivo de teste.
+
 ## Câmera
 - `src/controls/freecam.js`: voo livre (WASD/QE, Shift, arrastar, roda do mouse, 1–6 vistas).
 - `src/controls/focus.js`: foco automático com profundidade de campo (`DepthOfFieldNode` de TSL sobre o pass da cena).

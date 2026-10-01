@@ -7,7 +7,9 @@ const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
 const M = ( x, y, z, ry = 0, s = 1 ) => new THREE.Matrix4().compose( V( x, y, z ), new THREE.Quaternion().setFromAxisAngle( V( 0, 1, 0 ), ry ), V( s, s, s ) );
 
 // Door faces the village centre (with a little randomness).
+// A moved house keeps the door it was built with (b.door, written by the object editor).
 function doorAngle( b ) {
+	if ( Number.isFinite( b.door ) ) return b.door;
 	return Math.atan2( VILLAGE.z - b.z, VILLAGE.x - b.x ) + ( mulberry32( b.seed )() - 0.5 ) * 0.6;
 }
 
@@ -262,31 +264,115 @@ function stall( B, x, z, rot, y, rnd, red = true ) {
 	for ( const [ k, g ] of L.build() ) B.add( k, g, m );
 }
 
-export function createBuildings( app, mats, progress ) {
+// The village objects of the layout, one at a time. Each one is built into its own GeoBuilder and
+// moved by its edit (world/worldEdits.js: yaw and uniform scale about its anchor on the ground).
+// kind: 'building' (BUILDINGS), 'stall' (STALLS), 'prop' (PROPS). Returns { L, anchor, smoke }.
+function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
+	const L = new GeoBuilder();
+	let x, z, smoke = null;
+	// objects laid along the ground (fences, long houses, carts...) take the turn in their own angle
+	// and the size in their dimensions, so they are rebuilt sitting on the relief; a matrix about
+	// the anchor would leave posts floating or buried on a slope
+	let yaw = entry0.yaw || 0, sc = entry0.scale || 1, entry = entry0;
+	if ( yaw || sc !== 1 ) {
+		if ( kind === 'stall' ) {
+			entry = Object.assign( [ entry0[ 0 ], entry0[ 1 ], entry0[ 2 ] + yaw ], entry0 );
+			entry[ 2 ] = entry0[ 2 ] + yaw; yaw = 0;
+		} else if ( kind === 'building' && entry0.type === 'long' ) {
+			entry = { ...entry0, rot: ( entry0.rot || 0 ) + yaw, w: entry0.w * sc, l: entry0.l * sc }; yaw = 0; sc = 1;
+		} else if ( kind === 'prop' && entry0.type === 'pen' ) {
+			// pen() turns the other way round (u cos - v sin)
+			entry = { ...entry0, rot: ( entry0.rot || 0 ) - yaw, w: entry0.w * sc, d: entry0.d * sc }; yaw = 0; sc = 1;
+		} else if ( kind === 'prop' && ( entry0.type === 'cart' || entry0.type === 'rack' || entry0.type === 'wood' ) ) {
+			entry = { ...entry0, rot: ( entry0.rot || 0 ) + yaw }; yaw = 0;
+		}
+	}
+	if ( kind === 'stall' ) {
+		x = entry[ 0 ]; z = entry[ 1 ];
+		const rnd = entry.added ? mulberry32( ( entry.seed || 1 ) * 7919 ) : stallRnd;
+		stall( L, x, z, entry[ 2 ], hf.heightAt( x, z ), rnd, entry.added ? entry.red !== false : stallIndex % 6 !== 3 );
+	} else if ( kind === 'building' ) {
+		x = entry.x; z = entry.z;
+		const y = hf.heightAt( x, z );
+		const r = mulberry32( entry.seed * 13 );
+		let res = null;
+		if ( entry.type === 'round' ) res = roundHouse( L, entry, y, r, hf );
+		else if ( entry.type === 'long' ) res = longHouse( L, entry, y, r, hf );
+		else if ( entry.type === 'hut' ) hut( L, entry, y, r );
+		else if ( entry.type === 'granary' ) granary( L, entry, y, r );
+		else if ( entry.type === 'lookout' ) lookout( L, entry, y, r );
+		if ( res && r() < 0.65 ) smoke = res.smoke;
+	} else {
+		x = entry.x; z = entry.z;
+		const p = entry, y = hf.heightAt( x, z );
+		if ( p.type === 'pen' ) pen( L, hf, x, z, p.w, p.d, p.rot );
+		else if ( p.type === 'hay' ) haystack( L, x, y, z, p.r );
+		else if ( p.type === 'well' ) well( L, x, y, z );
+		else if ( p.type === 'cart' ) oxCart( L, x, y, z, p.rot );
+		else if ( p.type === 'rack' ) dryingRack( L, x, y, z, p.rot );
+		else if ( p.type === 'skep' ) skep( L, x, y, z );
+		else if ( p.type === 'wood' ) woodpile( L, x, y, z, p.rot, 12 );
+	}
+	const anchor = V( x, hf.heightAt( x, z ), z );
+	let T = null;
+	if ( yaw || sc !== 1 ) {
+		T = new THREE.Matrix4().makeTranslation( anchor.x, anchor.y, anchor.z )
+			.multiply( new THREE.Matrix4().makeRotationY( yaw ) )
+			.multiply( new THREE.Matrix4().makeScale( sc, sc, sc ) )
+			.multiply( new THREE.Matrix4().makeTranslation( - anchor.x, - anchor.y, - anchor.z ) );
+		if ( smoke ) smoke.applyMatrix4( T );
+	}
+	return { L, anchor, smoke, T };
+}
+
+// one object as a group of meshes (one per material) with its origin at the anchor: the object
+// editor moves, turns and scales the group (separate mode and objects added in the editor)
+export function objectGroup( mats, kind, entry, hf, stallRnd = null, stallIndex = 0 ) {
+	const { L, anchor, T, smoke } = buildObject( kind, entry, hf, stallRnd, stallIndex );
+	const group = new THREE.Group();
+	group.name = entry._id;
+	group.userData = { objId: entry._id, kind, entry, anchor: anchor.clone(), smoke };
+	group.position.copy( anchor );
+	for ( const [ k, g ] of L.build() ) {
+		if ( T ) g.applyMatrix4( T );
+		g.translate( - anchor.x, - anchor.y, - anchor.z );
+		g.computeBoundingSphere();
+		const mesh = new THREE.Mesh( g, mats[ k ] );
+		mesh.castShadow = k !== 'doorway';
+		mesh.receiveShadow = true;
+		mesh.name = 'bld_' + k;
+		mesh.layers.enable( 2 );
+		group.add( mesh );
+	}
+	return group;
+}
+
+// separate: every object its own group (the object editor, ?edit); otherwise all merged by material
+export function createBuildings( app, mats, progress, { separate = false } = {} ) {
 	const { hf } = app;
 	const B = new GeoBuilder();
 	const rnd = mulberry32( 1890 );
 	const smoke = [];
+	const objects = [];
+	const add = ( kind, entry, i ) => {
+		if ( separate ) {
+			if ( kind === 'stall' && entry.removed ) { buildObject( kind, entry, hf, rnd, i ); return; } // use up its numbers
+			objects.push( objectGroup( mats, kind, entry, hf, rnd, i ) );
+			return;
+		}
+		const { L, smoke: sm, T } = buildObject( kind, entry, hf, rnd, i );
+		if ( kind === 'stall' && entry.removed ) return;
+		if ( sm ) smoke.push( sm );
+		for ( const [ k, g ] of L.build() ) B.add( k, g, T );
+	};
 
 	BUILDINGS.forEach( ( b, i ) => {
-		const y = hf.heightAt( b.x, b.z );
-		const r = mulberry32( b.seed * 13 );
-		let res = null;
-		if ( b.type === 'round' ) res = roundHouse( B, b, y, r, hf );
-		else if ( b.type === 'long' ) res = longHouse( B, b, y, r, hf );
-		else if ( b.type === 'hut' ) hut( B, b, y, r );
-		else if ( b.type === 'granary' ) granary( B, b, y, r );
-		else if ( b.type === 'lookout' ) lookout( B, b, y, r );
-		if ( res && r() < 0.65 ) smoke.push( res.smoke );
+		add( 'building', b, i );
 		progress?.( i / BUILDINGS.length * 0.6 );
 	} );
-
-	const stallPosts = [];
-	STALLS.forEach( ( [ x, z, rot ], i ) => {
-		const y = hf.heightAt( x, z );
-		stall( B, x, z, rot, y, rnd, i % 6 !== 3 );
-		stallPosts.push( V( x, y, z ) );
-	} );
+	STALLS.forEach( ( s, i ) => add( 'stall', s, i ) );
+	// smoke above the chimneys of the separate houses too
+	for ( const o of objects ) if ( o.userData.smoke ) smoke.push( o.userData.smoke );
 
 	// bunting poles + pennant strings criss-crossing the market (both refs)
 	const poles = [
@@ -318,16 +404,7 @@ export function createBuildings( app, mats, progress ) {
 	}
 
 	// village props from the layout
-	for ( const p of PROPS ) {
-		const y = hf.heightAt( p.x, p.z );
-		if ( p.type === 'pen' ) pen( B, hf, p.x, p.z, p.w, p.d, p.rot );
-		else if ( p.type === 'hay' ) haystack( B, p.x, y, p.z, p.r );
-		else if ( p.type === 'well' ) well( B, p.x, y, p.z );
-		else if ( p.type === 'cart' ) oxCart( B, p.x, y, p.z, p.rot );
-		else if ( p.type === 'rack' ) dryingRack( B, p.x, y, p.z, p.rot );
-		else if ( p.type === 'skep' ) skep( B, p.x, y, p.z );
-		else if ( p.type === 'wood' ) woodpile( B, p.x, y, p.z, p.rot, 12 );
-	}
+	PROPS.forEach( ( p, i ) => add( 'prop', p, i ) );
 	progress?.( 0.9 );
 
 	const group = new THREE.Group();
@@ -340,7 +417,9 @@ export function createBuildings( app, mats, progress ) {
 		mesh.layers.enable( 2 );
 		group.add( mesh );
 	}
+	for ( const o of objects ) group.add( o );
 	group.userData.smoke = smoke;
+	group.userData.objects = objects;
 	progress?.( 1 );
 	return group;
 }

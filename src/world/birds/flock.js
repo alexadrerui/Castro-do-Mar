@@ -93,12 +93,14 @@ export class Flock {
 				const y = top( houses, b.x, b.z );
 				if ( y !== null ) add( b.x, y - 0.1, b.z, 'roof' );
 			} else if ( b.type === 'long' ) {
-				const c = Math.cos( b.rot ), s = Math.sin( b.rot );
+				// with the turn and the size of the object editor (world/worldEdits.js)
+				const rot = b.rot + ( b.yaw || 0 ), bl = b.l * ( b.scale || 1 ), bw = b.w * ( b.scale || 1 );
+				const c = Math.cos( rot ), s = Math.sin( rot );
 				const line = ( ax, az, L ) => [ - 0.3, 0, 0.3 ].map( ( t ) => [ b.x + ax * t * L, b.z + az * t * L ] );
-				const A = line( s, c, b.l ), B = line( c, - s, b.w );
+				const A = line( s, c, bl ), B = line( c, - s, bw );
 				const ya = A.map( ( [ x, z ] ) => top( houses, x, z ) ), yb = B.map( ( [ x, z ] ) => top( houses, x, z ) );
 				const mean = ( ys ) => ys.reduce( ( m, y ) => m + ( y ?? - 1e3 ), 0 ) / ys.length;
-				const [ pts, ys ] = mean( ya ) >= mean( yb ) ? [ A, ya ] : [ line( c, - s, b.l ), line( c, - s, b.l ).map( ( [ x, z ] ) => top( houses, x, z ) ) ];
+				const [ pts, ys ] = mean( ya ) >= mean( yb ) ? [ A, ya ] : [ line( c, - s, bl ), line( c, - s, bl ).map( ( [ x, z ] ) => top( houses, x, z ) ) ];
 				pts.forEach( ( [ x, z ], k ) => { if ( ys[ k ] !== null && k !== 1 ) add( x, ys[ k ] - 0.1, z, 'roof' ); } );
 			}
 		}

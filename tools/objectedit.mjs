@@ -1,0 +1,126 @@
+// QA of the object editor (?edit, tab "Objetos"): drives it with the real mouse in headless Edge.
+//   node tools/objectedit.mjs [prefix] [--save]
+// Selects a house (selection box, gizmo, floating menu), moves it with the gizmo, turns it,
+// removes it and undoes, adds a round house from the catalogue, and captures
+// shots/<prefix>_<step>.png. --save also saves, reloads (normal mode) and checks that the moved
+// house, the removal and the added house survived - then deletes public/world-edits.json again.
+import puppeteer from 'puppeteer-core';
+import fs from 'fs';
+
+const prefix = process.argv[ 2 ] && ! process.argv[ 2 ].startsWith( '--' ) ? process.argv[ 2 ] : 'oedit';
+const doSave = process.argv.includes( '--save' );
+const FILE = 'public/world-edits.json';
+if ( doSave && fs.existsSync( FILE ) ) { console.log( `${ FILE } exists: not touching it (move it away to run --save)` ); process.exit( 1 ); }
+const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
+const browser = await puppeteer.launch( {
+	executablePath: EDGE, headless: 'new', protocolTimeout: 900000,
+	args: [ '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU', '--use-angle=d3d11', '--ignore-gpu-blocklist', '--window-size=1600,900' ],
+	defaultViewport: { width: 1600, height: 900 }
+} );
+const page = await browser.newPage();
+const errors = [];
+page.on( 'console', ( m ) => { if ( m.type() === 'error' ) errors.push( m.text().slice( 0, 300 ) ); } );
+page.on( 'pageerror', ( e ) => errors.push( 'pageerror: ' + String( e ).slice( 0, 300 ) ) );
+const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
+const shot = async ( name ) => { await sleep( 400 ); await page.screenshot( { path: `shots/${ prefix }_${ name }.png` } ); };
+const check = ( ok, msg ) => { console.log( `${ ok ? 'ok  ' : 'FAIL' } ${ msg }` ); if ( ! ok ) process.exitCode = 1; };
+const toScreen = ( x, y, z ) => page.evaluate( ( x, y, z ) => {
+	const a = window.__app, v = new a.THREE.Vector3( x, y, z ).project( a.camera );
+	const r = a.renderer.domElement.getBoundingClientRect();
+	return { x: r.left + ( v.x * 0.5 + 0.5 ) * r.width, y: r.top + ( 0.5 - v.y * 0.5 ) * r.height };
+}, x, y, z );
+const click = async ( p ) => { await page.mouse.move( p.x, p.y ); await sleep( 120 ); await page.mouse.down(); await sleep( 60 ); await page.mouse.up(); await sleep( 400 ); };
+
+await page.goto( 'http://localhost:5190/?auto&edit', { waitUntil: 'domcontentloaded' } );
+await page.waitForFunction( () => window.__app?.ready && window.__app.objectEditor, { timeout: 300000, polling: 250 } );
+// the loading screen fades out over the page first (it would take the clicks)
+await page.waitForFunction( () => { const l = document.getElementById( 'loader' ); return ! l || getComputedStyle( l ).visibility === 'hidden'; }, { timeout: 30000, polling: 200 } );
+await page.click( '#editor-tabs [data-tab=objects]' ); await sleep( 300 );
+
+// an isolated round house: #10 at (-4, -40)
+const H = await page.evaluate( () => { const a = window.__app; const g = a.objectEditor.groups.get( 'b10' ); return { x: g.position.x, y: g.position.y, z: g.position.z }; } );
+await page.evaluate( ( H ) => { const a = window.__app; a.dynamicRes = false; a.views.push( { label: 'e', pos: [ H.x + 22, H.y + 16, H.z + 22 ], target: [ H.x, H.y + 2, H.z ] } ); a.setView( a.views.length - 1 ); }, H );
+await sleep( 1500 );
+
+// 1. select by clicking the house
+await click( await toScreen( H.x, H.y + 3, H.z ) );
+const sel = await page.evaluate( () => { const o = window.__app.objectEditor; return { id: o.selected?.userData.objId, box: o.box.visible, gizmo: o.gizmo.visible, menu: getComputedStyle( document.getElementById( 'object-menu' ) ).display !== 'none' }; } );
+check( sel.id === 'b10' && sel.box && sel.gizmo && sel.menu, `selecionar: ${ JSON.stringify( sel ) }` );
+await shot( '1_select' );
+
+// 2. move with the gizmo: drag the X arrow
+const axis = await page.evaluate( () => {
+	// screen points along the gizmo's X arrow (from the object's anchor)
+	const a = window.__app, g = a.objectEditor.selected, r = a.renderer.domElement.getBoundingClientRect();
+	const P = ( v ) => { const q = v.clone().project( a.camera ); return { x: r.left + ( q.x * 0.5 + 0.5 ) * r.width, y: r.top + ( 0.5 - q.y * 0.5 ) * r.height }; };
+	const d = g.position.distanceTo( a.camera.position ) * 0.9 / 7; // TransformControls' screen-constant size
+	return { a: P( g.position.clone().add( new a.THREE.Vector3( d * 0.6, 0, 0 ) ) ), b: P( g.position.clone().add( new a.THREE.Vector3( d * 0.6 + 6, 0, 0 ) ) ) };
+} );
+await page.mouse.move( axis.a.x, axis.a.y ); await sleep( 300 );
+const hovered = await page.evaluate( () => window.__app.objectEditor.tc.axis );
+await page.mouse.down(); await sleep( 100 );
+await page.mouse.move( axis.b.x, axis.b.y, { steps: 12 } ); await sleep( 100 );
+await page.mouse.up(); await sleep( 400 );
+const mv = await page.evaluate( () => { const o = window.__app.objectEditor, g = o.groups.get( 'b10' ); return { x: g.position.x, y: g.position.y, z: g.position.z, rec: o.edits.objects.b10, ground: window.__app.hf.heightAt( g.position.x, g.position.z ), camMoved: false }; } );
+check( hovered === 'X', `gizmo sob o cursor: eixo ${ hovered }` );
+check( mv.x > H.x + 2 && Math.abs( mv.z - H.z ) < 0.2 && Math.abs( mv.y - mv.ground ) < 0.01, `mover pelo eixo X: x ${ H.x.toFixed( 1 ) } -> ${ mv.x.toFixed( 1 ) }, z igual, assentada no chão` );
+check( mv.rec && Math.abs( mv.rec.x - mv.x ) < 0.01, `registro da edição: ${ JSON.stringify( mv.rec ) }` );
+await shot( '2_moved' );
+
+// 3. rotate mode with the key 2, turn by script (dragging the ring is the gizmo's own code)
+const cam0 = await page.evaluate( () => window.__app.camera.position.toArray() );
+await page.keyboard.press( 'Digit2' ); await sleep( 2600 ); // a camera view would fly for 2.4 s
+const rot = await page.evaluate( () => { const o = window.__app.objectEditor; return { mode: o.tc.mode, view: window.__app.camera.position.toArray() }; } );
+const camMove = Math.hypot( ...rot.view.map( ( v, i ) => v - cam0[ i ] ) );
+check( rot.mode === 'rotate' && camMove < 0.5, `tecla 2: modo ${ rot.mode }, câmera parada (moveu ${ camMove.toFixed( 2 ) } m: não foi para a vista 2)` );
+await shot( '3_rotate' );
+
+// 4. remove (Delete) and undo
+await page.keyboard.press( 'Delete' ); await sleep( 300 );
+const rm = await page.evaluate( () => { const o = window.__app.objectEditor; return { vis: o.groups.get( 'b10' ).visible, rec: o.edits.objects.b10 }; } );
+check( ! rm.vis && rm.rec?.removed, `remover: invisível e registrado (${ JSON.stringify( rm.rec ) })` );
+await page.keyboard.down( 'Control' ); await page.keyboard.press( 'KeyZ' ); await page.keyboard.up( 'Control' ); await sleep( 300 );
+const un = await page.evaluate( () => { const o = window.__app.objectEditor, g = o.groups.get( 'b10' ); return { vis: g.visible, x: g.position.x, rec: o.edits.objects.b10 }; } );
+check( un.vis && Math.abs( un.x - mv.x ) < 0.01 && ! un.rec?.removed, `desfazer a remoção: de volta na posição movida (x ${ un.x.toFixed( 1 ) })` );
+
+// 5. add a round house from the catalogue on open ground nearby
+await page.keyboard.press( 'Escape' ); await sleep( 200 );
+await page.click( '#object-editor [data-cat="Casa redonda"]' ); await sleep( 200 );
+const spot = { x: H.x - 18, z: H.z + 6 };
+const gy = await page.evaluate( ( s ) => window.__app.hf.heightAt( s.x, s.z ), spot );
+await click( await toScreen( spot.x, gy, spot.z ) );
+const ad = await page.evaluate( () => { const o = window.__app.objectEditor; return { sel: o.selected?.userData.objId, added: o.edits.added.map( ( a ) => ( { id: a.id, type: a.type, x: +a.x.toFixed( 1 ), z: +a.z.toFixed( 1 ) } ) ), meshes: o.selected?.children.length }; } );
+check( ad.sel === 'a0' && ad.added.length === 1 && ad.added[ 0 ].type === 'round' && ad.meshes > 2, `catálogo: casa redonda adicionada ${ JSON.stringify( ad ) }` );
+await shot( '4_added' );
+
+if ( doSave ) {
+	const nav = page.waitForNavigation( { waitUntil: 'domcontentloaded', timeout: 120000 } );
+	await page.click( '#object-editor [data-act=save]' );
+	await nav;
+	check( fs.existsSync( FILE ), `${ FILE } gravado` );
+	check( ! fs.existsSync( 'public/terrain-edits.bin' ), 'sem relevo editado: nenhum terrain-edits.bin criado' );
+	// normal mode (no ?edit): the merged village must reflect the edits
+	await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
+	await page.waitForFunction( () => window.__app?.ready, { timeout: 300000, polling: 250 } );
+	await sleep( 1500 );
+	const after = await page.evaluate( async ( mv ) => {
+		const a = window.__app, { BUILDINGS } = await import( '/src/world/layout.js' );
+		const b = BUILDINGS.find( ( q ) => q._id === 'b10' ), n = BUILDINGS.find( ( q ) => q._id === 'a0' );
+		// something at the moved spot (raycast down onto the merged houses)
+		const ray = new a.THREE.Raycaster( new a.THREE.Vector3( mv.x, 300, mv.z ), new a.THREE.Vector3( 0, - 1, 0 ) );
+		const hit = ray.intersectObject( a.layers.buildings.object, true )[ 0 ];
+		const { doorAngle } = await import( '/src/world/buildings.js' );
+		return { door: b && doorAngle( b ), b: b && { x: b.x, z: b.z }, n: n && { x: n.x, z: n.z, type: n.type }, roofAt: hit ? hit.point.y - a.hf.heightAt( mv.x, mv.z ) : null };
+	}, mv );
+	check( after.b && Math.abs( after.b.x - mv.x ) < 0.01, `após recarregar: casa b10 em x ${ after.b?.x.toFixed( 1 ) }` );
+	check( Math.abs( after.door - mv.rec.door ) < 1e-4, `porta mantida após mover e recarregar (${ after.door?.toFixed( 3 ) } / ${ mv.rec.door } rad)` );
+	check( after.roofAt > 3, `telhado sobre a posição nova (${ after.roofAt?.toFixed( 1 ) } m acima do chão)` );
+	check( after.n && after.n.type === 'round', `casa adicionada presente: ${ JSON.stringify( after.n ) }` );
+	await page.evaluate( ( H ) => { const a = window.__app; a.dynamicRes = false; a.views.push( { label: 'e', pos: [ H.x + 10, H.y + 30, H.z + 34 ], target: [ H.x - 6, H.y + 2, H.z ] } ); a.setView( a.views.length - 1 ); }, H );
+	await sleep( 1500 );
+	await shot( '5_reloaded' );
+	fs.unlinkSync( FILE );
+	console.log( `${ FILE } removido (era só teste)` );
+}
+check( errors.length === 0, `console sem erros${ errors.length ? ': ' + [ ...new Set( errors ) ].join( ' | ' ) : '' }` );
+await browser.close();

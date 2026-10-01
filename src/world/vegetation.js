@@ -16,7 +16,7 @@ import srcTrees from './trees.js?raw';
 import srcVegetation from './vegetation.js?raw';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
-import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER } from './layout.js';
+import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
 
 const nV = makeSimplex( 606 );
 
@@ -136,7 +136,7 @@ export function clearance( x, z, mask, pad = 0 ) {
 	if ( path > 0.05 || field > 0.2 ) return 0;
 	let free = 1 - ss( 0.3, 0.8, dirt );
 	for ( const b of BUILDINGS ) {
-		const r = ( b.r || Math.max( b.w || 4, b.l || 4 ) * 0.62 ) + 1.8 + pad;
+		const r = footprintR( b, 0.62 ) + 1.8 + pad;
 		const d = Math.hypot( x - b.x, z - b.z );
 		if ( d < r ) return 0;
 	}
