@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import * as THREE_CORE from 'three';
 import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { GeoBuilder, box, post, beam, ringWall, coneRoof, straightWall } from '../core/builder.js';
 import { makeSimplex } from '../core/noise.js';
 import { FORT, WALLS, TOWER, MINE } from './layout.js';
@@ -149,12 +150,48 @@ function mineFrame() {
 	return new THREE.Matrix4().compose( V( MINE.fx, 0, MINE.fz ), q, V( 1, 1, 1 ) );
 }
 
+// The cliff face (local frame): three ledges where the rock above steps back, irregular and fading
+// out along the face, over a batter (the face leans back ~0.8 m to the top) and broad bulges of up to
+// ~1.5 m. Where the timber stands against the face (the staging between the adits, the portals)
+// the rock may only recede, so no post is buried. ss: smoothstep.
+const LEDGES = [ [ 4.6, 1.8 ], [ 8.8, 1.5 ], [ 12.6, 1.2 ] ]; // height above the floor, setback (m)
+const ss = ( a, b, x ) => { const t = Math.min( 1, Math.max( 0, ( x - a ) / ( b - a ) ) ); return t * t * ( 3 - 2 * t ); };
+function ledgeAt( k, x ) {
+	const [ h, d ] = LEDGES[ k ];
+	return { y: MINE.floor + h + nF( x * 0.07, h ) * 0.6, d: d * ss( - 0.65, - 0.15, nF( x * 0.09 + h, 3.1 ) ) };
+}
+function faceSetback( x, y ) {
+	let s = Math.max( 0, y - MINE.floor ) * 0.05;
+	for ( let k = 0; k < LEDGES.length; k ++ ) { const L = ledgeAt( k, x ); s += L.d * ss( L.y, L.y + 0.3, y ); }
+	return s;
+}
+function faceRelief( x, y ) {
+	const r = nF( x * 0.08, y * 0.09 ) * 1.0 + nF( x * 0.2 + 5, y * 0.17 ) * 0.5;
+	let timber = ss( - 5.8, - 4.4, x ) * ( 1 - ss( 4.8, 6.2, x ) );
+	for ( const off of MINE.adits ) timber = Math.max( timber, ( 1 - ss( 2.0, 3.2, Math.abs( x - off ) ) ) * ( 1 - ss( MINE.floor + 3.5, MINE.floor + 5, y ) ) );
+	return r > 0 ? r * ( 1 - timber ) : r;
+}
+
+let _block = null;
+// the deformed rock block (local frame, before the adits are carved), built once (also read by
+// mineLedgeSpots for the plants on the ledges, before the fort itself is built)
 function rockBlockGeometry() {
+	if ( _block ) return _block.clone();
 	const W = MINE.width, D = MINE.depth, y0 = MINE.floor - 3.5, y1 = MINE.top + 0.6;
-	const g = new THREE_CORE.BoxGeometry( W, y1 - y0, D, 52, 34, 30 );
+	// fine enough vertically (0.22 m) for the ledges' steps
+	const g = new THREE_CORE.BoxGeometry( W, y1 - y0, D, 72, 92, 30 );
 	g.translate( 0, ( y0 + y1 ) / 2, - D / 2 );
 	g.deleteAttribute( 'uv' );
 	const m = mergeVertices( g, 1e-4 );
+	{
+		// the face's relief and ledges, fading into the rock behind and toward the block's ends
+		const p = m.attributes.position;
+		for ( let i = 0; i < p.count; i ++ ) {
+			const x = p.getX( i ), y = p.getY( i ), z = p.getZ( i );
+			const w = ss( - 6, 0, z ) * ( 1 - ss( W / 2 - 4, W / 2 - 0.5, Math.abs( x ) ) );
+			if ( w > 0 ) p.setZ( i, z + w * ( faceRelief( x, y ) - faceSetback( x, y ) ) );
+		}
+	}
 	m.computeVertexNormals();
 	const p = m.attributes.position, n = m.attributes.normal;
 	for ( let i = 0; i < p.count; i ++ ) {
@@ -175,7 +212,38 @@ function rockBlockGeometry() {
 	m.computeVertexNormals();
 	const uv = new Float32Array( p.count * 2 );
 	m.setAttribute( 'uv', new THREE_CORE.BufferAttribute( uv, 2 ) );
-	return m;
+	_block = m;
+	return m.clone();
+}
+
+// Gorse and bracken on the cliff's ledges (world/vegetation.js places them): along each ledge, the
+// shelf found by a ray down onto the block; not behind the timber staging. World positions.
+export function mineLedgeSpots() {
+	const geo = rockBlockGeometry();
+	geo.boundsTree = new MeshBVH( geo );
+	const mesh = new THREE_CORE.Mesh( geo, new THREE_CORE.MeshBasicMaterial() );
+	mesh.raycast = acceleratedRaycast;
+	const frame = mineFrame(), ray = new THREE_CORE.Raycaster(), down = new THREE_CORE.Vector3( 0, - 1, 0 );
+	ray.firstHitOnly = true;
+	let seed = 4711;
+	const R = () => ( seed = ( seed * 16807 ) % 2147483647 ) / 2147483647;
+	const spots = [];
+	for ( let k = 0; k < LEDGES.length; k ++ ) {
+		for ( let x = - MINE.width / 2 + 3; x < MINE.width / 2 - 3; x += 0.7 + R() * 0.9 ) {
+			if ( x > - 5 && x < 5.5 ) continue; // the staging
+			const L = ledgeAt( k, x );
+			if ( L.d < 0.45 ) continue;
+			// the shelf: between the face below the step and the face above it
+			const z = faceRelief( x, L.y ) - faceSetback( x, L.y - 0.05 ) - L.d * ( 0.3 + R() * 0.4 );
+			ray.set( new THREE_CORE.Vector3( x, L.y + 3, z ), down );
+			const hit = ray.intersectObject( mesh )[ 0 ];
+			if ( ! hit || hit.face.normal.y < 0.5 || Math.abs( hit.point.y - L.y ) > 1.2 ) continue;
+			const w = hit.point.clone().applyMatrix4( frame );
+			spots.push( { kind: R() < 0.55 ? 'bush' : 'fern', x: w.x, y: w.y, z: w.z, s: 0.6 + R() * 0.6 } );
+		}
+	}
+	geo.dispose();
+	return spots;
 }
 
 function carveAdits( blockGeo ) {

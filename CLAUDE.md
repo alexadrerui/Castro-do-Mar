@@ -223,7 +223,12 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - [x] Vistas 4 (Lago) e 5 (Montanhas) conferidas.
 
 ### Arte (dos relatórios de QA)
-- [ ] Face do penhasco da mina: deslocar a geometria (~1,5 m) com 2–3 saliências, vegetação nas saliências e fissuras só no normal.
+- [x] Face do penhasco da mina (`fort.js` `rockBlockGeometry`, 02/10/2026):
+  - **Relevo:** a face ganhou um relevo largo de até ~1,5 m (`faceRelief`), uma inclinação para trás (~0,8 m até o topo) e três saliências irregulares em 4,6, 8,8 e 12,6 m acima do piso (`LEDGES`, `faceSetback`). Nelas, a rocha de cima recua 1,2–1,8 m, a borda ondula e algumas somem ao longo da face.
+  - **Madeira:** onde o andaime e os portais encostam na face, a rocha só recua, para não engolir os postes.
+  - **Malha:** a caixa passou a 72 × 92 × 30 segmentos (degraus de 0,22 m).
+  - **Vegetação nas saliências:** tojo e fento (`mineLedgeSpots`, achados por raycast com BVH na própria malha, com sequência aleatória própria) são colocados pela `vegetation.js` (`place` com altura dada).
+  - **Material:** no `createRockMaterial`, as fissuras ficam só no relevo de normal e as manchas perderam contraste. As juntas verticais agora são linhas quase retas e interrompidas: as células da textura de pedra pareciam barro rachado. As camadas horizontais ondulam pouco: com o ruído forte, viravam curvas de nível.
 - [x] Copas dos carvalhos "bolhosas": trocadas pela árvore do Tidewater (ramos visíveis, aglomerados com vazios, atlas de folhas na GPU). A bétula ainda é a antiga.
 - [x] Pinheiros pretos: não era o modelo, e sim a tonalidade de toda a vegetação convertida duas vezes para linear (`Color.set( hex )` já converte; havia um `.convertSRGBToLinear()` a mais em `vegetation.js`). Paletas de arbusto e fento reajustadas.
 - [x] Pinheiro novo (`trees.js` `pineTree`): tronco e galhos do `TreeGenerator` da r186; tufos de agulhas em cartões ao longo dos raminhos (bloco 1 do atlas de folhas, material `canopy` do carvalho); impostor como o do carvalho. Os centros dos anéis dos tubos são recuperados da malha do gerador (`tubeRings`). A cobertura das agulhas sobe com o nível de mip (`createFoliageMaterial`, só no quadrante do bloco 1); sem isso, as copas distantes sumiam.

@@ -6,6 +6,7 @@ import {
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { birchGeometry } from './plants.js';
+import { mineLedgeSpots } from './fort.js';
 import { oakTree, pineTree, shrubBush, bracken, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
@@ -231,9 +232,10 @@ export async function createVegetation( app, progress ) {
 	// hand-painted nature (world/natureEdits.js): erased plants still use up their random draws
 	// (the rest of the scatter stays the same), painted ones come from a sequence of their own
 	const nature = app.natureEdits;
-	const place = ( sp, x, z, s, tilt = 0.08, R = rnd ) => {
-		const y = hf.heightAt( x, z );
-		hf.normalAt( x, z, nrm );
+	// y: a given height (the cliff's ledges) instead of the relief's, standing upright
+	const place = ( sp, x, z, s, tilt = 0.08, R = rnd, y0 ) => {
+		const y = y0 ?? hf.heightAt( x, z );
+		if ( y0 === undefined ) hf.normalAt( x, z, nrm ); else nrm.copy( up );
 		q.setFromUnitVectors( up, nrm.lerp( up, 1 - tilt ).normalize() );
 		q.multiply( new THREE.Quaternion().setFromAxisAngle( up, R() * Math.PI * 2 ) );
 		pos.set( x, y - 0.25 * s, z );
@@ -304,6 +306,9 @@ export async function createVegetation( app, progress ) {
 		[ 'gold', - 62, 58, 0.9 ], [ 'oak', 72, 22, 0.9 ], [ 'pine', - 95, - 40, 1.1 ], [ 'oak', - 5, 30, 0.8 ]
 	];
 	for ( const [ sp, x, z, s ] of featured ) if ( place( sp, x, z, s ) ) counts[ sp === 'gold' ? 'birch' : sp ] ++;
+	// gorse and bracken on the ledges of the mine cliff (world/fort.js), with their own random sequence
+	const lrnd = mulberry32( 3131 );
+	for ( const p of mineLedgeSpots() ) if ( place( p.kind, p.x, p.z, p.s, 0.3, lrnd, p.y ) ) counts[ p.kind ] ++;
 
 	// painted plants: per texel ( NATURE.cell m ) up to `per` plants at full density, each texel with
 	// its own random sequence (texelSeed)

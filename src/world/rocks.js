@@ -48,16 +48,23 @@ export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1,
 	const n3 = patch.r;                                                         // ~2 m blotches
 	const nFine = texture( T.daub, vec2( along, wp.y ).mul( 1.4 ).div( SURFACE.daub ) ).r; // grain
 	// jointed granite: tall vertical joint blocks + gently wavy horizontal sheeting
-	const cells = texture( T.stone, vec2( along.mul( jointScale ), wp.y.mul( jointScale * 0.3 ) ).div( SURFACE.stoneCells ) );
-	const sheetN = patch.g.sub( 0.5 ).mul( 2.8 );
+	// vertical joints: near-straight lines every ~1 / ( 0.7 jointScale ) m, wavy, broken in places (the
+	// stone cells of the bake read as cracked mud here)
+	// gently wavy sheeting (a stronger warp drew the lines as contour lines of the noise: squiggles)
+	const sheetN = patch.g.sub( 0.5 ).mul( 0.5 );
 	const sheet = fract( wp.y.mul( jointScale * 1.2 ).add( sheetN ) );
-	const crackV = smoothstep( 0.0, 0.035, cells.r );
+	const vj = fract( along.mul( jointScale * 0.7 ).add( patch.b.sub( 0.5 ).mul( 0.9 ) ) );
+	const broken = smoothstep( 0.35, 0.55, texture( T.world, vec2( along.mul( 0.5 ), wp.y.mul( 0.9 ) ).div( SURFACE.world ) ).r );
+	const crackV = mix( float( 1 ), smoothstep( 0.0, 0.03, vj.min( vj.oneMinus() ) ), broken );
 	const crackH = smoothstep( 0.0, 0.05, sheet ).mul( smoothstep( 0.95, 1.0, sheet ).oneMinus() );
-	const crack = crackV.mul( crackH ).mul( 0.15 ).add( 0.85 ).mul( mix( 0.9, 1.0, n3 ) );
+	// the fissures only in the relief (normal) and a faint darkening: drawn into the colour they read
+	// as lines painted on the rock
+	const joints = crackV.mul( crackH );
+	const crack = joints.mul( 0.05 ).add( 0.95 ).mul( mix( 0.93, 1.0, n3 ) );
 	// vertical weathering streaks (the world tile stretched along y)
 	const streak = texture( T.world, vec2( along.mul( 1.1 ), wp.y.mul( 0.1 ) ).div( SURFACE.world ) ).b;
 	// granite: warm grey with feldspar speckle, darker in joints
-	let col = mix( color( 0x6e675c ), color( 0xb8ae9b ), smoothstep( 0.3, 0.75, n3 ) );
+	let col = mix( color( 0x7f776a ), color( 0xb0a692 ), smoothstep( 0.25, 0.8, n3 ) );
 	col = col.mul( mix( 0.85, 1.12, nFine ) ).mul( crack ).mul( mix( 0.78, 1.08, streak ) );
 	// lichen / moss on the upward faces
 	const up = normalWorld.y.clamp( 0, 1 );
@@ -67,8 +74,8 @@ export function createRockMaterial( lichen = 1, useTint = true, { tintScale = 1,
 	col = col.mul( mix( 0.55, 1.0, smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.9, wp.y ) ) );
 	mat.colorNode = col.mul( tint ).mul( cloudShade() );
 	mat.roughnessNode = mix( float( 0.9 ), float( 0.55 ), smoothstep( WATER_LEVEL - 0.2, WATER_LEVEL + 0.8, wp.y ).oneMinus() );
-	const h = crack.mul( 0.5 ).add( n3.mul( 0.4 ) ).add( nFine.mul( 0.15 ) );
-	mat.normalNode = proceduralBump( h, float( 0.9 ) );
+	const h = joints.mul( 0.9 ).add( n3.mul( 0.3 ) ).add( nFine.mul( 0.15 ) );
+	mat.normalNode = proceduralBump( h, float( 0.7 ) );
 	// plain meshes (the fort's rock block): mean tone of the stand-in in the reflection and the
 	// shadow pass (core/proxies.js)
 	if ( ! useTint ) mat.userData.proxyColor = new THREE.Color( 0x6e675c ).lerp( new THREE.Color( 0xb8ae9b ), 0.5 ).multiplyScalar( tintScale * 0.85 );
