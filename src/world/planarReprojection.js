@@ -31,7 +31,10 @@ export class PlanarReprojection {
 		this.lastPos = new THREE.Vector3( Infinity, 0, 0 );
 		this.captures = 0; this.skipped = 0;
 		const R = this.reflector, update = R.updateBefore.bind( R );
+		this._update = update;
 		R.updateBefore = ( frame ) => {
+			// captured before the scene pass this frame (captureBefore): nothing to do inside it
+			if ( this.external ) { this.external = false; return; }
 			const now = performance.now(), cam = frame.camera;
 			const fresh = now - this.last < this.interval && cam.position.distanceTo( this.lastPos ) < TRAVEL;
 			if ( fresh && R.hasOutput ) { this.skipped ++; return; }
@@ -39,6 +42,20 @@ export class PlanarReprojection {
 			this.last = now; this.lastPos.copy( cam.position );
 			this.captures ++;
 		};
+	}
+
+	// the budgeted capture outside the scene pass, right before it (main.js app.renderFrame): a capture
+	// nested in the scene pass wrote the mirrored camera into the "render" uniform buffer that three
+	// shares between materials, after the scene pass had written its own for that render. frame:
+	// { renderer, scene, camera, material } (the water's material, hidden during the capture)
+	captureBefore( frame ) {
+		const R = this.reflector, now = performance.now(), cam = frame.camera;
+		const fresh = now - this.last < this.interval && cam.position.distanceTo( this.lastPos ) < TRAVEL;
+		this.external = true;
+		if ( fresh && R.hasOutput ) { this.skipped ++; return; }
+		this.capture( cam, () => this._update( frame ) );
+		this.last = now; this.lastPos.copy( cam.position );
+		this.captures ++;
 	}
 
 	// the next frame captures again (a cut, a screenshot)

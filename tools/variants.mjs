@@ -1,6 +1,6 @@
 // One load, several looks: applies JS snippets one after the other (cumulative) and captures the
 // same camera after each, to see what each change does.
-//   node tools/variants.mjs <prefix> --cam=x,y,z,tx,ty,tz "name::js" ["name::js" ...] [--reset]
+//   node tools/variants.mjs <prefix> --cam=x,y,z,tx,ty,tz "name::js" ["name::js" ...] [--reset] [--params=a=1&b=2] [--port=5190]
 // The snippet runs in the page with `a` = window.__app. --reset reloads nothing but undoes nothing
 // either: write the snippets so each one builds on the previous. Frames: shots/<prefix>_<k>_<name>.png
 import puppeteer from 'puppeteer-core';
@@ -18,7 +18,9 @@ const browser = await puppeteer.launch( {
 const page = await browser.newPage();
 page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e ).slice( 0, 300 ) ) );
 page.on( 'console', ( m ) => { if ( m.type() === 'error' ) console.log( '[page]', m.text().slice( 0, 300 ) ); } );
-await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
+const extra = ( args.find( ( x ) => x.startsWith( '--params=' ) ) || '--params=' ).slice( 9 );
+const port = ( args.find( ( x ) => x.startsWith( '--port=' ) ) || '--port=5190' ).slice( 7 );
+await page.goto( `http://localhost:${ port }/?auto` + ( extra ? '&' + extra : '' ), { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 500 } );
 const out = await page.evaluate( async ( prefix, cam, steps ) => {
 	const a = window.__app;

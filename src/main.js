@@ -28,6 +28,7 @@ import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
 import { Weather } from './world/weather.js';
 import { Lightning } from './world/lightning.js';
+import { Clouds, loadCloudNoise } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
@@ -413,6 +414,19 @@ async function main() {
 	// Drusniel's valleyFog); ?valley=0 switches it off
 	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.sunDir } );
 	app.valleyFog = valley;
+	// volumetric cumulus over the sky's own clouds (post/clouds.js); ?clouds=0 leaves them out
+	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { noise: await loadCloudNoise(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.sunDir } );
+	app.clouds = clouds;
+	// the sky's flat clouds stay as a thin high layer over the cumulus
+	if ( clouds ) sky.sky.cloudDensity.value = 0.3;
+	if ( clouds ) app.onFrame.push( ( dt ) => {
+		clouds.update( dt );
+		clouds.coverage.value = sky.sky.cloudCoverage.value; // the panel's "Nuvens" and the rain
+		clouds.sunColor.value.copy( sky.sun.color ).multiplyScalar( sky.sun.intensity / SUN_MAX );
+		// the sky's light from above, with the lightning's flashes (sky.gain)
+		clouds.ambient.value.copy( hazeColor.value ).multiplyScalar( sky.gain.value / 0.4 );
+		clouds.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1;
+	} );
 	// rain and wet ground (world/weather.js): the panel's "Chuva", app.setRain( 0..1 ), ?rain=0.8
 	const weather = new Weather( app, scene );
 	app.weather = weather;
@@ -460,7 +474,8 @@ async function main() {
 	};
 
 	const graded = ( input, withBloom ) => Fn( () => {
-		const misty0 = mist ? mist.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const clouded = clouds ? clouds.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const misty0 = mist ? mist.apply( clouded ) : clouded;
 		const misty = valley ? valley.apply( misty0 ) : misty0;
 		const src0 = godrays ? godrays.apply( misty ) : misty;
 		const src = withBloom ? src0.add( bloomPass.rgb ) : src0;
@@ -500,7 +515,18 @@ async function main() {
 		post.needsUpdate = true;
 	};
 	app.post = post;
-	app.renderFrame = () => post.render();
+	// The sea's reflection is captured before the scene pass, not inside it (world/planarReprojection.js
+	// captureBefore): three shares the uniform buffer of the "render" group (camera, lights) between all
+	// materials with the same set of those uniforms, and the scene pass, already updated for that render,
+	// did not write its camera back after the nested capture. Since the lights joined the reflection's
+	// layers the distant ranges (horizon.js) had the same set as the reflection's draws: on the frames
+	// with a capture they were drawn with the mirrored camera, upside down over the bay (every frame
+	// with ?reflectms=0).
+	app.renderFrame = () => {
+		const w = app.water;
+		if ( w.mesh.visible && w.reflector.reflector.updateBeforeType !== THREE.NodeUpdateType.NONE ) w.reflection?.captureBefore( { renderer, scene, camera, material: w.material } );
+		post.render();
+	};
 
 	// GPU time per frame (needs ?perf for timestamp queries), at a fixed size.
 	app.gpuProfile = async ( frames = 30, w = 1600, h = 900 ) => {
