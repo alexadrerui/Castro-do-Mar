@@ -21,7 +21,7 @@ const BANK_CREST_START = 0.6, BANK_CREST_END = 1.6, BANK_ROUNDING = 0.35;
 // drain through the river's own channel; a channel that opens a lower way out elsewhere lowers it, and
 // relevel() then meets the lake at its new level). A short lip: a longer, higher one left a strip of
 // dry ground between the lake and the river.
-const SILL_LENGTH = 2.5, SILL_HEIGHT = 0.25;
+const SILL_LENGTH = 1.5, SILL_HEIGHT = 0.25;
 export const BANK_BLEND = 6; // m past the edge the carve reaches
 const FLAT_SPEED = 1.4, FALL_SPEED = 6.5, SPEED_RESPONSE = 4;
 const CELL = 24;

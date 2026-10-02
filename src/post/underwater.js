@@ -18,6 +18,7 @@ const LIGHT_ABSORB = [ 0.16, 0.055, 0.05 ]; // 1/m, sunlight going down to the p
 const SCATTER = 0.07; // 1/m: visibility of roughly 30-40 m
 const DEPTH_FALLOFF = 0.06; // 1/m: murk light lost per metre below the surface
 const UNDER_FAR = 90; // m: camera far plane while under water
+const UNDER_NEAR = 0.05; // m: and its near plane (far / near = 1800: depth precision to spare)
 const CAUSTIC_TILE = 3.2; // m: size of the caustic pattern tile
 const CAUSTIC_STRENGTH = 1.3;
 const CAUSTIC_FADE = 0.08; // 1/m: caustics lost per metre of depth (the net also blurs out)
@@ -79,8 +80,13 @@ export class Underwater {
 
 				this._far = camera.far;
 				camera.far = UNDER_FAR;
+				// and a near plane of a few cm: just under the surface (a river, a shallow lake) the rays
+				// looking up meet the surface closer than the 1 m near plane, and the clipped surface left a
+				// band of the world above showing through at the top of the view
+				this._near = camera.near;
+				camera.near = UNDER_NEAR;
 
-			} else if ( this._far ) camera.far = this._far;
+			} else if ( this._far ) { camera.far = this._far; camera.near = this._near; }
 			camera.updateProjectionMatrix();
 			this._under = under;
 

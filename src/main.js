@@ -229,18 +229,23 @@ async function main() {
 		await mod.populate( app, p );
 	} );
 
-	// Seabed life, streamed in tiles around the camera (only near / under the water).
-	const seabed = new Seabed( { hf, waterLevel: WATER_LEVEL, sun: sky.sun, sunDir: sky.state.sunDir } );
-	scene.add( seabed.group );
-	app.seabed = seabed;
-	app.layers.seabed = { label: 'Fundo do mar', object: seabed.group };
-	app.onFrame.push( () => seabed.update( camera ) );
-	// Fish, spawned by habitat in cells around the camera (only near / under the water).
-	const fish = new FishSchools( { hf, seabed, sun: sky.sun, sunDir: sky.state.sunDir, getViewHeight: () => renderer.domElement.height } );
-	scene.add( fish.group );
-	app.fish = fish;
-	app.layers.fish = { label: 'Peixes', object: fish.group };
-	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
+	// Seabed life, streamed in tiles around the camera (only near / under the water), and the fish that
+	// live by its habitat. WebGPU only: the seabed draws indirectly from a storage buffer, which the WebGL
+	// 2 backend does not have (?webgl stopped at "createIndirectStorageAttribute is not a function").
+	const webgpu = renderer.backend.isWebGPUBackend;
+	const seabed = webgpu ? new Seabed( { hf, waterLevel: WATER_LEVEL, sun: sky.sun, sunDir: sky.state.sunDir } ) : null;
+	if ( seabed ) {
+		scene.add( seabed.group );
+		app.seabed = seabed;
+		app.layers.seabed = { label: 'Fundo do mar', object: seabed.group };
+		app.onFrame.push( () => seabed.update( camera ) );
+		// Fish, spawned by habitat in cells around the camera (only near / under the water).
+		const fish = new FishSchools( { hf, seabed, sun: sky.sun, sunDir: sky.state.sunDir, getViewHeight: () => renderer.domElement.height } );
+		scene.add( fish.group );
+		app.fish = fish;
+		app.layers.fish = { label: 'Peixes', object: fish.group };
+		app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
+	}
 	app.onFrame.push( () => app.rivers.update( camera ) ); // the falls' spray near the camera
 	// Koi and lotus in the lakes made in the terrain editor ("Encher", or dug below the sea level):
 	// world/koi, nothing until there is one.
@@ -248,7 +253,7 @@ async function main() {
 	app.koi = koi;
 	// the seabed and the fish keep out of the lakes dug down to the sea level (they pick by the depth)
 	const seaLakes = koi.lakes.filter( ( l ) => l.level <= WATER_LEVEL + 1e-3 );
-	if ( seaLakes.length ) seabed.exclude = ( x, z ) => seaLakes.some( ( l ) => l.shore( x, z ) > 0 );
+	if ( seaLakes.length && seabed ) seabed.exclude = ( x, z ) => seaLakes.some( ( l ) => l.shore( x, z ) > 0 );
 	if ( koi.ponds.length ) {
 		scene.add( koi.group );
 		app.layers.koi = { label: 'Carpas e lótus', object: koi.group };
@@ -301,7 +306,16 @@ async function main() {
 		cam.jumpTo( new THREE.Vector3( ...v.pos ), new THREE.Vector3( ...v.target ) );
 	};
 	app.setPixelRatio = ( v ) => { app.pixelRatio = v; dyn.scale = 1; renderer.setPixelRatio( v ); };
-	app.setShadows = ( on ) => { sky.sun.castShadow = on; };
+	// Shadows off: the shadow's intensity goes to 0 and its map stops being redrawn (the cost goes with
+	// it). Toggling castShadow broke the renderer: three r186 disposes the light's shadow map, and the
+	// shadow node, still in the compiled materials, read the disposed map when the light cast again
+	// ("Cannot read properties of null (reading 'depthTexture')", then WebGPU validation errors).
+	app.shadowsOn = true;
+	app.setShadows = ( on ) => {
+		app.shadowsOn = on;
+		sky.sun.shadow.intensity = on ? 1 : 0;
+		if ( on ) sky.sun.shadow.needsUpdate = true;
+	};
 	app.setReflections = ( on ) => {
 		app.water.uniforms.reflectivity.value = on ? 1 : 0;
 		app.water.reflector.reflector.updateBeforeType = on ? THREE.NodeUpdateType.RENDER : THREE.NodeUpdateType.NONE;
@@ -690,7 +704,7 @@ async function main() {
 		const c = tmpC.copy( camera.position ).addScaledVector( fwd, 80 );
 		c.y = hf.heightAt( c.x, c.z );
 		snapShadow( sky.sun, c );
-		sky.sun.shadow.needsUpdate = true;
+		if ( app.shadowsOn ) sky.sun.shadow.needsUpdate = true;
 		const tf = firstFrame ? performance.now() : 0;
 		app.renderFrame();
 		if ( firstFrame ) { firstFrame = false; console.info( 'first frame (ms)', Math.round( performance.now() - tf ) ); }

@@ -3,6 +3,8 @@
 // the channel carved into the edits, the water shown), saves, reloads in the normal mode and captures
 // the river; then deletes the test files.
 //   node tools/river.mjs [prefix] [--x=-95 --z=40] [--width=5] [--lake] [--keep]
+// --mouse: the course is laid with real clicks (the tool's button, the view from above, a click per point,
+// Enter) instead of calling the tool.
 // --lake: a hollow sunk on the course and filled with "Encher" before the river is laid: the river
 // runs into the lake at its level, crosses it without a ribbon and leaves it behind a sill (the lake
 // keeps its level after the carve).
@@ -12,7 +14,7 @@ import fs from 'fs';
 
 const arg = ( k, d ) => Number( ( process.argv.find( ( a ) => a.startsWith( `--${ k }=` ) ) || `=${ d }` ).split( '=' )[ 1 ] );
 const prefix = process.argv[ 2 ] && ! process.argv[ 2 ].startsWith( '--' ) ? process.argv[ 2 ] : 'river';
-const X = arg( 'x', - 95 ), Z = arg( 'z', 40 ), WIDTH = arg( 'width', 5 ), KEEP = process.argv.includes( '--keep' ), LAKE = process.argv.includes( '--lake' );
+const X = arg( 'x', - 95 ), Z = arg( 'z', 40 ), WIDTH = arg( 'width', 5 ), KEEP = process.argv.includes( '--keep' ), LAKE = process.argv.includes( '--lake' ), MOUSE = process.argv.includes( '--mouse' );
 const FILES = [ 'public/terrain-edits.bin', 'public/world-edits.json' ];
 for ( const f of FILES ) if ( fs.existsSync( f ) ) { console.log( `${ f } exists: not touching it` ); process.exit( 1 ); }
 const browser = await puppeteer.launch( { executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: 'new', protocolTimeout: 900000, args: [ '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU', '--use-angle=d3d11', '--ignore-gpu-blocklist', '--window-size=1600,900' ], defaultViewport: { width: 1600, height: 900 } } );
@@ -25,7 +27,7 @@ const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
 try {
 	await page.goto( 'http://localhost:5190/?auto&edit', { waitUntil: 'domcontentloaded' } );
 	await page.waitForFunction( () => window.__app?.ready && window.__app.editor && window.__app.objectEditor, { timeout: 300000, polling: 250 } );
-	const r = await page.evaluate( ( X, Z, W, LAKE ) => {
+	let r = await page.evaluate( ( X, Z, W, LAKE, MOUSE ) => {
 		const a = window.__app, ed = a.editor, hf = a.hf;
 		// downhill course: 25 m steps along the steepest of 16 directions, until the sea or flat ground
 		const pts = [ [ X, Z ] ];
@@ -66,6 +68,7 @@ try {
 			lake0 = L ? { level: L.level, area: L.area } : null;
 		}
 		ed.tool = 'river'; ed.river.width = W;
+		if ( MOUSE ) return { plan: pts, lake0 };
 		for ( const [ x, z ] of pts ) ed._riverClick( { x, z, y: hf.heightAt( x, z ) } );
 		const before = ed.undo.length;
 		const rec = ed._riverFinish();
@@ -92,7 +95,37 @@ try {
 		}
 		const lake = lake0 ? { leak, before: lake0, after: L1 ? { level: L1.level, area: L1.area } : null, samples: inLake.length, atLevel: inLake.every( ( p ) => Math.abs( p.y - ( L1?.level ?? - 1 ) ) < 0.01 ), sills: S.filter( ( p ) => p.sill ).length, quads: river?.mesh.geometry.index.count / 6 } : null;
 		return { points: pts.length, samples: lv.length, top: lv[ 0 ], bottom: lv.at( - 1 ), rises, carved, mesh: !! river?.mesh, saved: a.objectEditor.edits.rivers?.length ?? 0, start: pts[ 0 ], end: pts.at( - 1 ), lake };
-	}, X, Z, WIDTH, LAKE );
+	}, X, Z, WIDTH, LAKE, MOUSE );
+	if ( MOUSE ) {
+		// the tool's button, the view from above over the middle of the course, a real click per point, Enter
+		const planned = r.plan.length;
+		await page.click( '#terrain-editor [data-tool=river]' );
+		await page.evaluate( ( pts ) => {
+			const a = window.__app, ed = a.editor, m = pts[ Math.floor( pts.length / 2 ) ];
+			ed.hit = new a.THREE.Vector3( m[ 0 ], a.hf.heightAt( m[ 0 ], m[ 1 ] ), m[ 1 ] );
+			ed.toggleOverhead( 75 ); // ~525 m up: the whole course in view
+		}, r.plan );
+		await sleep( 2500 );
+		const before = await page.evaluate( () => window.__app.editor.undo.length );
+		for ( const [ x, z ] of r.plan ) {
+			const sp = await page.evaluate( ( x, z ) => {
+				const a = window.__app, v = new a.THREE.Vector3( x, a.hf.heightAt( x, z ), z ).project( a.camera ), rc = a.renderer.domElement.getBoundingClientRect();
+				return { x: rc.left + ( v.x * 0.5 + 0.5 ) * rc.width, y: rc.top + ( 0.5 - v.y * 0.5 ) * rc.height, inside: Math.abs( v.x ) < 0.98 && Math.abs( v.y ) < 0.98 };
+			}, x, z );
+			if ( ! sp.inside ) { console.log( 'ponto fora da tela', x, z ); continue; }
+			await page.mouse.move( sp.x, sp.y ); await sleep( 150 );
+			await page.mouse.down(); await sleep( 60 ); await page.mouse.up(); await sleep( 250 );
+		}
+		const clicked = await page.evaluate( () => window.__app.editor.river.points.length );
+		await page.keyboard.press( 'Enter' ); await sleep( 800 );
+		r = await page.evaluate( ( before, clicked ) => {
+			const a = window.__app, ed = a.editor, river = a.rivers.list.at( - 1 ), rec = river?.record, lv = rec?.levels ?? [];
+			let rises = 0;
+			for ( let i = 1; i < lv.length; i ++ ) if ( lv[ i ] > lv[ i - 1 ] + 1e-6 ) rises ++;
+			return { points: clicked, samples: lv.length, top: lv[ 0 ], bottom: lv.at( - 1 ), rises, carved: ed.undo.length === before + 1 ? ed.undo.at( - 1 ).keys.length : 0, mesh: !! river?.mesh, saved: a.objectEditor.edits.rivers?.length ?? 0 };
+		}, before, clicked );
+		check( clicked === planned, `mouse: ${ clicked } de ${ planned } cliques viraram pontos do curso (botão da ferramenta, vista de cima, Enter)` );
+	}
 	console.log( 'editor', JSON.stringify( r ) );
 	if ( LAKE ) {
 		const L = r.lake;
