@@ -282,6 +282,11 @@ Próximos passos:
 - [x] Objetos que só aparecem embaixo d'água compilavam no primeiro mergulho (4 pipelines: neve marinha, superfície vista de baixo, camada de sombra da água, fumaça; travada de 133–200 ms). Agora `prepareDive()` (`main.js`, ideia do `DrawPreparation.js` do Drusniel, MIT) roda no fim da etapa de compilação: um quadro com a câmera num ponto do mar com mais de 6 m de fundo, só esses alvos visíveis (com as luzes), sem frustum culling e com `drawRange` 0 (constrói os pipelines nos contextos reais sem desenhar). Custa ~20 ms na carga (preparar a cena inteira custava ~0,26 s). Fundo e peixes já saíam no pré-compile. `?nodiveprep` desliga.
   - Medido com `node tools/divecost.mjs [parâmetros]` (dois mergulhos em pontos diferentes, tempo dos quadros e pipelines criados, com rótulos): o maior quadro do primeiro mergulho caiu de 133 ms para ≤ 50 ms. Os 1–2 pipelines que ainda apareciam (sombra da água, fumaça) eram o vazamento do reflexo com intervalo, já corrigido.
 
+## Publicação (GitHub Pages)
+- `.github/workflows/deploy.yml`: a cada push no `main`, o GitHub Actions roda `npm ci` e `npm run build -- --base=/<repo>/` e publica o `dist` em https://alexadrerui.github.io/Castro-do-Mar/ (no repositório: Settings → Pages → Source: GitHub Actions).
+- O site é estático. As edições (`public/terrain-edits.bin`, `world-edits.json`, `nature-edits.bin`) entram no site se estiverem versionadas. Os endpoints do servidor de desenvolvimento (`/__terrain-edits` etc.) só são consultados em `import.meta.env.DEV`. No `?edit` do site publicado, "Salvar e aplicar" baixa os arquivos.
+- Conferir um build localmente: `MSYS_NO_PATHCONV=1 npx vite build --base=/Castro-do-Mar/` (sem a variável, o Git Bash converte `/Castro-do-Mar/` num caminho do Windows), `npx vite preview` com a mesma base e `node tools/livecheck.mjs <url> <png>` (espera o `ready`, lista respostas 4xx/5xx e erros, salva uma captura). Também serve para o site publicado.
+
 ## Git
 - Remoto: https://github.com/alexadrerui/Castro-do-Mar (branch `main`).
 - O projeto fica num pendrive (E:, sistema de arquivos sem registro de dono), por isso o git acusa

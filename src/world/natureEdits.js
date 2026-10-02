@@ -22,7 +22,8 @@ export const NATURE_BYTES = NATURE.res * NATURE.res * NATURE.channels;
 
 // the painted grid (Int8Array), or null when nothing is painted
 export async function loadNatureEdits() {
-	for ( const url of [ '/__nature-edits', NATURE_URL ] ) {
+	// the dev server's endpoint only in development (a built site has just the file)
+	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__nature-edits' ] : [] ), NATURE_URL ] ) {
 		try {
 			const res = await fetch( url, { cache: 'no-store' } );
 			if ( ! res.ok || ! /octet-stream/.test( res.headers.get( 'content-type' ) || '' ) ) continue;

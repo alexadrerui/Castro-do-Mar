@@ -25,7 +25,8 @@ export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [], rive
 
 // the edits, or null when there are none
 export async function loadWorldEdits() {
-	for ( const url of [ '/__world-edits', WORLD_EDITS_URL ] ) {
+	// the dev server's endpoint only in development (a built site has just the file)
+	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__world-edits' ] : [] ), WORLD_EDITS_URL ] ) {
 		try {
 			const res = await fetch( url, { cache: 'no-store' } );
 			if ( ! res.ok || ! /json/.test( res.headers.get( 'content-type' ) || '' ) ) continue;

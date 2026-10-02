@@ -11,7 +11,8 @@ export const EDITS_N = TERRAIN.segments + 1;
 // the edits, or null when there are none (or the file does not match the grid). In development
 // the dev server reads the file itself (GET /__terrain-edits); a built site serves EDITS_URL.
 export async function loadTerrainEdits() {
-	for ( const url of [ '/__terrain-edits', EDITS_URL ] ) {
+	// the dev server's endpoint only in development (a built site has just the file)
+	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__terrain-edits' ] : [] ), EDITS_URL ] ) {
 		try {
 			const res = await fetch( url, { cache: 'no-store' } );
 			// a missing file can come back as the index page (SPA fallback): binary only
