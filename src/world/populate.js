@@ -7,6 +7,8 @@ import { createBuildings } from './buildings.js';
 import { createFort } from './fort.js';
 import { addProxies } from '../core/proxies.js';
 import { createSmoke } from './smoke.js';
+import { buildPickBVH } from '../controls/focus.js';
+import { loadDetailTexture } from './granite/detail.js';
 
 // Populates the world with props, phase by phase.
 export async function populate( app, progress ) {
@@ -20,6 +22,7 @@ export async function populate( app, progress ) {
 	app.grass = grass;
 	app.layers.grass = { label: 'Grama', object: grass.group };
 	app.onFrame.push( () => grass.update( app.camera ) );
+	await loadDetailTexture(); // the granite's detail texels, from the cache after the first load
 	const rocks = createRocks( app, ( p ) => progress( 0.5 + p * 0.3 ) );
 	app.scene.add( rocks );
 	app.layers.rocks = { label: 'Pedras', object: rocks };
@@ -38,6 +41,8 @@ export async function populate( app, progress ) {
 	app.layers.fort = { label: 'Castro', object: fort };
 	// cheap stand-ins in the water reflection and the shadow pass
 	addProxies( bld ); addProxies( fort );
+	// raycasts on them (bird perches now, the focus later) through a BVH
+	buildPickBVH( bld ); buildPickBVH( fort );
 	const smoke = createSmoke( bld.userData.smoke );
 	app.scene.add( smoke.mesh );
 	app.smoke = smoke;

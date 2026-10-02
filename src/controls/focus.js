@@ -14,6 +14,21 @@ const NEAR = 45;          // start of the effect (m)
 const FULL = 22;          // full effect at this distance or closer (m)
 const MAX_RAY = 140;
 
+// BVH-accelerated raycasts on the plain meshes under root (houses, fort): built once per geometry and
+// shared, so the proxies (core/proxies.js, same geometry) are fast too. populate.js calls it right
+// after the houses, before the bird perches (birds/flock.js) are found by raycast: without it each
+// ray tested every triangle of the merged village (~1.8 s per load). Returns the meshes with a BVH.
+export function buildPickBVH( root ) {
+	const out = [];
+	root.traverse( ( o ) => {
+		if ( ! o.isMesh || o.isInstancedMesh || o.userData.instances || ! o.geometry?.attributes.position ) return;
+		if ( ! o.geometry.boundsTree ) o.geometry.boundsTree = new MeshBVH( o.geometry );
+		o.raycast = acceleratedRaycast;
+		if ( ! o.userData.proxy ) out.push( o );
+	} );
+	return out;
+}
+
 export class AutoFocus {
 
 	constructor( { camera, hf, scenePass, targets, instanced = [] } ) {
@@ -28,13 +43,7 @@ export class AutoFocus {
 		this.node = dof( scenePass, scenePass.getViewZNode(), this.focusDistance, this.focalLength, this.bokeh );
 
 		// BVH-accelerated picking on the big merged meshes (houses, fort, rock)
-		this.targets = [];
-		for ( const root of targets ) root.traverse( ( o ) => {
-			if ( ! o.isMesh || o.isInstancedMesh || o.userData.instances || o.userData.proxy || ! o.geometry?.attributes.position ) return;
-			o.geometry.boundsTree = new MeshBVH( o.geometry );
-			o.raycast = acceleratedRaycast;
-			this.targets.push( o );
-		} );
+		this.targets = targets.flatMap( ( root ) => buildPickBVH( root ) );
 		this.ray = new THREE.Raycaster();
 		this.ray.firstHitOnly = true;
 		this.ray.layers.enable( 1 ); // the boulders are layer-1 props

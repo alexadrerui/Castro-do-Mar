@@ -51,7 +51,21 @@ export function farHeight( x, z ) {
 	return h;
 }
 
-export async function createHorizon( onProgress ) {
+// cached: { position, normal, index } of an earlier load (main.js keeps them in the IndexedDB cache,
+// keyed by the hash of this code and of the height function); without it the ring is computed
+// (~1 s) and its arrays are left in mesh.userData.bake for the cache.
+export async function createHorizon( onProgress, cached = null ) {
+	const geo = new THREE.BufferGeometry();
+	if ( cached ) {
+		geo.setAttribute( 'position', new THREE.BufferAttribute( cached.position, 3 ) );
+		geo.setAttribute( 'normal', new THREE.BufferAttribute( cached.normal, 3 ) );
+		geo.setIndex( new THREE.BufferAttribute( cached.index, 1 ) );
+	} else await buildRing( geo, onProgress );
+	geo.computeBoundingSphere();
+	return horizonMesh( geo, onProgress );
+}
+
+async function buildRing( geo, onProgress ) {
 	const cx = TERRAIN.centerX, cz = TERRAIN.centerZ;
 	const half = TERRAIN.size / 2;
 	const A = 1200, R = 300;
@@ -71,19 +85,21 @@ export async function createHorizon( onProgress ) {
 		}
 		if ( j % 20 === 0 ) { onProgress?.( j / R ); await new Promise( ( r ) => setTimeout( r, 0 ) ); }
 	}
-	const idx = [];
+	const idx = new Uint32Array( ( R - 1 ) * A * 6 );
+	let n = 0;
 	for ( let j = 0; j < R - 1; j ++ ) for ( let i = 0; i < A; i ++ ) {
 		const a = j * A + i, b = j * A + ( i + 1 ) % A, c = ( j + 1 ) * A + i, d = ( j + 1 ) * A + ( i + 1 ) % A;
 		// counter-clockwise seen from above (normals up): the reversed order culled the slopes
 		// facing the camera and showed the far sides of the ranges, lit from below
-		idx.push( a, b, c, b, d, c );
+		idx[ n ++ ] = a; idx[ n ++ ] = b; idx[ n ++ ] = c; idx[ n ++ ] = b; idx[ n ++ ] = d; idx[ n ++ ] = c;
 	}
-	const geo = new THREE.BufferGeometry();
 	geo.setAttribute( 'position', new THREE.BufferAttribute( verts, 3 ) );
-	geo.setIndex( idx );
+	geo.setIndex( new THREE.BufferAttribute( idx, 1 ) );
 	geo.computeVertexNormals();
-	geo.computeBoundingSphere();
+	geo.userData.bake = { position: verts, normal: geo.attributes.normal.array, index: idx };
+}
 
+function horizonMesh( geo, onProgress ) {
 	const mat = new THREE.MeshStandardNodeMaterial();
 	const wp = positionWorld;
 	const slope = float( 1 ).sub( normalWorld.y.clamp( 0, 1 ) );
@@ -104,6 +120,7 @@ export async function createHorizon( onProgress ) {
 	mesh.name = 'horizon';
 	mesh.receiveShadow = false;
 	mesh.frustumCulled = false;
+	if ( geo.userData.bake ) { mesh.userData.bake = geo.userData.bake; delete geo.userData.bake; }
 	onProgress?.( 1 );
 	return mesh;
 }

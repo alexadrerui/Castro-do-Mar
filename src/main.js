@@ -47,6 +47,7 @@ import srcHeight from './world/heightfield.js?raw';
 import srcLayout from './world/layout.js?raw';
 import srcNoise from './core/noise.js?raw';
 import srcWorker from './world/gen.worker.js?raw';
+import srcHorizon from './world/horizon.js?raw';
 
 const params = new URLSearchParams( location.search );
 const FORCE_WEBGL = params.has( 'webgl' );
@@ -209,7 +210,12 @@ async function main() {
 	} );
 
 	await loader.run( 'horizon', async ( p ) => {
-		const h = await createHorizon( p );
+		// the far ring (~1 s to compute) from the IndexedDB cache, keyed by its code and the height function
+		const key = 'horizon:' + hashSources( srcHorizon, srcHeight, srcLayout, srcNoise );
+		const cached = await cacheGet( key );
+		const h = await createHorizon( p, cached?.index?.length ? cached : null );
+		if ( h.userData.bake ) { cachePut( key, h.userData.bake, 'horizon:' ); delete h.userData.bake; }
+		console.info( 'horizon:', cached ? 'from cache' : 'computed' );
 		h.layers.enable( 2 );
 		scene.add( h );
 		app.layers.horizon = { label: 'Horizonte', object: h };

@@ -1,8 +1,11 @@
 // Copied from Tidewater (https://github.com/dgreenheck/tidewater, src/world/terrain/DetailTextures.js,
 // three.js version at d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
-// Unchanged apart from this header, the hash import and the texture name.
+// Unchanged apart from this header, the hash import, the texture name and the IndexedDB cache
+// (loadDetailTexture: the texels are kept between loads, ~0.26 s each time).
 import * as THREE from 'three/webgpu';
 import { hash2 } from './hash.js';
+import { cacheGet, cachePut, hashSources } from '../../core/cache.js';
+import srcDetail from './detail.js?raw';
 
 // Tileable procedural detail heights shared by the terrain and rock materials (RGBA8, mipmapped,
 // repeat wrapping). One texture, four height fields:
@@ -148,6 +151,20 @@ const smooth = ( a, b, x ) => {
 
 let cached = null;
 
+// Fills the texture from the IndexedDB cache (keyed by this code), or generates and stores it. Call
+// before getDetailTexture (populate.js, ahead of the rocks); without it the texture is generated.
+export async function loadDetailTexture() {
+
+	if ( cached ) return cached;
+	const key = 'granite:' + hashSources( srcDetail );
+	const hit = await cacheGet( key );
+	if ( hit?.data?.length === S * S * 4 ) return ( cached = detailTexture( hit.data, 0 ) );
+	const tex = getDetailTexture();
+	cachePut( key, { data: tex.image.data }, 'granite:' );
+	return tex;
+
+}
+
 export function getDetailTexture() {
 
 	if ( cached ) return cached;
@@ -219,6 +236,13 @@ export function getDetailTexture() {
 
 	}
 
+	cached = detailTexture( data, performance.now() - t0 );
+	return cached;
+
+}
+
+function detailTexture( data, ms ) {
+
 	const tex = new THREE.DataTexture( data, S, S, THREE.RGBAFormat, THREE.UnsignedByteType );
 	tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
 	tex.magFilter = THREE.LinearFilter;
@@ -228,8 +252,7 @@ export function getDetailTexture() {
 	tex.colorSpace = THREE.NoColorSpace;
 	tex.name = 'graniteDetail';
 	tex.needsUpdate = true;
-	tex.userData.ms = performance.now() - t0;
-	cached = tex;
+	tex.userData.ms = ms;
 	return tex;
 
 }
