@@ -155,7 +155,8 @@ export class Seabed {
 		const hf = this.hf, H = this.config.habitat, rn = H.rockNoise;
 		const g = hf.heightAt( x, z );
 		out.ground = g;
-		out.depth = this.W - g;
+		// no sea life in a basin closed off from the sea (a lake dug in the terrain editor: world/koi)
+		out.depth = this.exclude?.( x, z ) ? - 1 : this.W - g;
 		const slope = hf.slopeAt( x, z );
 		const nr = this.nRock( x * rn.freq, z * rn.freq ) * ( 1 - rn.detail ) + this.nRock( x * rn.detailFreq + 31, z * rn.detailFreq ) * rn.detail;
 		// rock on steep ground and in rock patches; sand elsewhere

@@ -104,9 +104,12 @@ export function createWaterUnderside( { waterLevel = 0, size = 36000 } = {} ) {
 
 	return {
 		mesh, uniforms: U,
-		update( underwater ) {
+		update( underwater, level = mesh.position.y ) {
 
 			mesh.visible = underwater;
+			// the surface over the camera: the sea's, a lake's or a river's (the plane is endless; past the
+			// lake the banks hide it)
+			if ( mesh.position.y !== level ) { mesh.position.y = level; mesh.updateMatrix(); mesh.updateMatrixWorld( true ); }
 
 		},
 		// daylight: haze colour (horizon), the sun's direction and light

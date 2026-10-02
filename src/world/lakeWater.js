@@ -82,6 +82,32 @@ export class Lakes {
 
 	levelAt( x, z ) { return this.at( x, z )?.level ?? WATER_LEVEL; }
 
+	// the lake level at grid vertex (i, j), on the lake and up to `ring` cells past its edge (the terrain's
+	// silt and wet band, terrain.js setWaterLevels), or null
+	levelAtCell( i, j, ring = 2 ) {
+		const n = this.hf.n;
+		for ( const l of this.list ) {
+			for ( let b = - ring; b <= ring; b ++ ) for ( let a = - ring; a <= ring; a ++ ) if ( l.cellSet.has( ( j + b ) * n + i + a ) ) return l.level;
+		}
+		return null;
+	}
+
+	// the grid boxes of the lakes (+ the ring)
+	gridBoxes( ring = 3 ) {
+		const hf = this.hf;
+		return this.list.map( ( l ) => [ Math.floor( ( l.box[ 0 ] - hf.x0 ) / hf.cell ) - ring, Math.floor( ( l.box[ 1 ] - hf.z0 ) / hf.cell ) - ring, Math.ceil( ( l.box[ 2 ] - hf.x0 ) / hf.cell ) + ring, Math.ceil( ( l.box[ 3 ] - hf.z0 ) / hf.cell ) + ring ] );
+	}
+
+	// every lake filled again from its seed on the relief as it is now (the terrain editor, after a
+	// stroke): a reshaped hollow reshapes its lake, a breached one drains away
+	refill() {
+		const seeds = this.list.map( ( l ) => l.seed );
+		for ( const l of [ ...this.list ] ) this.remove( l );
+		const lost = [];
+		for ( const s of seeds ) { const r = this.add( s, { quiet: true } ); if ( r.error ) lost.push( s ); }
+		return lost;
+	}
+
 	// under a lake's water or on its wet margin (no plants, rocks or grass there)
 	wet( x, z ) {
 		const l = this.at( x, z );

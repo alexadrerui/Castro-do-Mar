@@ -29,6 +29,7 @@ export class MarineSnow {
 		this.camPos = uniform( new THREE.Vector3() ).setName( 'snowCam' );
 		this.light = uniform( new THREE.Color( 0.6, 0.7, 0.8 ) ).setName( 'snowLight' ); // daylight at the surface
 		this.opacity = uniform( 1 ).setName( 'snowOpacity' );
+		this.level = uniform( waterLevel ).setName( 'snowLevel' ); // the water level over the camera (sea, lake or river)
 
 		const geo = new THREE.PlaneGeometry( 1, 1 );
 		const inst = new THREE.InstancedBufferGeometry();
@@ -54,7 +55,7 @@ export class MarineSnow {
 			const local = fract( h.add( drift.div( B ) ).sub( this.camPos.div( B ) ) ).sub( 0.5 ).mul( B );
 			const p = this.camPos.add( local ).toVar();
 			// orbital sway from the passing swell (decays ~exp(-k z) with depth)
-			const depth = max( float( waterLevel ).sub( p.y ), 0 );
+			const depth = max( this.level.sub( p.y ), 0 );
 			const k = 2 * Math.PI / SWELL_LEN;
 			const phase = p.x.mul( k ).add( time.mul( 2 * Math.PI / SWELL_PERIOD ) );
 			const orbit = exp( depth.mul( - k ) ).mul( SWELL_AMP );
@@ -66,7 +67,7 @@ export class MarineSnow {
 			// fade in the box edges and right in front of the lens (by shrinking), and above the surface
 			const dist = length( local );
 			const fade = smoothstep( B.mul( 0.5 ), B.mul( 0.3 ), dist ).mul( smoothstep( 0.08, 0.3, pv0.z.negate() ) )
-				.mul( smoothstep( 0.0, 0.04, float( waterLevel ).sub( p.y ) ) );
+				.mul( smoothstep( 0.0, 0.04, this.level.sub( p.y ) ) );
 			const pv = vec4( pv0.xy.add( positionGeometry.xy.mul( size ).mul( fade ) ), pv0.z, pv0.w );
 			vFade.assign( fade );
 			return cameraProjectionMatrix.mul( pv );
@@ -96,9 +97,10 @@ export class MarineSnow {
 
 	}
 
-	update( camera, underwater ) {
+	update( camera, underwater, level = this.level.value ) {
 
 		this.mesh.visible = underwater;
+		this.level.value = level;
 		if ( underwater ) this.camPos.value.copy( camera.position );
 
 	}

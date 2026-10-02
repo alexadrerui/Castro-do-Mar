@@ -24,6 +24,7 @@ import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
 import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
+import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
@@ -189,6 +190,12 @@ async function main() {
 		app.rivers = rivers;
 		scene.add( rivers.group );
 		if ( lakes.list.length || rivers.list.length ) setLakeTest( ( x, z ) => lakes.wet( x, z ) || rivers.wet( x, z ) );
+		// the water level over the relief for the terrain's silt and wet band (terrain.js setWaterLevels)
+		app.refreshWaterLevels = () => {
+			const boxes = [ ...lakes.gridBoxes(), ...rivers.gridBoxes() ];
+			setWaterLevels( terrain.waterTex, hf, boxes, ( i, j ) => rivers.levelAtPoint( hf.x0 + i * hf.cell, hf.z0 + j * hf.cell ) ?? lakes.levelAtCell( i, j ) );
+		};
+		if ( lakes.list.length || rivers.list.length ) app.refreshWaterLevels();
 		scene.add( lakes.group );
 		if ( lakes.list.length || rivers.list.length || params.has( 'edit' ) ) {
 			sky.buildEnv();
@@ -234,10 +241,14 @@ async function main() {
 	app.fish = fish;
 	app.layers.fish = { label: 'Peixes', object: fish.group };
 	app.onFrame.push( ( dt ) => fish.update( dt, camera ) );
+	app.onFrame.push( () => app.rivers.update( camera ) ); // the falls' spray near the camera
 	// Koi and lotus in the lakes made in the terrain editor ("Encher", or dug below the sea level):
 	// world/koi, nothing until there is one.
 	const koi = new KoiPonds( { hf, waterLevel: WATER_LEVEL, edits: app.terrainEdits, lakes: app.lakes.list } );
 	app.koi = koi;
+	// the seabed and the fish keep out of the lakes dug down to the sea level (they pick by the depth)
+	const seaLakes = koi.lakes.filter( ( l ) => l.level <= WATER_LEVEL + 1e-3 );
+	if ( seaLakes.length ) seabed.exclude = ( x, z ) => seaLakes.some( ( l ) => l.shore( x, z ) > 0 );
 	if ( koi.ponds.length ) {
 		scene.add( koi.group );
 		app.layers.koi = { label: 'Carpas e lótus', object: koi.group };
@@ -295,9 +306,11 @@ async function main() {
 		app.water.uniforms.reflectivity.value = on ? 1 : 0;
 		app.water.reflector.reflector.updateBeforeType = on ? THREE.NodeUpdateType.RENDER : THREE.NodeUpdateType.NONE;
 	};
+	const _sunTint = new THREE.Color();
 	app.onSunChanged = () => {
 		sky.update( false );
 		updateCloudSun( sky.state.elevation );
+		app.rivers?.setLight( _sunTint.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) ), app.hazeColor.value );
 		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		clearTimeout( app._envT );
 		app._envT = setTimeout( () => sky.buildEnv(), 250 );
@@ -357,13 +370,13 @@ async function main() {
 	scene.add( underside.mesh );
 	app.underside = underside;
 	app.onFrame.push( ( dt ) => {
-		// a lake's own level when the camera is over one (world/lakeWater.js)
-		const wl = app.lakes.levelAt( camera.position.x, camera.position.z );
+		// a river's or a lake's own level when the camera is over one (world/rivers.js, lakeWater.js)
+		const wl = app.rivers.levelAt( camera.position.x, camera.position.z ) ?? app.lakes.levelAt( camera.position.x, camera.position.z );
 		cam.waterLevel = wl;
 		underwater.update( camera, wl );
 		lens.update( dt, underwater.on.value > 0.5 );
-		snow.update( camera, underwater.on.value > 0.5 );
-		underside.update( underwater.on.value > 0.5 );
+		snow.update( camera, underwater.on.value > 0.5, wl );
+		underside.update( underwater.on.value > 0.5, wl );
 	} );
 
 	// Bloom (as in three's ocean example): a soft glow around what is brighter than white in the

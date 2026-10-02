@@ -287,6 +287,7 @@ export class TerrainEditor {
 			lakes.remove( lake );
 			obj.edits.lakes = list.filter( ( s ) => ! lake.cellSet.has( this._cellOf( s.x, s.z ) ) );
 			obj.changed = true;
+			this.app.refreshWaterLevels?.();
 			this._toast( 'Lago removido (salve para aplicar).' );
 			return;
 		}
@@ -298,6 +299,7 @@ export class TerrainEditor {
 		}
 		list.push( res.seed );
 		obj.changed = true;
+		this.app.refreshWaterLevels?.();
 		this._toast( `Lago: nível ${ res.level.toFixed( 1 ) } m, ${ Math.round( res.area ) } m², até ${ res.deepest.toFixed( 1 ) } m de fundo. Salve para as carpas e o lótus.` );
 	}
 
@@ -309,6 +311,7 @@ export class TerrainEditor {
 			const r = rivers.at( p.x, p.z, 2 );
 			if ( ! r ) { this._toast( 'Nenhum rio aqui.' ); return; }
 			rivers.remove( r );
+			this.app.refreshWaterLevels?.();
 			const first = r.record.points[ 0 ];
 			obj.edits.rivers = ( obj.edits.rivers ?? [] ).filter( ( q ) => ! ( q.points[ 0 ][ 0 ] === first[ 0 ] && q.points[ 0 ][ 1 ] === first[ 1 ] ) );
 			obj.changed = true;
@@ -340,6 +343,7 @@ export class TerrainEditor {
 		this._markDirty( i0, j0, i1, j1 );
 		this._end();
 		rivers.add( record );
+		this.app.refreshWaterLevels?.();
 		( obj.edits.rivers ??= [] ).push( record );
 		obj.changed = true;
 		const S = course.samples;
@@ -397,6 +401,18 @@ export class TerrainEditor {
 		this._pushUndo( { keys, before, after } );
 		this.texDue = true; this.texTimer = HEIGHT_TEX_EVERY; // upload now
 		this._status();
+		this._waterFollows();
+	}
+
+	// the lakes refilled on the edited relief (a reshaped hollow reshapes its lake, a breached one drains)
+	// and the terrain's silt / wet band redrawn; after every stroke, undo and redo
+	_waterFollows() {
+		const lakes = this.app.lakes;
+		if ( lakes?.list.length ) {
+			const lost = lakes.refill();
+			if ( lost.length ) this._toast( `${ lost.length } lago(s) escoaram: a borda da depressão ficou baixa demais.` );
+		}
+		this.app.refreshWaterLevels?.();
 	}
 
 	// put the edit layer of a step back (undo: before, redo: after)
@@ -412,6 +428,7 @@ export class TerrainEditor {
 		}
 		if ( step.keys.length ) this._markDirty( i0, j0, i1, j1 );
 		this.texTimer = HEIGHT_TEX_EVERY;
+		this._waterFollows();
 	}
 
 	// at most UNDO_MAX steps and ~UNDO_CELLS edited cells kept (an import / clear can be the whole grid)

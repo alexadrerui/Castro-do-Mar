@@ -55,6 +55,9 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	maskTex.needsUpdate = true;
 
 	const heightTex = createHeightTexture( hf );
+	// the level of the water standing over each vertex of the relief: the lakes and rivers of the
+	// terrain editor (world/lakeWater.js, rivers.js; -1e4 where there is none); their beds are silt
+	const waterTex = createWaterTexture( hf );
 
 	const macroTex = new THREE.DataTexture( macroData, 1024, 1024, THREE.RGBAFormat );
 	macroTex.magFilter = THREE.LinearFilter; macroTex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -170,6 +173,13 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	col = mix( col, mix( sand, rock, rockAll.mul( 0.8 ) ), shoreM.mul( 0.25 ) );
 	col = mix( col, wetSand, smoothstep( WATER_LEVEL, U.wetLine.add( WATER_LEVEL ), wp.y ).oneMinus().mul( 0.6 ) );
 	col = mix( col, mix( seabedCol, rock.mul( 0.7 ), rockM ), underM );
+	// lakes and rivers at their own level: a dark band of wet ground just above the water, silt under it
+	const lakeL = texture( waterTex, wp.xz.sub( vec2( hf.x0, hf.z0 ) ).div( hf.cell ).add( 0.5 ).div( n ) ).r;
+	const lakeWet = smoothstep( lakeL.add( 0.05 ), lakeL.add( 0.45 ), wp.y ).oneMinus();
+	const lakeBed = smoothstep( lakeL.sub( 0.4 ), lakeL.add( 0.05 ), wp.y ).oneMinus();
+	const silt = mix( color( 0x4b4733 ), color( 0x34372a ), smoothstep( 0.3, 0.7, nMed ) ).mul( mix( 0.85, 1.12, nFine ) );
+	col = mix( col, col.mul( vec3( 0.62, 0.6, 0.55 ) ), lakeWet.mul( 0.7 ) );
+	col = mix( col, mix( silt, rock.mul( 0.6 ), rockM.mul( 0.6 ) ), lakeBed );
 	col = mix( col, color( 0xf2f4f7 ), snowM );
 
 	// baked sky-visibility (heightfield AO) darkens valleys and crevices
@@ -245,7 +255,7 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 
 	const refreshHeightTex = ( i0, j0, i1, j1 ) => updateHeightTexture( heightTex, hf, i0, j0, i1, j1 );
 
-	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, macroTex, detailTex, update, refresh, refreshHeightTex };
+	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, waterTex, macroTex, detailTex, update, refresh, refreshHeightTex };
 }
 
 function computeGridNormals( hf ) {
@@ -345,6 +355,30 @@ export function createDetailTexture() {
 }
 
 // Heightfield as a half-float texture: used by the water shader for depth.
+// the water level over each vertex (half float, -1e4 where dry); written by setWaterLevels
+export function createWaterTexture( hf ) {
+	const n = hf.n, dry = THREE.DataUtils.toHalfFloat( - 1e4 );
+	const tex = new THREE.DataTexture( new Uint16Array( n * n ).fill( dry ), n, n, THREE.RedFormat, THREE.HalfFloatType );
+	tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
+	tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+	tex.needsUpdate = true;
+	return tex;
+}
+
+// rewrites the water levels: clears them, then levelAt( i, j ) (a level, or null) for every vertex of
+// each box [ i0, j0, i1, j1 ] given (the lakes' and rivers' bounds)
+export function setWaterLevels( tex, hf, boxes, levelAt ) {
+	const buf = tex.image.data, n = hf.n, dry = THREE.DataUtils.toHalfFloat( - 1e4 );
+	buf.fill( dry );
+	for ( const [ i0, j0, i1, j1 ] of boxes ) {
+		for ( let j = Math.max( 0, j0 ); j <= Math.min( n - 1, j1 ); j ++ ) for ( let i = Math.max( 0, i0 ); i <= Math.min( n - 1, i1 ); i ++ ) {
+			const l = levelAt( i, j );
+			if ( l !== null ) buf[ j * n + i ] = THREE.DataUtils.toHalfFloat( l );
+		}
+	}
+	tex.needsUpdate = true;
+}
+
 export function createHeightTexture( hf ) {
 	const n = hf.n;
 	const buf = new Uint16Array( n * n );

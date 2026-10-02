@@ -66,6 +66,20 @@ try {
 	await ready();
 	const info = await page.evaluate( () => { const k = window.__app.koi; return k.ponds.map( ( p ) => ( { level: +( p.lake.level ?? 0 ).toFixed( 2 ), area: Math.round( p.lake.area ), deepest: +p.lake.deepest.toFixed( 2 ), fish: p.fishes.length, lotus: p.lotus?.userData.count, flora: p.flora?.userData.count, cx: p.lake.cx, cz: p.lake.cz, surface: !! p.lake.mesh } ) ); } );
 	console.log( 'ponds', JSON.stringify( info ) );
+	// the terrain's water level under the lake (silt), and the sea life kept out of a sea-level lake
+	const extra = await page.evaluate( ( SEA ) => {
+		const a = window.__app, l = a.koi.lakes[ 0 ];
+		if ( ! l ) return null;
+		const hf = a.hf, k = Math.round( ( l.cz - hf.z0 ) / hf.cell ) * hf.n + Math.round( ( l.cx - hf.x0 ) / hf.cell );
+		const half = a.terrain.waterTex.image.data[ k ];
+		const level = SEA ? null : a.THREE.DataUtils.fromHalfFloat( half );
+		const sea = a.seabed.habitat( l.cx, l.cz, {} ).depth;
+		return { level, lakeLevel: l.level, seabedDepth: sea };
+	}, SEA );
+	if ( extra ) {
+		if ( ! SEA ) console.log( `${ Math.abs( extra.level - extra.lakeLevel ) < 0.05 ? 'ok  ' : 'FAIL' } lodo: nível na textura ${ extra.level?.toFixed( 2 ) } (lago ${ extra.lakeLevel.toFixed( 2 ) })` );
+		else console.log( `${ extra.seabedDepth < 0 ? 'ok  ' : 'FAIL' } lago ao nível do mar: fundo do mar e peixes fora (profundidade de habitat ${ extra.seabedDepth })` );
+	}
 	p = info[ 0 ];
 	if ( p ) {
 		const L = p.level;
@@ -79,6 +93,8 @@ try {
 			[ 'under', [ p.cx + 3, L - 1.2, p.cz + 3 ], [ p.cx, L - 1.0, p.cz ] ]
 		];
 		for ( const [ name, pos, at ] of shots ) {
+			// a dive: over the water first (the camera's dive limit takes the level under it), then down
+			if ( pos[ 1 ] < L ) { await page.evaluate( ( pos, at ) => { const a = window.__app; a.views.push( { label: 'k', pos: [ pos[ 0 ], pos[ 1 ] + 3, pos[ 2 ] ], target: at } ); a.setView( a.views.length - 1, true ); }, pos, at ); await sleep( 800 ); }
 			await page.evaluate( ( pos, at ) => { const a = window.__app; a.dynamicRes = false; a.views.push( { label: 'k', pos, target: at } ); a.setView( a.views.length - 1, true ); }, pos, at );
 			await sleep( 3500 );
 			await page.evaluate( ( n ) => window.__app.capture( n ), `${ prefix }_${ name }` );
@@ -95,12 +111,18 @@ try {
 			ed.invert = true; ed._pour( { x, z } ); out.removed = a.lakes.list.length; out.seedsAfterRemove = a.objectEditor.edits.lakes.length;
 			ed.invert = false; ed._pour( { x, z } ); out.again = a.lakes.list.length; out.seeds = a.objectEditor.edits.lakes.length; out.surface = !! a.lakes.list[ 0 ]?.mesh;
 			ed._pour( { x: x + 40, z: z + 40 } ); out.slope = a.lakes.list.length;
+			// a stroke raising the bed by 1.2 m in the middle: the lake refills shallower and smaller
+			const area0 = a.lakes.list[ 0 ].area, deep0 = a.lakes.list[ 0 ].deepest, hf = a.hf, n = hf.n;
+			ed.stroke = { touched: new Map(), flattenTo: 0, noise: null, last: new a.THREE.Vector3() };
+			for ( const k of a.lakes.list[ 0 ].cells ) { const i = k % n, j = ( k - i ) / n; if ( Math.hypot( hf.x0 + i * hf.cell - x, hf.z0 + j * hf.cell - z ) < 5 ) ed._set( k, hf.data[ k ] + 1.2 ); }
+			ed._end();
+			out.refilled = { deepest0: +deep0.toFixed( 2 ), before: Math.round( area0 ), after: Math.round( a.lakes.list[ 0 ]?.area ?? 0 ), deepest: +( a.lakes.list[ 0 ]?.deepest ?? 0 ).toFixed( 2 ) };
 			out.msgs = msgs;
 			return out;
 		}, p.cx, p.cz );
 		console.log( 'editor', JSON.stringify( r ) );
-		const ok = r.start === 1 && r.removed === 0 && r.seedsAfterRemove === 0 && r.again === 1 && r.seeds === 1 && r.surface && r.slope === 1;
-		console.log( ok ? 'ok   Encher: remover, encher de novo, encosta recusada' : 'FAIL Encher' );
+		const ok = r.start === 1 && r.removed === 0 && r.seedsAfterRemove === 0 && r.again === 1 && r.seeds === 1 && r.surface && r.slope === 1 && r.refilled.after > 0 && r.refilled.deepest < r.refilled.deepest0 - 0.3;
+		console.log( ok ? `ok   Encher: remover, encher de novo, encosta recusada; o lago acompanha a pincelada (fundo ${ r.refilled.deepest0 } -> ${ r.refilled.deepest } m)` : 'FAIL Encher' );
 		if ( ! ok ) process.exitCode = 1;
 	}
 } finally {
