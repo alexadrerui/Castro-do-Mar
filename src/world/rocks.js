@@ -5,7 +5,7 @@ import {
 import { SURFACE } from './surfaceBake.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
-import { clearance, sampleMask, inLake } from './vegetation.js';
+import { clearance, editedClearance, sampleMask, inLake } from './vegetation.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, natureAt, texelSeed } from './natureEdits.js';
 import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
@@ -146,13 +146,13 @@ export function createRocks( app, progress ) {
 			let p = Math.min( 1, 2 * outcrop * ( 0.25 + 0.75 * hill ) * ( 0.4 + ss( 0.25, 0.7, slope ) ) );
 			if ( distV < 130 ) p = Math.max( p * 0.8, 0.12 * outcrop + 0.04 );
 			if ( rnd() > p * 0.9 ) continue;
-			if ( distV < 380 && clearance( px, pz, app.mask, 2 ) <= 0 ) continue;
+			if ( ( distV < 380 ? clearance( px, pz, app.mask, 2 ) : editedClearance( px, pz, 2 ) ) <= 0 ) continue;
 			const k = 1 + Math.floor( rnd() * 5 );
 			const big = 1.5 + rnd() * 5.0 * ( 0.4 + 0.6 * hill );
 			for ( let i = 0; i < k; i ++ ) {
 				const a = rnd() * Math.PI * 2, r = i ? big * ( 0.8 + rnd() * 1.4 ) : 0;
 				const bx = px + Math.cos( a ) * r, bz = pz + Math.sin( a ) * r;
-				if ( distV < 380 && clearance( bx, bz, app.mask, 1 ) <= 0 ) continue;
+				if ( ( distV < 380 ? clearance( bx, bz, app.mask, 1 ) : editedClearance( bx, bz, 1 ) ) <= 0 ) continue;
 				if ( put( tors, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) ) ) counts.boulders ++;
 			}
 		}
@@ -265,7 +265,7 @@ export function createRocks( app, progress ) {
 				if ( prnd() >= Math.min( 1, n ) ) continue;
 				const x = tx + prnd() * NATURE.cell, z = tz + prnd() * NATURE.cell;
 				if ( hf.heightAt( x, z ) < - 30 ) continue;
-				if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 && clearance( x, z, app.mask, 1 ) <= 0 ) continue;
+				if ( ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 ? clearance( x, z, app.mask, 1 ) : editedClearance( x, z, 1 ) ) <= 0 ) continue;
 				// many small ones, a few of the full size
 				if ( put( tors, x, z, big * ( 0.25 + 0.75 * Math.pow( prnd(), 2.5 ) ), 0.25, 1, prnd ) ) counts.boulders ++;
 			}

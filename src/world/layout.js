@@ -87,25 +87,26 @@ export const FIELDS = [
 ];
 
 // Buildings. round: Celtic round house; long: rectangular gable house;
-// stall: red canopy; hut: small granary/round store.
+// stall: red canopy; hut: small granary/round store. awning: a red cloth lean-to against the wall
+// (buildings.js houseAwning).
 export const BUILDINGS = [
-	{ type: 'round', x: - 58, z: - 22, r: 7.5, seed: 1 },   // chief's house
-	{ type: 'round', x: - 48, z: 30, r: 5.0, seed: 2 },
-	{ type: 'round', x: - 36, z: 18, r: 6.2, seed: 3 },
-	{ type: 'round', x: - 13, z: - 13, r: 4.6, seed: 4 },
-	{ type: 'round', x: 37, z: - 15, r: 4.8, seed: 5 },
+	{ type: 'round', x: - 63, z: - 22, r: 8.8, seed: 1, awning: true },   // chief's house
+	{ type: 'round', x: - 50, z: 35, r: 5.2, seed: 2, awning: true },
+	{ type: 'round', x: - 37, z: 19, r: 7.6, seed: 3, awning: true },
+	{ type: 'round', x: - 13, z: - 12, r: 5.2, seed: 4, awning: true },
+	{ type: 'round', x: 37, z: - 15, r: 4.8, seed: 5, awning: true },
 	{ type: 'round', x: 52, z: - 8, r: 4.0, seed: 6 },
-	{ type: 'round', x: - 36, z: - 30, r: 4.4, seed: 7 },
-	{ type: 'round', x: - 27, z: - 33, r: 4.0, seed: 8 },
-	{ type: 'round', x: - 50, z: 4, r: 4.3, seed: 9 },
-	{ type: 'round', x: - 66, z: 40, r: 4.5, seed: 10 },
-	{ type: 'round', x: - 4, z: - 40, r: 4.2, seed: 26 },
-	{ type: 'long', x: - 42, z: - 6, w: 7.5, l: 11.5, rot: 0.08, seed: 11 },
-	{ type: 'long', x: - 31, z: - 20, w: 7, l: 11, rot: - 0.05, seed: 12 },
-	{ type: 'long', x: - 16, z: 17, w: 7.5, l: 12, rot: 0.15, seed: 13 },
-	{ type: 'long', x: 3, z: 12, w: 6, l: 9, rot: - 0.5, seed: 14 },
+	{ type: 'round', x: - 45, z: - 31, r: 4.2, seed: 7, awning: true },
+	{ type: 'round', x: - 36, z: - 36, r: 4.0, seed: 8 },
+	{ type: 'round', x: - 58, z: 6, r: 4.3, seed: 9 },
+	{ type: 'round', x: - 28, z: 30, r: 3.8, seed: 10 },
+	{ type: 'round', x: - 12, z: - 42, r: 4.2, seed: 26 },
+	{ type: 'long', x: - 40.5, z: - 1.5, w: 8.5, l: 12.5, rot: 0.08, seed: 11, awning: true },
+	{ type: 'long', x: - 35, z: - 21, w: 8, l: 13, rot: - 0.05, seed: 12, awning: true },
+	{ type: 'long', x: - 17, z: 18, w: 9, l: 13.5, rot: 0.15, seed: 13, awning: true },
+	{ type: 'long', x: 3, z: 12, w: 6, l: 9, rot: - 0.5, seed: 14, awning: true },
 	{ type: 'long', x: 60, z: 34, w: 6, l: 9.5, rot: 1.2, seed: 15 },
-	{ type: 'long', x: 59, z: - 2, w: 5.5, l: 8.5, rot: 1.35, seed: 16 },
+	{ type: 'long', x: 59, z: - 2, w: 5.5, l: 8.5, rot: 1.35, seed: 16, awning: true },
 	{ type: 'long', x: 66, z: - 12, w: 5, l: 8, rot: 1.1, seed: 17 },
 	{ type: 'long', x: - 58, z: - 48, w: 6, l: 9, rot: 0.3, seed: 20 },
 	{ type: 'long', x: - 115, z: 74, w: 5, l: 7, rot: 0.45, seed: 18 },
@@ -128,14 +129,18 @@ export const BUILDINGS = [
 // scale: a resize from the object editor (world/worldEdits.js).
 export const footprintR = ( b, k = 0.6 ) => ( b.r || Math.max( b.w || 4, b.l || 4 ) * k ) * ( b.scale || 1 );
 
+// [ x, z, rot ]; every sixth one (index % 6 === 3) has an undyed canvas roof. The stalls share one
+// random sequence (sizes, goods), so new ones go at the end.
 export const STALLS = [
-	[ - 15, - 26, 0.1 ], [ - 8, - 22, 0.3 ], [ - 12, - 16, 0.2 ], [ - 3, - 14, 0.5 ],
+	[ - 14.7, - 30.8, - 0.49 ], [ - 9.5, - 28, - 0.49 ], [ - 17, - 24.8, - 0.49 ], [ 0.7, - 17.8, - 1.1 ],
 	[ - 22, 0, 0.0 ], [ - 26, 6, 0.4 ], [ - 18, 8, - 0.2 ], [ - 28, 12, 0.1 ],
-	[ 6, - 4, 0.8 ], [ 10, - 10, 0.6 ], [ 22, - 2, 1.2 ], [ 28, 4, 0.9 ],
+	[ 7, - 3, 0.8 ], [ 10, - 10, 0.6 ], [ 34, 0, 0.9 ], [ 40, 6, 1.0 ],
 	[ - 4, 26, 0.3 ], [ 2, 34, 1.0 ], [ - 30, 0, 0.6 ], [ 16, 18, 0.2 ],
-	[ - 16, - 20, 0.4 ], [ - 10, - 29, 0.0 ], [ - 4, - 24, 0.7 ], [ - 18, - 11, 0.2 ],
-	[ - 8, - 10, 0.9 ], [ 0, - 20, 0.5 ], [ 14, - 20, 0.8 ], [ - 22, 20, 0.3 ],
-	[ 18, 10, 1.1 ], [ 8, 24, 0.6 ], [ - 10, 34, 0.2 ], [ 22, - 12, 1.3 ]
+	[ - 16, - 20, 0.4 ], [ 3, - 30, - 0.3 ], [ 9, - 25, - 0.6 ], [ - 20, - 36, - 0.3 ],
+	[ - 4.4, - 13.6, - 1.1 ], [ 5, - 36, 0.1 ], [ 14, - 20, 0.8 ], [ - 52, - 6, 0.3 ],
+	[ 24, 13, 0.0 ], [ 20, 30, 1.5 ], [ - 10, 34, 0.2 ], [ 12, - 33, - 0.2 ],
+	[ - 2, - 6, 0.5 ], [ - 12, 4, 0.1 ], [ 18, - 30, - 0.4 ], [ 24, 20, - 0.2 ],
+	[ - 20, 34, 0.2 ], [ 32, 14, 0.4 ], [ 10, 24, 0.8 ]
 ];
 
 // Everyday props: pens, haystacks, the well, carts, racks, bee skeps, woodpiles.

@@ -98,6 +98,18 @@ export class AutoFocus {
 		return out.z < 1 && Math.abs( out.x ) <= 1.05 && Math.abs( out.y ) <= 1.05 ? out : null;
 	}
 
+	// Settle the lens at once (no racking): app.capture calls it, since with the loop paused
+	// (hidden tab, app panel) update() never runs and the shot kept the focus of the last view.
+	snap() {
+		if ( this.lock && ! this.lockNDC( this._v ) ) this.lock = null;
+		this.hit = this.lock ? Math.min( MAX_RAY, this.camera.position.distanceTo( this.lock ) ) : this.measure();
+		this._t = 0;
+		this.amount = this.enabled ? 1 - THREE.MathUtils.smoothstep( this.hit, FULL, NEAR ) : 0;
+		this.focusDistance.value = this.hit;
+		this.focalLength.value = 1.0 + this.hit * 0.2;
+		this.bokeh.value = this.amount * 3.4;
+	}
+
 	update( dt ) {
 		this._t += dt;
 		if ( this.lock ) {

@@ -15,7 +15,7 @@ import {
 } from 'three/tsl';
 import { mulberry32, smoothstep as ss } from '../core/noise.js';
 import { meadowTone } from './terrain.js';
-import { clearance, inLake } from './vegetation.js';
+import { clearance, editedClearance, inLake } from './vegetation.js';
 import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
@@ -340,7 +340,7 @@ function buildDensity( app ) {
 			const nOut = macro[ ( mj * 1024 + mi ) * 4 + 3 ] / 255;
 			const outcrop = ss( 0.62, 0.74, nOut ) * ss( 24, 40, h );
 			const rock = Math.min( 1, ss( 0.3, 0.6, slope ) + ss( 180, 420, h ) * 0.55 + outcrop * 0.4 );
-			const free = Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 ? clearance( x, z, mask, - 1.2 ) : 1;
+			const free = Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 ? clearance( x, z, mask, - 1.2 ) : editedClearance( x, z, - 1.2 );
 			if ( free <= 0 ) continue;
 			// dune: the low, gentle shore strip
 			const dune = ss( 0.4, 1.0, h ) * ( 1 - ss( 3.5, 6.5, h ) ) * ( 1 - ss( 0.12, 0.35, slope ) ) * ( 1 - outcrop );

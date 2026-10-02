@@ -549,6 +549,8 @@ async function main() {
 		camera.aspect = w / h; camera.updateProjectionMatrix();
 		for ( const f of app.onFrame ) f( 0 );
 		terrain.update( camera );
+		focus.snap(); // the lens settled on this view, also with the loop paused
+		app.hud?.updateFocus( focus );
 		sky.sun.shadow.needsUpdate = true;
 		app.renderFrame();
 		const blob = await new Promise( ( r ) => canvas.toBlob( r, 'image/png' ) );

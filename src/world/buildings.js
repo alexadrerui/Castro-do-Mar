@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GeoBuilder, box, post, beam, ringWall, coneRoof, gableRoof, gableWall, canopy, bunting, straightWall } from '../core/builder.js';
 import { mulberry32 } from '../core/noise.js';
-import { BUILDINGS, STALLS, WALLS, FIELDS, VILLAGE, PROPS } from './layout.js';
+import { BUILDINGS, STALLS, WALLS, FIELDS, VILLAGE, PROPS, PATHS, FORT, footprintR } from './layout.js';
 import { buildCastroHouse, CASTRO_HOUSE } from './castroHouse.js';
 
 const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
@@ -118,6 +118,180 @@ function pen( B, hf, x, z, w, d, rot ) {
 	fence( B, hf, [ P( - w / 2, d / 2 ), P( - w / 2, - d / 2 ) ] );
 }
 
+// Red cloth lean-to against a house wall (both refs: dyed sheets on poles beside the houses). In its
+// own frame the high edge (+z) meets the wall and two poles hold the low front edge; red, or undyed.
+function awning( B, hf, x, z, ry, w, d, yBack, yFront, red = true ) {
+	const L = new GeoBuilder();
+	L.add( red ? 'cloth' : 'canvas', canopy( w, d, yFront, yBack, 0.16 ) );
+	const c = Math.cos( ry ), s = Math.sin( ry );
+	for ( const k of [ - 1, 1 ] ) {
+		const lx = k * ( w / 2 - 0.15 ), lz = - d / 2 + 0.1;
+		const g = hf.heightAt( x + lx * c + lz * s, z - lx * s + lz * c );
+		L.add( 'woodPost', post( 0.05, yFront - g + 0.45 ), M( lx, g - 0.3, lz ) );
+	}
+	for ( const [ k, g ] of L.build() ) B.add( k, g, M( x, 0, z, ry ) );
+}
+
+// a house's awning (layout: awning: true): on a round house beside the door, on a long house along
+// the back wall (the door is on the +x side); heights from the ground at the house
+function houseAwning( B, b, y, hf, rnd ) {
+	const red = rnd() < 0.8;
+	if ( b.type === 'round' ) {
+		const a = doorAngle( b ) - 1.25, ca = Math.cos( a ), sa = Math.sin( a );
+		const w = 3.0 + rnd() * 0.8, d = 2.4 + rnd() * 0.5, rr = b.r + 0.7 + d / 2;
+		// the high edge toward the house: the frame's +z is - ( ca, sa )
+		awning( B, hf, b.x + ca * rr, b.z + sa * rr, Math.atan2( - ca, - sa ), w, d, y + 2.0, y + 1.7, red );
+	} else if ( b.type === 'long' ) {
+		const c = Math.cos( b.rot ), s = Math.sin( b.rot );
+		const W = ( u, v ) => [ b.x + u * c + v * s, b.z - u * s + v * c ];
+		const w = b.l * ( 0.4 + rnd() * 0.15 ), d = 2.6 + rnd() * 0.5;
+		const [ x, z ] = W( - b.w / 2 - 0.7 - d / 2, ( rnd() - 0.5 ) * ( b.l - w ) * 0.6 );
+		// the frame's +z is the house's +u (toward the wall)
+		awning( B, hf, x, z, b.rot + Math.PI / 2, w, d, y + 2.25, y + 1.85, red );
+	}
+}
+
+// ----------------------------------------------------------- village lanes
+// The lanes near the village (the third reference, ref/ref_lanes.png: a stepped path between stone
+// edges, rope-tied rail fences, a lamp post with a hanging lantern): wattle and rail fences along both
+// sides, lamp posts, log steps where the lane climbs and loose stones along its edges. All laid from
+// PATHS and kept clear of houses, awnings, stalls, props, walls, the fort and the other lanes.
+const LANE_NEAR = 88; // fences and lamps this close to the village centre
+const LANE_FAR = 220; // steps and edge stones out to here (the tracks up the hill)
+const segD = ( x, z, a, b ) => {
+	const dx = b[ 0 ] - a[ 0 ], dz = b[ 1 ] - a[ 1 ];
+	const t = Math.max( 0, Math.min( 1, ( ( x - a[ 0 ] ) * dx + ( z - a[ 1 ] ) * dz ) / ( dx * dx + dz * dz ) ) );
+	return Math.hypot( a[ 0 ] + dx * t - x, a[ 1 ] + dz * t - z );
+};
+const laneSegs = () => {
+	const segs = [];
+	PATHS.forEach( ( p, pi ) => { for ( let i = 1; i < p.pts.length; i ++ ) segs.push( { pi, a: p.pts[ i - 1 ], b: p.pts[ i ], w: p.w } ); } );
+	return segs;
+};
+// free ground beside lane pi: near the village and off everything else (extra: [ x, z, r ] to avoid)
+function laneFree( x, z, pi, segs, extra = [], near = LANE_NEAR ) {
+	if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) > near ) return false;
+	for ( const b of BUILDINGS ) if ( Math.hypot( x - b.x, z - b.z ) < footprintR( b, 0.7 ) + ( b.awning ? 4.2 : 1.5 ) ) return false;
+	for ( const s of STALLS ) if ( ! s.removed && Math.hypot( x - s[ 0 ], z - s[ 1 ] ) < 4.2 ) return false;
+	for ( const p of PROPS ) if ( Math.hypot( x - p.x, z - p.z ) < ( p.type === 'pen' ? 5 : 2.5 ) ) return false;
+	if ( Math.hypot( x - FORT.x, z - FORT.z ) < FORT.radius + 4 ) return false;
+	for ( const w of WALLS ) for ( let i = 1; i < w.length; i ++ ) if ( segD( x, z, w[ i - 1 ], w[ i ] ) < 2 ) return false;
+	for ( const s of segs ) if ( s.pi !== pi && segD( x, z, s.a, s.b ) < s.w * 0.6 + 1.4 ) return false;
+	for ( const [ ex, ez, r ] of extra ) if ( Math.hypot( x - ex, z - ez ) < r ) return false;
+	return true;
+}
+// calls fn( x, z, nx, nz, tx, tz ) every `step` m along lane p (n: the unit normal to its left, t: along)
+function walkLane( p, step, fn ) {
+	let carry = 0;
+	for ( let i = 1; i < p.pts.length; i ++ ) {
+		const [ ax, az ] = p.pts[ i - 1 ], [ bx, bz ] = p.pts[ i ];
+		const L = Math.hypot( bx - ax, bz - az ), tx = ( bx - ax ) / L, tz = ( bz - az ) / L;
+		let t = carry;
+		for ( ; t < L; t += step ) fn( ax + tx * t, az + tz * t, - tz, tx, tx, tz );
+		carry = t - L;
+	}
+}
+
+// Rail fence (the third reference): leaning stakes, two rails, red rope lashings at the joints.
+function railFence( B, hf, pts, seed ) {
+	const rnd = mulberry32( seed );
+	const tops = [];
+	for ( const [ x, z ] of pts ) {
+		const g = hf.heightAt( x, z ), lx = ( rnd() - 0.5 ) * 0.12, lz = ( rnd() - 0.5 ) * 0.12;
+		B.add( 'woodPost', beam( V( x, g - 0.3, z ), V( x + lx, g + 1.15 + rnd() * 0.15, z + lz ), 0.055, 6 ) );
+		tops.push( [ x + lx * 0.7, g, z + lz * 0.7 ] );
+	}
+	for ( let i = 1; i < tops.length; i ++ ) {
+		const [ x0, g0, z0 ] = tops[ i - 1 ], [ x1, g1, z1 ] = tops[ i ];
+		for ( const h of [ 0.45, 0.95 ] ) {
+			const j = ( rnd() - 0.5 ) * 0.08;
+			B.add( 'woodPost', beam( V( x0, g0 + h + j, z0 ), V( x1, g1 + h - j, z1 ), 0.035, 5 ) );
+		}
+	}
+	for ( const [ x, g, z ] of tops ) for ( const h of [ 0.45, 0.95 ] ) if ( rnd() < 0.7 ) B.add( 'cloth', box( 0.13, 0.1, 0.13 ), M( x, g + h - 0.05, z, rnd() ) );
+}
+
+// Lamp post: a squared post, an arm over the lane with a brace and a lantern hanging from it, its
+// glass lit with the embers' glow (no light source: the glow and the bloom do it).
+function lampPost( B, hf, x, z, ax, az ) {
+	const g = hf.heightAt( x, z ), H = 3.2;
+	B.add( 'woodPost', box( 0.16, H + 0.45, 0.16 ), M( x, g - 0.45, z, Math.atan2( ax, az ) ) );
+	const ex = x + ax * 1.05, ez = z + az * 1.05, top = g + H - 0.12;
+	B.add( 'woodPost', beam( V( x - ax * 0.12, top, z - az * 0.12 ), V( ex + ax * 0.08, top, ez + az * 0.08 ), 0.06, 6 ) );
+	B.add( 'woodPost', beam( V( x + ax * 0.06, top - 0.75, z + az * 0.06 ), V( x + ax * 0.62, top - 0.04, z + az * 0.62 ), 0.035, 5 ) );
+	// hook, then the lantern: cap, four corner bars, glass, base
+	const ly = top - 0.78;
+	B.add( 'woodPost', beam( V( ex, top, ez ), V( ex, ly + 0.42, ez ), 0.012, 4 ) );
+	B.add( 'woodPost', coneRoof( 0.17, ly + 0.36, ly + 0.48, { seg: 4, rings: 1, thick: 0.03 } ), M( ex, 0, ez, Math.PI / 4 ) );
+	for ( const [ u, v ] of [ [ - 1, - 1 ], [ 1, - 1 ], [ 1, 1 ], [ - 1, 1 ] ] ) B.add( 'woodPost', box( 0.025, 0.34, 0.025 ), M( ex + u * 0.085, ly + 0.02, ez + v * 0.085 ) );
+	B.add( 'ember', box( 0.15, 0.27, 0.15 ), M( ex, ly + 0.05, ez ) );
+	B.add( 'woodPost', box( 0.22, 0.04, 0.22 ), M( ex, ly, ez ) );
+}
+
+function villageLanes( B, hf ) {
+	const segs = laneSegs();
+	const rnd = mulberry32( 5150 );
+	// lamp posts every ~24 m, sides alternating, the arm over the lane
+	const lamps = [];
+	PATHS.forEach( ( p, pi ) => {
+		let side = 1, next = 6;
+		walkLane( p, 2, ( x, z, nx, nz ) => {
+			if ( ( next -= 2 ) > 0 ) return;
+			const o = p.w * 0.6 + 0.9, lx = x + nx * o * side, lz = z + nz * o * side;
+			if ( ! laneFree( lx, lz, pi, segs, lamps ) ) return;
+			lampPost( B, hf, lx, lz, - nx * side, - nz * side );
+			lamps.push( [ lx, lz, 9 ] );
+			side = - side; next = 20 + rnd() * 8;
+		} );
+	} );
+	const nearLamp = lamps.map( ( [ x, z ] ) => [ x, z, 1.3 ] );
+	// fences: both sides, runs of 4-12 m with gaps; wattle or rope-tied rails
+	PATHS.forEach( ( p, pi ) => {
+		for ( const side of [ - 1, 1 ] ) {
+			const pts = [];
+			walkLane( p, 1.8, ( x, z, nx, nz ) => { const o = p.w * 0.6 + 0.9; pts.push( [ x + nx * o * side, z + nz * o * side ] ); } );
+			let run = [], left = 4 + rnd() * 8, gap = 0;
+			const flush = () => {
+				if ( run.length >= 3 ) { if ( rnd() < 0.5 ) fence( B, hf, run ); else railFence( B, hf, run, Math.floor( rnd() * 1e6 ) ); }
+				run = [];
+			};
+			for ( const q of pts ) {
+				if ( gap > 0 ) { gap -= 1.8; flush(); continue; }
+				if ( ! laneFree( q[ 0 ], q[ 1 ], pi, segs, nearLamp ) ) { flush(); continue; }
+				run.push( q );
+				left -= 1.8;
+				if ( left <= 0 ) { flush(); gap = 2 + rnd() * 5; left = 4 + rnd() * 8; }
+			}
+			flush();
+		}
+	} );
+	// log steps where the lane climbs (a riser every ~0.22 m of rise), and loose stones along the edges
+	const stone = new THREE.DodecahedronGeometry( 1, 0 );
+	PATHS.forEach( ( p, pi ) => {
+		const own = segs.filter( ( s ) => s.pi === pi );
+		let last = null;
+		walkLane( p, 0.5, ( x, z, nx, nz, tx, tz ) => {
+			if ( ! laneFree( x, z, pi, own, [], LANE_FAR ) ) { last = null; return; }
+			const h = hf.heightAt( x, z );
+			const slope = Math.abs( hf.heightAt( x + tx, z + tz ) - hf.heightAt( x - tx, z - tz ) ) / 2;
+			if ( last === null ) last = h;
+			if ( slope > 0.09 && Math.abs( h - last ) > 0.22 ) {
+				const hw = p.w * 0.42;
+				B.add( 'woodPost', beam( V( x - nx * hw, hf.heightAt( x - nx * hw, z - nz * hw ) - 0.04, z - nz * hw ), V( x + nx * hw, hf.heightAt( x + nx * hw, z + nz * hw ) - 0.04, z + nz * hw ), 0.085 + rnd() * 0.03, 6 ) );
+				last = h;
+			}
+			// edge stones, both sides, with gaps
+			for ( const side of [ - 1, 1 ] ) {
+				if ( rnd() < 0.3 ) continue;
+				const o = p.w * 0.5 + 0.2 + rnd() * 0.3, sx = x + nx * o * side, sz = z + nz * o * side;
+				const s = 0.18 + rnd() * 0.2;
+				const g = stone.clone().scale( s * ( 1 + rnd() * 0.6 ), s * ( 0.55 + rnd() * 0.3 ), s * ( 1 + rnd() * 0.4 ) ).rotateY( rnd() * 6.3 );
+				B.add( 'stoneDark', g, M( sx, hf.heightAt( sx, sz ) - s * 0.15, sz ) );
+			}
+		} );
+	} );
+}
+
 // ----------------------------------------------------------- round house
 // Proportions from the castro reconstructions (and tools/houses.mjs): about 1.8 m of stone wall in
 // sight under a thick, ragged thatch eave that overhangs ~0.6 m, a ~40-44 degree cone above it.
@@ -211,6 +385,16 @@ function longHouse( B, b, y, rnd, hf ) {
 	local.add( 'doorway', box( 0.02, 1.95, 1.3 ), M( hw - t - 0.02, y - 0.2, 0 ) );
 	local.add( 'woodPost', beam( V( hw + 0.02, y + 1.8, - 0.95 ), V( hw + 0.02, y + 1.8, 0.95 ), 0.13 ) );
 	local.add( 'daub', box( t - 0.1, h - 1.9, 1.3 ), M( hw - t / 2, y + 1.9, 0 ) );
+	// small windows either side of the door, most with the hearth's glow behind them (the third
+	// reference); lit or dark from the seed, so the house's own random sequence is unchanged
+	if ( hl > 3.2 ) for ( const e of [ - 1, 1 ] ) {
+		const v = e * hl * 0.55, lit = ( ( b.seed * 7 + e + 3 ) % 5 ) < 3;
+		local.add( lit ? 'ember' : 'doorway', box( 0.02, 0.42, 0.52 ), M( hw - 0.04, y + 1.2, v ) );
+		local.add( 'woodPost', box( 0.1, 0.07, 0.68 ), M( hw - 0.02, y + 1.13, v ) );
+		local.add( 'woodPost', box( 0.1, 0.07, 0.68 ), M( hw - 0.02, y + 1.62, v ) );
+		for ( const s of [ - 1, 1 ] ) local.add( 'woodPost', box( 0.1, 0.56, 0.07 ), M( hw - 0.02, y + 1.13, v + s * 0.3 ) );
+		local.add( 'woodPost', box( 0.03, 0.02, 0.52 ), M( hw - 0.035, y + 1.4, v ) ); // transom bar
+	}
 	// roof sits on the wall plate: eave drops below the wall head
 	const rise = w * 0.55, over = 0.6; // ~48 degrees
 	const y0 = y + h - over * rise / ( w / 2 ) + 0.05;
@@ -335,6 +519,8 @@ function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
 		let res = null;
 		if ( entry.type === 'round' ) res = roundHouse( L, entry, y, r, hf );
 		else if ( entry.type === 'long' ) res = longHouse( L, entry, y, r, hf );
+		// its own random sequence, so the houses without one are unchanged
+		if ( entry.awning ) houseAwning( L, entry, y, hf, mulberry32( entry.seed * 31 + 7 ) );
 		else if ( entry.type === 'hut' ) hut( L, entry, y, r );
 		else if ( entry.type === 'granary' ) granary( L, entry, y, r );
 		else if ( entry.type === 'lookout' ) lookout( L, entry, y, r );
@@ -432,6 +618,8 @@ export function createBuildings( app, mats, progress, { separate = false } = {} 
 		const a = V( mw[ i - 1 ][ 0 ], 0, mw[ i - 1 ][ 1 ] ), c = V( mw[ i ][ 0 ], 0, mw[ i ][ 1 ] );
 		B.add( 'stoneDark', straightWall( a, c, 1.3, 0.9, hf.heightAt( a.x, a.z ), hf.heightAt( c.x, c.z ) ) );
 	}
+
+	villageLanes( B, hf );
 
 	// wattle fences around the fields
 	for ( const f of FIELDS ) {

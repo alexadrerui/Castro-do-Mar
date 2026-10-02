@@ -84,7 +84,8 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Casa longa, cercado, carroça, varal, lenha e barraca recebem o giro no próprio ângulo, e a casa longa e o cercado recebem a escala nas dimensões. Assim são reconstruídos assentados no relevo (uma matriz deixaria postes flutuando).
   - Cada edição guarda a posição original (`ox`, `oz`); se o `layout.js` mudar e o objeto não estiver mais lá, a edição é ignorada com aviso.
   - A chave do cache dos campos só depende das casas, então mover barraca ou adereço não regera o relevo.
-  - Pendências: barracas e adereços adicionados em campo aberto não abrem clareira na vegetação (a `clearance` só olha BUILDINGS); um objeto original removido só volta editando o JSON.
+  - Clareira: objetos adicionados ou movidos ganham `edited` (`applyWorldEdits`) e `editedClearance` (`vegetation.js`) tira árvores, arbustos, pedras e grama em volta deles (barraca 3,2 m, adereço pelo tipo, casa pela `footprintR`, mais a margem), a qualquer distância da vila (a `clearance` da vila só é testada a menos de ~360 m). Sem edições, o mundo não muda. QA: `node tools/clearing.mjs [prefixo]` (barraca num bosque perto da vila, carroça e casa redonda num bosque a > 420 m; conta as instâncias antes e depois e apaga o `world-edits.json` de teste; não roda se ele já existir).
+  - Pendência: um objeto original removido só volta editando o JSON.
 - QA: `node tools/objectedit.mjs [prefixo] [--save]`: seleciona (caixa, gizmo, menu), move pelo eixo X arrastando o gizmo, testa a tecla 2, remove e desfaz, adiciona do catálogo. Com `--save`, confere no modo normal após recarregar e apaga o arquivo de teste.
 
 ## Pincel de natureza (`?edit`, aba "Natureza")
@@ -213,7 +214,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 
 ## Pendências (backlog)
 ### Câmera
-- [ ] O foco não é aplicado nas capturas (`app.capture`) quando o loop está pausado; considerar `focus.update` antes de capturar.
+- [x] Foco nas capturas: o `app.capture` chama `focus.snap()` (mede e assenta a lente na hora, sem a transição), então a captura sai focada na vista atual mesmo com o loop pausado (antes ficava o foco da vista anterior). QA: `node tools/clearing.mjs`.
 - [x] Foco pelo clique. (Abertura/bokeh ajustáveis no painel continuam opcionais.)
 
 ### Relevo e montanhas
@@ -236,7 +237,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - [x] Nuvens: poucos cúmulos volumétricos distantes, iluminados pelo sol (`src/post/clouds.js`). A brétema baixa já existe (`src/post/mist.js`).
 - [x] Silhueta das casas (medida com `tools/houses.mjs`): os telhados desciam até ~0,6 m do chão e escondiam a parede. Agora o telhado é calculado a partir da parede visível (`ROUND` em `buildings.js`: 1,8 m), do beiral (0,6 m) e da inclinação (40–44° na redonda, ~48° na longa e na cabana); a borda do beiral é irregular e o colmo, mais escuro. Medido: parede visível 1,8 m (redonda e longa) e 1,2 m (cabana), contra 0,6 m antes; telhado/altura ~0,73, um pouco acima da faixa de referência (0,45–0,7).
 - [x] Textura do colmo: as fibras saíam em espiral (a UV do cone usava o arco de cada anel; agora é o ângulo vezes o raio do beiral, `builder.js` `coneRoof`) e o relevo das fibras finas virava listras pretas; agora as fibras ficam só na cor e o relevo marca as camadas, mais fracas e quebradas por ruído.
-- [ ] Vila mais compacta, com mais tecido vermelho e cercas nas vielas.
+- [x] Vila mais compacta, com mais tecido vermelho e cercas nas vielas (`layout.js`, conferido sobre a referência aérea a 0,18 m/px): casas do oeste maiores e nas posições da referência; barracas tiradas de dentro da casa redonda 3, do muro do mercado e do anel do forte, e mais 7 no fim da lista (a sequência aleatória das barracas não muda); `awning: true` põe um toldo de pano (80% vermelho) ao lado da porta da casa redonda ou na parede de trás da casa longa (`buildings.js` `houseAwning`, com sequência aleatória própria); `villageLanes` (`buildings.js`, terceira referência `ref/ref_lanes.png`): a menos de 88 m da vila, cercas nas duas margens das vielas (trechos de 4–12 m com falhas, metade de vime e metade de varas com amarração vermelha, `railFence`) e postes com braço e lanterna a cada ~24 m (`lampPost`; o vidro usa o material `ember`, já compilado pela casa do castro, então nenhum shader novo); até 220 m, degraus de tronco onde a viela sobe (um a cada ~0,22 m de subida) e pedras soltas nas bordas. Tudo cortado onde há casa, toldo, barraca, adereço, muro, forte ou outra viela. As casas longas têm janelas dos dois lados da porta, a maioria acesa (`ember`), escolhidas pela semente; a terra batida (`heightfield.js` `buildMask`) cobre o miolo da vila. O muro e o penhasco da mina não mudaram. Sobram 4 conflitos antigos no leste (casas 5, 15 e 16 encostadas no caminho do anel).
 
 ### Performance (em andamento)
 Ferramentas: `tools/perf.mjs` (tempo de GPU por camada, via timestamp com `?perf`), `tools/cpuprof.mjs` (perfil de CPU do loop),

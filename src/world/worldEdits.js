@@ -80,6 +80,7 @@ export function applyWorldEdits( edits ) {
 		if ( Number.isFinite( m.yaw ) ) entry.yaw = m.yaw;
 		if ( Number.isFinite( m.scale ) && m.scale > 0 ) entry.scale = m.scale;
 		if ( m.removed ) entry.removed = true;
+		entry.edited = true; // the vegetation clears its ground (vegetation.js editedClearance)
 	};
 	for ( const b of BUILDINGS ) if ( mod[ b._id ] ) set( b, mod[ b._id ], false );
 	for ( const s of STALLS ) if ( mod[ s._id ] ) set( s, mod[ s._id ], true );
@@ -88,11 +89,11 @@ export function applyWorldEdits( edits ) {
 	drop( BUILDINGS ); drop( PROPS );
 	for ( const a of edits.added || [] ) {
 		if ( ! a || ! Number.isFinite( a.x ) || ! Number.isFinite( a.z ) ) continue;
-		if ( a.kind === 'building' ) BUILDINGS.push( { ...a, _id: a.id } );
-		else if ( a.kind === 'prop' ) PROPS.push( { ...a, _id: a.id } );
+		if ( a.kind === 'building' ) BUILDINGS.push( { ...a, _id: a.id, edited: true } );
+		else if ( a.kind === 'prop' ) PROPS.push( { ...a, _id: a.id, edited: true } );
 		else if ( a.kind === 'stall' ) {
 			const s = [ a.x, a.z, a.rot || 0 ];
-			Object.assign( s, { _id: a.id, yaw: a.yaw, scale: a.scale, seed: a.seed, red: a.red !== false, added: true } );
+			Object.assign( s, { _id: a.id, yaw: a.yaw, scale: a.scale, seed: a.seed, red: a.red !== false, added: true, edited: true } );
 			STALLS.push( s );
 		}
 	}

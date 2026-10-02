@@ -18,7 +18,7 @@ import srcVegetation from './vegetation.js?raw';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
-import { BUILDINGS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
+import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
 
 const nV = makeSimplex( 606 );
@@ -140,12 +140,33 @@ let lakeTest = null;
 export function setLakeTest( fn ) { lakeTest = fn; }
 export const inLake = ( x, z ) => !! lakeTest && lakeTest( x, z );
 
+// Ground radius of a stall or prop (m), before the clearance's margin.
+const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8 };
+const propR = ( p ) => ( p.type === 'pen' ? Math.hypot( p.w || 6, p.d || 5 ) / 2 : p.type === 'hay' ? p.r || 1.2 : PROP_R[ p.type ] ?? 1.5 ) * ( p.scale || 1 );
+let editedList = null;
+
+// The objects added or moved in the object editor (world/worldEdits.js `edited`): stalls and props
+// have no pad and no trampled ground, so only this keeps trees and rocks off them, and a house
+// added away from the village is past the distance the village clearance is tested at. Without
+// edits the list is empty and the world comes out as before. 0 = forbidden, 1 = free.
+export function editedClearance( x, z, pad = 0 ) {
+	if ( ! editedList ) {
+		editedList = [];
+		for ( const b of BUILDINGS ) if ( b.edited ) editedList.push( [ b.x, b.z, footprintR( b, 0.62 ) + 1.8 ] );
+		for ( const s of STALLS ) if ( s.edited && ! s.removed ) editedList.push( [ s[ 0 ], s[ 1 ], 3.2 * ( s.scale || 1 ) + 1.2 ] );
+		for ( const p of PROPS ) if ( p.edited ) editedList.push( [ p.x, p.z, propR( p ) + 1.2 ] );
+	}
+	for ( const [ ox, oz, r ] of editedList ) if ( Math.hypot( x - ox, z - oz ) < r + pad ) return 0;
+	return 1;
+}
+
 export function clearance( x, z, mask, pad = 0 ) {
+	if ( editedClearance( x, z, pad ) <= 0 ) return 0;
 	const [ path, dirt, field ] = sampleMask( mask, x, z );
 	if ( path > 0.05 || field > 0.2 ) return 0;
 	let free = 1 - ss( 0.3, 0.8, dirt );
 	for ( const b of BUILDINGS ) {
-		const r = footprintR( b, 0.62 ) + 1.8 + pad;
+		const r = footprintR( b, 0.62 ) + ( b.awning ? 3.8 : 1.8 ) + pad; // an awning reaches ~3.6 m out
 		const d = Math.hypot( x - b.x, z - b.z );
 		if ( d < r ) return 0;
 	}
@@ -273,7 +294,7 @@ export async function createVegetation( app, progress ) {
 			let dens = patch * altitude * steep;
 			const nearVillage = distV < 170;
 			if ( nearVillage ) dens *= 0.6; // village: trees between the houses
-			const c = distV < 360 ? clearance( px, pz, app.mask ) : 1;
+			const c = distV < 360 ? clearance( px, pz, app.mask ) : editedClearance( px, pz );
 			if ( c <= 0 ) continue;
 			dens *= c;
 			const r = rnd();
@@ -321,7 +342,7 @@ export async function createVegetation( app, progress ) {
 					const x = tx + prnd() * NATURE.cell, z = tz + prnd() * NATURE.cell;
 					const h = hf.heightAt( x, z );
 					if ( h < 1.2 || hf.slopeAt( x, z ) > 1.1 || inLake( x, z ) ) continue;
-					if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 && clearance( x, z, app.mask ) <= 0 ) continue;
+					if ( ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 380 ? clearance( x, z, app.mask ) : editedClearance( x, z ) ) <= 0 ) continue;
 					if ( place( sp, x, z, s0 + prnd() * ( s1 - s0 ), tilt, prnd ) ) counts[ sp ] ++;
 				}
 			} );

@@ -457,17 +457,18 @@ export function buildMask( onProgress ) {
 			const k = ( j * res + i ) * 4;
 
 			// village trampled earth, irregular
-			const vx = ( x - VILLAGE.x ) / 1.2, vz = z - VILLAGE.z;
+			const vx = ( x - VILLAGE.x ) / 1.35, vz = z - VILLAGE.z;
 			const vd = Math.sqrt( vx * vx + vz * vz );
 			const vn = fbm( nA, x * 0.05, z * 0.05, 3 );
-			// packed earth only around the market core; elsewhere patchy, worn grass
-			let g = ( 1 - smoothstep( 8, 30, vd + vn * 26 ) ) * 0.9;
+			// packed earth over the village core, between the houses (as in the aerial reference); further
+			// out patchy, worn grass
+			let g = ( 1 - smoothstep( 16, 40, vd + vn * 26 ) ) * 0.9;
 			g = Math.max( g, smoothstep( 0.35, 0.7, fbm( nD, x * 0.09, z * 0.09, 3 ) + 0.25 ) * ( 1 - smoothstep( 30, 80, vd ) ) * 0.55 );
 			// fort interior & around buildings
 			const fd = Math.hypot( x - FORT.x, z - FORT.z );
 			g = Math.max( g, 1 - smoothstep( FORT.radius - 4, FORT.radius + 3, fd ) );
 			for ( const b of BUILDINGS ) {
-				const r = footprintR( b ) + 2.5;
+				const r = footprintR( b ) + ( b.awning ? 5 : 3 );
 				const bd = Math.hypot( x - b.x, z - b.z );
 				g = Math.max( g, 0.85 * ( 1 - smoothstep( r - 2, r + 2.5 + vn * 3, bd ) ) );
 			}
