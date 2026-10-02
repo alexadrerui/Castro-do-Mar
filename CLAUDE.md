@@ -235,7 +235,9 @@ Próximos passos:
 - [ ] Sombras: mapa 4096 → 2048 ou `CSMShadowNode` com 2 cascatas; menos casters.
 - [x] Casas, forte e mina: superfícies pré-geradas em texturas (ver Técnico). Falta o terreno.
 - [ ] Resolução dinâmica: reduz a `pixelRatio` e realoca os render targets; trocar por escala do pass.
-- [ ] Medir na janela real (painel do app visível ou Edge em primeiro plano) para confirmar o FPS.
+- [x] Medir na janela real: `node tools/fps.mjs [vistas] [--params=...]` deu 60 FPS travados (o limite da tela) nas vistas 0, 2 e 4 a 1600×900 (pixel ratio 1), pior quadro de 23 a 28 ms. Nesta máquina sobra GPU, e o FPS da janela não mostra quanto. Não há medida confiável dessa folga: os timestamps de GPU (`?perf`, `app.gpuProfile`) dão ~0,1 ms por quadro também com janela, e renderizar quadros em sequência dentro de um quadro de animação não refaz o trabalho (~0,4 ms). Sem medida, as trocas de qualidade por desempenho (sombras, reflexo, resolução) ficaram paradas.
+- Testado e descartado: desligar a profundidade de campo sozinha quando o efeito é ~0. A saída sem ela é um shader a mais na carga, e o projeto está no limite do cache de shaders do Edge.
+- [ ] **Cache de shaders no limite** (01/10/2026): o mesmo código (commit b56d20a) passou e reprovou no `verify` em rodadas seguidas. Na carga com cache, a pré-compilação ficou em ~1,7 s quando o cache segurou e em 7–9 s (pronto em 12–14 s) quando não segurou; a vista 5 reprova nesse caso. Com `?nodiveprep`: 2 de 3 rodadas sem cache; sem o parâmetro, também 2 de 3. A preparação do mergulho não é a causa. Próximo passo: reduzir os pipelines da carga (`tools/pipeprobe.mjs`, `tools/pipedup.mjs`).
 
 ### Técnico
 - [x] Fallback WebGL (`?webgl`): carrega em ~25 s no headless, sem erros, e a imagem sai completa. Antes parava em `createIndirectStorageAttribute is not a function`: o fundo do mar desenha indiretamente de um storage buffer, que o WebGL 2 não tem. Agora o fundo e os peixes (que dependem do habitat dele) só são criados no WebGPU, como as aves pousadas (`BirdBatch`); no WebGL o mergulho não tem fundo nem peixes.

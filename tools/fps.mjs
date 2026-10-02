@@ -1,8 +1,9 @@
-// Real-window FPS check (headed Edge): node tools/fps.mjs [views...]
+// Real-window FPS check (headed Edge): node tools/fps.mjs [views...] [--params=a&b] (extra URL parameters)
 // Opens a visible window, waits for the app, measures frame time per view.
 import puppeteer from 'puppeteer-core';
 
-const views = process.argv.slice( 2 ).map( Number );
+const extra = ( process.argv.find( ( a ) => a.startsWith( '--params=' ) ) || '' ).slice( 9 );
+const views = process.argv.slice( 2 ).filter( ( a ) => ! a.startsWith( '--' ) ).map( Number );
 const list = views.length ? views : [ 0, 2, 4 ];
 const browser = await puppeteer.launch( {
 	executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -12,7 +13,7 @@ const browser = await puppeteer.launch( {
 } );
 const page = await browser.newPage();
 page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e ).slice( 0, 300 ) ) );
-await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
+await page.goto( 'http://localhost:5190/?auto' + ( extra ? '&' + extra : '' ), { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 1000 } );
 for ( const v of list ) {
 	const r = await page.evaluate( async ( v ) => {
