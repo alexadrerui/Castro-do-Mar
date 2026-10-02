@@ -6,6 +6,7 @@ import {
 import { proceduralBump } from './terrain.js';
 import { SURFACE } from './surfaceBake.js';
 import { cloudShade } from './cloudShadow.js';
+import { wetness } from './weather.js';
 
 // All building materials read metric UVs written by core/builder.js.
 // Colours are tuned against the references: warm grey granite, grey-olive
@@ -250,6 +251,12 @@ export function createBuildingMaterials( T ) {
 	};
 	// drifting cloud shadows (world/cloudShadow.js) on every lit surface (not the dark doorway, not the embers)
 	for ( const [ k, m ] of Object.entries( mats ) ) if ( k !== 'doorway' && k !== 'ember' ) m.colorNode = m.colorNode.mul( cloudShade() );
+	// and the rain's wetness (world/weather.js): darker, glossier
+	for ( const [ k, m ] of Object.entries( mats ) ) {
+		if ( k === 'doorway' || k === 'ember' ) continue;
+		m.colorNode = m.colorNode.mul( wetness.mul( - 0.2 ).add( 1 ) );
+		if ( m.roughnessNode ) m.roughnessNode = mix( m.roughnessNode, float( 0.5 ), wetness.mul( 0.6 ) );
+	}
 	return mats;
 }
 

@@ -33,6 +33,8 @@ export class HUD {
 		this._range( 'r-elev', 'o-elev', sky.state.elevation, ( v ) => { sky.state.elevation = v; app.onSunChanged(); }, ( v ) => v.toFixed( 1 ) + '°' );
 		this._range( 'r-azi', 'o-azi', sky.state.azimuth, ( v ) => { sky.state.azimuth = v; app.onSunChanged(); }, ( v ) => v.toFixed( 0 ) + '°' );
 		this._range( 'r-cloud', 'o-cloud', sky.sky.cloudCoverage.value, ( v ) => { sky.sky.cloudCoverage.value = v; }, ( v ) => Math.round( v * 100 ) + '%' );
+		this._range( 'r-rain', 'o-rain', app.weather?.target ?? 0, ( v ) => app.setRain?.( v ), ( v ) => Math.round( v * 100 ) + '%' );
+		$( 'b-strike' )?.addEventListener( 'click', () => app.strike?.() );
 		this._range( 'r-fog', 'o-fog', app.fogScale.value, ( v ) => { app.fogScale.value = v; }, ( v ) => v.toFixed( 2 ) + '×' );
 		this._range( 'r-res', 'o-res', app.pixelRatio, ( v ) => app.setPixelRatio( v ), ( v ) => v.toFixed( 2 ) + '×' );
 		$( 'c-shadows' ).onchange = ( e ) => app.setShadows( e.target.checked );
@@ -47,6 +49,7 @@ export class HUD {
 			if ( e.code === 'KeyP' ) app.capture( 'foto_' + Date.now() ).then( () => this.toast( 'Foto salva em shots/' ) );
 			if ( e.code === 'KeyU' ) document.body.classList.toggle( 'clean' );
 			if ( e.code === 'KeyB' ) this.setFocus( ! app.focus.enabled );
+			if ( e.code === 'KeyL' && ! e.ctrlKey ) app.strike?.();
 			const n = parseInt( e.key, 10 );
 			if ( n >= 1 && n <= app.views.length ) app.goView( n - 1 );
 		} );

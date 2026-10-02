@@ -26,6 +26,9 @@ import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
+import { Weather } from './world/weather.js';
+import { Lightning } from './world/lightning.js';
+import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
@@ -324,6 +327,7 @@ async function main() {
 	app.onSunChanged = () => {
 		sky.update( false );
 		updateCloudSun( sky.state.elevation );
+		app.valleyFog?.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		app.rivers?.setLight( _sunTint.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) ), app.hazeColor.value );
 		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		clearTimeout( app._envT );
@@ -405,6 +409,26 @@ async function main() {
 	// Low mist over the water and the valleys (volumetric, raymarched at reduced resolution).
 	const mist = params.get( 'mist' ) === '0' ? null : new Mist( { scenePass, camera, waterLevel: WATER_LEVEL } );
 	app.mist = mist;
+	// and the mist pooling in the valleys and over the bay, following the ground (post/valleyFog.js, after
+	// Drusniel's valleyFog); ?valley=0 switches it off
+	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.sunDir } );
+	app.valleyFog = valley;
+	// rain and wet ground (world/weather.js): the panel's "Chuva", app.setRain( 0..1 ), ?rain=0.8
+	const weather = new Weather( app, scene );
+	app.weather = weather;
+	app.setRain = ( v ) => weather.setRain( v );
+	app.onFrame.push( ( dt ) => weather.update( dt, camera, app.underwater?.on.value > 0.5 ) );
+	if ( params.has( 'rain' ) ) weather.setRain( Number( params.get( 'rain' ) ) || 1 );
+	// lightning (world/lightning.js): storms when the rain passes 60%, the panel's "Raio" (L), app.strike( x, z )
+	const lightning = new Lightning( { scene, camera, heightAt: ( x, z ) => hf.heightAt( x, z ), sky } );
+	app.lightning = lightning;
+	weather.lightning = lightning;
+	app.strike = ( x, z ) => lightning.strike( x, z );
+	app.onFrame.push( ( dt ) => lightning.update( dt, renderer ) );
+	if ( valley ) app.onFrame.push( ( dt ) => {
+		valley.update( dt );
+		valley.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1; // not under the water
+	} );
 	if ( mist ) app.onFrame.push( ( dt ) => {
 		mist.update( dt );
 		mist.color.value.copy( hazeColor.value ).multiplyScalar( 1.25 ); // lit like the haze
@@ -436,7 +460,8 @@ async function main() {
 	};
 
 	const graded = ( input, withBloom ) => Fn( () => {
-		const misty = mist ? mist.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const misty0 = mist ? mist.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+		const misty = valley ? valley.apply( misty0 ) : misty0;
 		const src0 = godrays ? godrays.apply( misty ) : misty;
 		const src = withBloom ? src0.add( bloomPass.rgb ) : src0;
 		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV );

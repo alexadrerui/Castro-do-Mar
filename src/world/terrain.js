@@ -7,6 +7,7 @@ import {
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';
 import { cloudShade } from './cloudShadow.js';
+import { wetness } from './weather.js';
 
 // Screen-space bump from an arbitrary procedural height node (the built-in
 // bumpMap() only differentiates texture UVs).
@@ -184,11 +185,13 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 
 	// baked sky-visibility (heightfield AO) darkens valleys and crevices
 	// and drifting cloud shadows (world/cloudShadow.js)
-	mat.colorNode = col.mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() );
+	// wet ground under the rain (world/weather.js): darker, the rock less so
+	const wetM = wetness.mul( snowM.oneMinus() );
+	mat.colorNode = col.mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() ).mul( wetM.mul( rockAll.mul( 0.08 ).sub( 0.22 ) ).add( 1 ) );
 	mat.aoNode = mix( float( 0.6 ), float( 1.0 ), ao );
 
 	// roughness: wet near water, rock slightly smoother
-	mat.roughnessNode = mix( float( 0.96 ), float( 0.82 ), rockM ).sub( smoothstep( WATER_LEVEL, WATER_LEVEL + 0.8, wp.y ).oneMinus().mul( 0.4 ) );
+	mat.roughnessNode = mix( mix( float( 0.96 ), float( 0.82 ), rockM ).sub( smoothstep( WATER_LEVEL, WATER_LEVEL + 0.8, wp.y ).oneMinus().mul( 0.4 ) ), float( 0.48 ), wetM.mul( 0.8 ) );
 	mat.metalnessNode = float( 0 );
 
 	// ---- micro relief (normal detail) ----

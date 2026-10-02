@@ -83,6 +83,7 @@ export function createSky( scene, renderer ) {
 		const warm = THREE.MathUtils.smoothstep( e, 0, 25 );
 		sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
 		sun.intensity = SUN_MAX * THREE.MathUtils.smoothstep( e, - 1, 8 );
+		state.sunIntensity = sun.intensity; // clear sky: world/weather.js dims it under rain
 		hemi.intensity = 0.08 + 0.09 * THREE.MathUtils.smoothstep( e, - 5, 30 );
 
 		if ( rebuildEnv ) {
