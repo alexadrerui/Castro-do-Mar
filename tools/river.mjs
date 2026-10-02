@@ -2,14 +2,17 @@
 // a start point (25 m steps along the steepest descent), finishes it in the editor (levels never rise,
 // the channel carved into the edits, the water shown), saves, reloads in the normal mode and captures
 // the river; then deletes the test files.
-//   node tools/river.mjs [prefix] [--x=-95 --z=40] [--width=5] [--keep]
+//   node tools/river.mjs [prefix] [--x=-95 --z=40] [--width=5] [--lake] [--keep]
+// --lake: a hollow sunk on the course and filled with "Encher" before the river is laid: the river
+// runs into the lake at its level, crosses it without a ribbon and leaves it behind a sill (the lake
+// keeps its level after the carve).
 // --keep: leaves public/terrain-edits.bin and public/world-edits.json (does not run if either exists).
 import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 
 const arg = ( k, d ) => Number( ( process.argv.find( ( a ) => a.startsWith( `--${ k }=` ) ) || `=${ d }` ).split( '=' )[ 1 ] );
 const prefix = process.argv[ 2 ] && ! process.argv[ 2 ].startsWith( '--' ) ? process.argv[ 2 ] : 'river';
-const X = arg( 'x', - 95 ), Z = arg( 'z', 40 ), WIDTH = arg( 'width', 5 ), KEEP = process.argv.includes( '--keep' );
+const X = arg( 'x', - 95 ), Z = arg( 'z', 40 ), WIDTH = arg( 'width', 5 ), KEEP = process.argv.includes( '--keep' ), LAKE = process.argv.includes( '--lake' );
 const FILES = [ 'public/terrain-edits.bin', 'public/world-edits.json' ];
 for ( const f of FILES ) if ( fs.existsSync( f ) ) { console.log( `${ f } exists: not touching it` ); process.exit( 1 ); }
 const browser = await puppeteer.launch( { executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: 'new', protocolTimeout: 900000, args: [ '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU', '--use-angle=d3d11', '--ignore-gpu-blocklist', '--window-size=1600,900' ], defaultViewport: { width: 1600, height: 900 } } );
@@ -22,7 +25,7 @@ const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
 try {
 	await page.goto( 'http://localhost:5190/?auto&edit', { waitUntil: 'domcontentloaded' } );
 	await page.waitForFunction( () => window.__app?.ready && window.__app.editor && window.__app.objectEditor, { timeout: 300000, polling: 250 } );
-	const r = await page.evaluate( ( X, Z, W ) => {
+	const r = await page.evaluate( ( X, Z, W, LAKE ) => {
 		const a = window.__app, ed = a.editor, hf = a.hf;
 		// downhill course: 25 m steps along the steepest of 16 directions, until the sea or flat ground
 		const pts = [ [ X, Z ] ];
@@ -40,6 +43,28 @@ try {
 			if ( ! best || best.h > h + 1 ) break;
 			pts.push( [ best.x, best.z ] );
 		}
+		// --lake: a bowl 2.6 m under its rim on the course, filled with "Encher"
+		let lake0 = null;
+		if ( LAKE ) {
+			const [ cx, cz ] = pts[ Math.min( 4, pts.length - 2 ) ], R = 11, n = hf.n;
+			let rim = Infinity;
+			for ( let q = 0; q < 64; q ++ ) rim = Math.min( rim, hf.heightAt( cx + Math.cos( q / 64 * 6.283 ) * R * 1.3, cz + Math.sin( q / 64 * 6.283 ) * R * 1.3 ) );
+			ed.stroke = { touched: new Map(), flattenTo: 0, noise: null, last: new a.THREE.Vector3() };
+			for ( let j = 0; j < n; j ++ ) {
+				const z = hf.z0 + j * hf.cell; if ( Math.abs( z - cz ) > R * 1.4 ) continue;
+				for ( let i = 0; i < n; i ++ ) {
+					const x = hf.x0 + i * hf.cell; if ( Math.abs( x - cx ) > R * 1.4 ) continue;
+					const t = Math.hypot( x - cx, z - cz ) / R, k = j * n + i, h0 = hf.data[ k ];
+					if ( t > 1.35 ) continue;
+					const bed = rim - 0.4 - 2.2 * Math.max( 0, 1 - t * t ), target = t < 1 ? bed : bed + ( h0 - bed ) * Math.min( 1, ( t - 1 ) / 0.35 );
+					if ( target < h0 ) ed._set( k, target );
+				}
+			}
+			ed._end();
+			ed.tool = 'lake'; ed.invert = false; ed._pour( { x: cx, z: cz, y: hf.heightAt( cx, cz ) } );
+			const L = a.lakes.list[ 0 ];
+			lake0 = L ? { level: L.level, area: L.area } : null;
+		}
 		ed.tool = 'river'; ed.river.width = W;
 		for ( const [ x, z ] of pts ) ed._riverClick( { x, z, y: hf.heightAt( x, z ) } );
 		const before = ed.undo.length;
@@ -49,9 +74,31 @@ try {
 		for ( let i = 1; i < lv.length; i ++ ) if ( lv[ i ] > lv[ i - 1 ] + 1e-6 ) rises ++;
 		const carved = ed.undo.length === before + 1 ? ed.undo.at( - 1 ).keys.length : 0;
 		const river = a.rivers.list.at( - 1 );
-		return { points: pts.length, samples: lv.length, top: lv[ 0 ], bottom: lv.at( - 1 ), rises, carved, mesh: !! river?.mesh, saved: a.objectEditor.edits.rivers?.length ?? 0, start: pts[ 0 ], end: pts.at( - 1 ) };
-	}, X, Z, WIDTH );
+		const S = river?.course.samples ?? [];
+		const inLake = S.filter( ( p ) => p.lake !== null );
+		const L1 = a.lakes.list[ 0 ];
+		// diagnostics: the cells the carve lowered near the lake, the lowest of them over the old spill
+		let leak = null;
+		if ( lake0 ) {
+			const st = ed.undo.at( - 1 ), n = hf.n, spill = lake0.level + 0.2;
+			for ( let q = 0; q < st.keys.length; q ++ ) {
+				if ( st.after[ q ] >= st.before[ q ] ) continue;
+				const k = st.keys[ q ], i = k % n, j = ( k - i ) / n, x = hf.x0 + i * hf.cell, z = hf.z0 + j * hf.cell;
+				const hNow = hf.data[ k ], hWas = hNow - st.after[ q ] + st.before[ q ];
+				if ( hWas < spill || hNow >= spill ) continue; // only rim cells pushed under the spill
+				const p = river.course.sample( x, z );
+				if ( ! leak || hNow < leak.h ) leak = { h: +hNow.toFixed( 2 ), was: +hWas.toFixed( 2 ), x: +x.toFixed( 1 ), z: +z.toFixed( 1 ), edge: +p?.edge.toFixed( 2 ), y: +p?.y.toFixed( 2 ), lake: p?.lake, sill: p?.sill, s: +p?.s.toFixed( 1 ) };
+			}
+		}
+		const lake = lake0 ? { leak, before: lake0, after: L1 ? { level: L1.level, area: L1.area } : null, samples: inLake.length, atLevel: inLake.every( ( p ) => Math.abs( p.y - ( L1?.level ?? - 1 ) ) < 0.01 ), sills: S.filter( ( p ) => p.sill ).length, quads: river?.mesh.geometry.index.count / 6 } : null;
+		return { points: pts.length, samples: lv.length, top: lv[ 0 ], bottom: lv.at( - 1 ), rises, carved, mesh: !! river?.mesh, saved: a.objectEditor.edits.rivers?.length ?? 0, start: pts[ 0 ], end: pts.at( - 1 ), lake };
+	}, X, Z, WIDTH, LAKE );
 	console.log( 'editor', JSON.stringify( r ) );
+	if ( LAKE ) {
+		const L = r.lake;
+		console.log( 'lago', JSON.stringify( L ) );
+		check( L?.before && L.after && L.samples > 0 && L.atLevel && L.sills > 0 && L.quads < ( r.samples - 1 ) * 12, `rio pelo lago: ${ L?.samples } amostras no nível do lago (${ L?.after?.level.toFixed( 2 ) } m; antes da escavação ${ L?.before?.level.toFixed( 2 ) } m), peitoril de ${ L?.sills } amostras, faixa sem o trecho do lago (${ L?.quads } de ${ ( r.samples - 1 ) * 12 } quadriláteros)` );
+	}
 	check( r.samples > 10 && r.rises === 0 && r.carved > 0 && r.mesh && r.saved === 1, `Rio no editor: ${ r.points } pontos, ${ r.samples } amostras, nível ${ r.top?.toFixed( 1 ) } → ${ r.bottom?.toFixed( 1 ) } m sem subir, ${ r.carved } células escavadas, água visível` );
 	// save (the relief edits and the world edits) and reload in the normal mode
 	await page.evaluate( () => window.__app.editor.save() ).catch( () => {} );

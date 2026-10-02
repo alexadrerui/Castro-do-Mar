@@ -17,6 +17,11 @@ const BELOW_GROUND = 0.45;   // m the water settles under the ground at the cent
 const BANK_PROBES = [ 1, 2.4 ];
 const BANK_FREEBOARD = 0.3;
 const BANK_CREST_START = 0.6, BANK_CREST_END = 1.6, BANK_ROUNDING = 0.35;
+// m: the outlet's sill past a lake, over the lake's level (0.05 over its spill height: the lake does not
+// drain through the river's own channel; a channel that opens a lower way out elsewhere lowers it, and
+// relevel() then meets the lake at its new level). A short lip: a longer, higher one left a strip of
+// dry ground between the lake and the river.
+const SILL_LENGTH = 2.5, SILL_HEIGHT = 0.25;
 export const BANK_BLEND = 6; // m past the edge the carve reaches
 const FLAT_SPEED = 1.4, FALL_SPEED = 6.5, SPEED_RESPONSE = 4;
 const CELL = 24;
@@ -116,8 +121,12 @@ export function findRiverFalls( samples ) {
 
 export class RiverCourse {
 	// record: { points: [ [ x, z, width ] ], levels?: [ y per sample ] }; h(x, z): the relief;
-	// floor: the lowest the water goes (the sea)
-	constructor( record, h, floor ) {
+	// floor: the lowest the water goes (the sea); lakeAt(x, z): the level of a lake of the terrain editor
+	// at a point, or null (world/lakeWater.js). A river running into a lake comes down to its level and
+	// ends there; one leaving a lake starts at its level, behind a sill (SILL_LENGTH m of bed kept
+	// SILL_HEIGHT over the lake) so its channel does not drain the lake (the lake's level is its spill
+	// height, lakeFill.js); in the lake the river is the lake: no carve, no ribbon.
+	constructor( record, h, floor, lakeAt = null ) {
 		this.record = record;
 		this.samples = sampleCurve( record.points );
 		const S = this.samples;
@@ -125,9 +134,19 @@ export class RiverCourse {
 		let prev = Infinity;
 		for ( let i = 0; i < S.length; i ++ ) {
 			const p = S[ i ];
-			p.y = saved ? saved[ i ] : Math.max( floor, Math.min( prev, h( p.x, p.z ) - BELOW_GROUND, lowestBank( h, p, p.width ) - BANK_FREEBOARD ) );
+			p.lake = lakeAt?.( p.x, p.z ) ?? null;
+			if ( saved ) p.y = saved[ i ];
+			else if ( p.lake !== null ) p.y = p.lake;
+			else p.y = Math.max( floor, Math.min( prev, h( p.x, p.z ) - BELOW_GROUND, lowestBank( h, p, p.width ) - BANK_FREEBOARD ) );
 			prev = p.y;
 		}
+		// backwater: upstream of every lake it runs into, the river stands at least at the lake's level (the
+		// relief's rule left it lower near the mouth and the level jumped up into the lake)
+		if ( ! saved ) for ( let i = S.length - 1; i > 0; i -- ) {
+			if ( S[ i ].lake === null || S[ i - 1 ].lake !== null ) continue;
+			for ( let k = i - 1; k >= 0 && S[ k ].lake === null && S[ k ].y < S[ i ].lake; k -- ) S[ k ].y = S[ i ].lake;
+		}
+		this._sills();
 		this.floor = floor;
 		measure( S );
 		this.falls = findRiverFalls( S );
@@ -151,6 +170,34 @@ export class RiverCourse {
 		}
 	}
 
+	// the sill past every lake the river leaves
+	_sills() {
+		const S = this.samples;
+		for ( const p of S ) p.sill = null;
+		for ( let i = 1; i < S.length; i ++ ) {
+			if ( S[ i ].lake !== null || S[ i - 1 ].lake === null ) continue;
+			const level = S[ i - 1 ].lake, s0 = S[ i ].s;
+			for ( let k = i; k < S.length && S[ k ].lake === null && S[ k ].s - s0 < SILL_LENGTH; k ++ ) S[ k ].sill = level + SILL_HEIGHT;
+		}
+	}
+
+	// The lakes' levels as they are now (after the carve, a lake may have found a lower way out through
+	// the new channel and fallen): the samples in a lake take its level and the course stays monotonic
+	// below it (the channel is already deeper than the water).
+	relevel( lakeAt ) {
+		const S = this.samples;
+		let prev = Infinity;
+		for ( const p of S ) {
+			p.lake = lakeAt?.( p.x, p.z ) ?? null;
+			p.y = p.lake !== null ? p.lake : Math.min( p.y, prev );
+			prev = p.y;
+		}
+		this._sills();
+		measure( S );
+		this.falls = findRiverFalls( S );
+		return this;
+	}
+
 	// the levels to save with the course
 	levels() { return this.samples.map( ( p ) => Math.round( p.y * 100 ) / 100 ); }
 
@@ -172,6 +219,8 @@ export class RiverCourse {
 			const erosion = Math.sin( s * 0.39 + Math.sign( lateral ) * 1.8 ) * 0.38 + Math.sin( s * 0.13 + Math.sign( lateral ) * 3.1 ) * 0.55;
 			out.y = a.y + ( b.y - a.y ) * t; out.edge = d - width / 2 - erosion * Math.min( 1, width / 8 );
 			out.width = width; out.s = s; out.dx = dx / span; out.dz = dz / span;
+			const near = t < 0.5 ? a : b;
+			out.lake = near.lake ?? null; out.sill = near.sill ?? null;
 		}
 		return found ? out : null;
 	}
@@ -180,10 +229,11 @@ export class RiverCourse {
 	// banks standing BANK_FREEBOARD above it past the edge, rounding off beyond the crest
 	carve( x, z, original ) {
 		const p = this.sample( x, z );
-		if ( ! p || p.edge > BANK_BLEND ) return original;
+		if ( ! p || p.edge > BANK_BLEND || p.lake !== null ) return original; // in a lake: the lake's own basin
 		const depth = clamp( 0.35 + p.width * 0.08, 0.45, 1.4 );
 		const cross = clamp( 1 + p.edge / ( p.width * 0.5 ), 0, 1 );
-		const bed = p.y - depth + Math.pow( cross, 3 ) * depth * 0.72;
+		let bed = p.y - depth + Math.pow( cross, 3 ) * depth * 0.72;
+		if ( p.sill !== null ) bed = Math.max( bed, p.sill ); // the outlet's sill holds the lake
 		const blend = 1 - ease( - 0.1, BANK_BLEND, p.edge );
 		const carved = Math.min( original, original + ( bed - original ) * blend );
 		// no bank inside the channel, nor where the river has come down to the sea

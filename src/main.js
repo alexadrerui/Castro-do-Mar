@@ -186,7 +186,7 @@ async function main() {
 		const lakes = new Lakes( { hf, seeds: app.worldEdits?.lakes ?? [] } );
 		app.lakes = lakes;
 		// and the rivers of the editor's "Rio" (world/rivers.js)
-		const rivers = new Rivers( { hf, records: app.worldEdits?.rivers ?? [] } );
+		const rivers = new Rivers( { hf, records: app.worldEdits?.rivers ?? [], lakes } );
 		app.rivers = rivers;
 		scene.add( rivers.group );
 		if ( lakes.list.length || rivers.list.length ) setLakeTest( ( x, z ) => lakes.wet( x, z ) || rivers.wet( x, z ) );

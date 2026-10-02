@@ -34,7 +34,8 @@ function ribbonGeometry( course ) {
 			pos.push( p.x - p.dz * across, p.y, p.z + p.dx * across );
 			// the fall's steepness and the plunge's white water ride in the 4th component
 			flow.push( p.dx, p.dz, p.flowSpeed, Math.max( Math.min( 1, Math.max( 0, ( p.slope - 0.25 ) / 0.5 ) ), p.plunge ) );
-			if ( i < S.length - 1 && j < COLUMNS ) {
+			// no ribbon over a lake the river runs through (the lake's own water is there)
+			if ( i < S.length - 1 && j < COLUMNS && ( p.lake === null || S[ i + 1 ].lake === null ) ) {
 				const a = i * ( COLUMNS + 1 ) + j, b = a + 1, c = a + COLUMNS + 1, d = c + 1;
 				idx.push( a, b, c, b, d, c ); // facing up (across runs to the left of the flow)
 			}
@@ -99,7 +100,7 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 		const streak = smoothstep( 0.25, 0.75, mix( n0, n1, wgt ).mul( 0.5 ).add( 0.5 ) );
 		// (on a fall the strands below take over: there the fast-water white covered the whole sheet)
 		const fallM = smoothstep( 0.0, 0.6, fall );
-		const white = streak.mul( smoothstep( 2.2, 5.0, speed ) ).mul( 0.75 ).mul( fallM.oneMinus() ).add( smoothstep( 0.0, 0.12, depth ).oneMinus().mul( 0.25 ) );
+		const white = streak.mul( smoothstep( 2.2, 5.0, speed ) ).mul( 0.75 ).mul( fallM.oneMinus() ).add( smoothstep( 0.04, 0.2, depth ).oneMinus().mul( 0.1 ) );
 		col.assign( mix( col, vec3( 0.88, 0.92, 0.92 ), clamp( white, 0, 0.85 ) ) );
 		// falls: sheets of white strands pouring down the course (fine across, long along the flow,
 		// carried downstream at the water's speed); the plunge pool below boils white and clears
@@ -110,7 +111,10 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 		col.assign( mix( col, vec3( 0.9, 0.94, 0.95 ).mul( sheet.mul( 0.2 ).add( 0.85 ) ), fallM.mul( sheet.mul( 0.7 ).add( 0.12 ) ) ) );
 		return col;
 	} )();
-	mat.opacityNode = clamp( mix( 0.35, 0.95, smoothstep( 0.0, 1.2, depth ) ).add( pow( float( 1 ).sub( max( dot( V, N ), 0.0 ) ), 3.0 ).mul( 0.4 ) ).add( fall ), 0, 1 );
+	// the water fades out over its last ~18 cm: the visible edge follows the bilinear height texture, a
+	// smooth curve, instead of the relief's triangles crossing the surface (a sawtooth on narrow rivers)
+	mat.opacityNode = clamp( mix( 0.35, 0.95, smoothstep( 0.0, 1.2, depth ) ).add( pow( float( 1 ).sub( max( dot( V, N ), 0.0 ) ), 3.0 ).mul( 0.4 ) ).add( fall ), 0, 1 )
+		.mul( smoothstep( 0.0, 0.18, depth ).max( fall ) );
 	mat.userData.uniforms = U;
 	MAT = mat;
 	return mat;
@@ -118,8 +122,10 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 
 export class Rivers {
 	// records: world-edits rivers ([ { points, levels } ]); h: the relief
-	constructor( { hf, records = [] } ) {
+	// lakes: world/lakeWater.js (a river meets a lake at its level)
+	constructor( { hf, records = [], lakes = null } ) {
 		this.hf = hf;
+		this.lakes = lakes;
 		this.group = new THREE.Group();
 		this.group.name = 'rivers';
 		this.list = [];
@@ -131,13 +137,16 @@ export class Rivers {
 
 	add( record ) {
 		if ( ! Array.isArray( record?.points ) || record.points.length < 2 ) return null;
-		const course = new RiverCourse( record, ( x, z ) => this.hf.heightAt( x, z ), WATER_LEVEL );
+		const course = new RiverCourse( record, ( x, z ) => this.hf.heightAt( x, z ), WATER_LEVEL, this.lakeAt() );
 		if ( course.samples.length < 2 ) return null;
 		const river = { record, course };
 		this.list.push( river );
 		if ( this.water ) { this._surface( river ); this._mist(); }
 		return river;
 	}
+
+	// the level of a lake at a point, or null (for RiverCourse)
+	lakeAt() { return this.lakes ? ( x, z ) => this.lakes.at( x, z )?.level ?? null : null; }
 
 	remove( river ) {
 		this.list = this.list.filter( ( r ) => r !== river );

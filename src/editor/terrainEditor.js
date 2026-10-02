@@ -328,20 +328,36 @@ export class TerrainEditor {
 		if ( pts.length < 2 ) { this._toast( 'Marque pelo menos dois pontos do curso.' ); return; }
 		const record = { points: pts.map( ( q ) => q.slice() ) };
 		// the levels on the relief as it is now, saved with the course
-		const course = new RiverCourse( record, ( x, z ) => this.hf.heightAt( x, z ), WATER_LEVEL );
+		const course = new RiverCourse( record, ( x, z ) => this.hf.heightAt( x, z ), WATER_LEVEL, rivers.lakeAt() );
 		record.levels = course.levels();
 		// the channel carved into the edits, as one undoable stroke
 		const { hf } = this, n = hf.n, [ bx0, bz0, bx1, bz1 ] = course.box;
 		const i0 = Math.max( 0, Math.floor( ( bx0 - hf.x0 ) / hf.cell ) ), i1 = Math.min( n - 1, Math.ceil( ( bx1 - hf.x0 ) / hf.cell ) );
 		const j0 = Math.max( 0, Math.floor( ( bz0 - hf.z0 ) / hf.cell ) ), j1 = Math.min( n - 1, Math.ceil( ( bz1 - hf.z0 ) / hf.cell ) );
 		this.stroke = { touched: new Map(), flattenTo: 0, noise: null, last: new THREE.Vector3() };
-		for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) {
-			const k = j * n + i, h0 = hf.data[ k ];
-			const h1 = course.carve( hf.x0 + i * hf.cell, hf.z0 + j * hf.cell, h0 );
-			if ( Math.abs( h1 - h0 ) > 1e-3 ) this._set( k, h1 );
+		const carve = () => {
+			for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) {
+				const k = j * n + i, h0 = hf.data[ k ];
+				const h1 = course.carve( hf.x0 + i * hf.cell, hf.z0 + j * hf.cell, h0 );
+				if ( Math.abs( h1 - h0 ) > 1e-3 ) this._set( k, h1 );
+			}
+		};
+		carve();
+		// A lake on the course may find a lower way out through the new channel and fall: then the river
+		// meets it at its new level, and the stretch that came out of the lake gets its bed too (it was
+		// lake, not carved); a few rounds until the lakes stand still. One stroke for all of it.
+		for ( let round = 0; round < 3 && this.app.lakes?.list.length; round ++ ) {
+			const before = this.app.lakes.list.map( ( l ) => l.level );
+			this.app.lakes.refill();
+			course.relevel( rivers.lakeAt() );
+			carve();
+			const after = this.app.lakes.list.map( ( l ) => l.level );
+			if ( after.length === before.length && after.every( ( v, q ) => Math.abs( v - before[ q ] ) < 0.02 ) ) break;
 		}
 		this._markDirty( i0, j0, i1, j1 );
-		this._end();
+		this._end(); // the lakes refill on the carved relief (_waterFollows)
+		course.relevel( rivers.lakeAt() );
+		record.levels = course.levels();
 		rivers.add( record );
 		this.app.refreshWaterLevels?.();
 		( obj.edits.rivers ??= [] ).push( record );
