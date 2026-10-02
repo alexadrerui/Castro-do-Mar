@@ -540,6 +540,12 @@ async function main() {
 		// stand-ins of the procedural surfaces in the reflection and the shadow pass (core/proxies.js)
 		reflCam.layers.enable( PROXY_LAYER );
 		sky.sun.shadow.camera.layers.enable( PROXY_LAYER );
+		// The lights on the reflection's layers too. The reflection (budgeted, world/planarReprojection.js)
+		// renders inside the scene pass; seeing no lights, it changed the shared lights state for the
+		// transparent draws after the water, and every frame with a capture following one without (or the
+		// other way round) built new pipelines for the water's shadow layer and the chimney smoke: ~14 a
+		// second, 500+ in a minute, past the browser's shader cache (the cached load recompiled, ~7 s).
+		scene.traverse( ( o ) => { if ( o.isLight ) { o.layers.enable( 2 ); o.layers.enable( PROXY_LAYER ); } } );
 		// Precompile in the render contexts the frame really uses. The shader cache key of a
 		// render object includes its render context, keyed by render target, MRT and call
 		// depth (how deeply the render() is nested: the scene pass runs inside post.render(),
