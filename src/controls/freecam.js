@@ -179,7 +179,8 @@ export class FreeCam {
 		if ( this.groundFn ) {
 			const g = this.groundFn( cam.position.x, cam.position.z );
 			// over water the camera may dive, down to just above the bottom
-			const minY = g < this.waterLevel ? g + this.diveClearance : g + this.minClearance;
+			// in shallow water (a river) the clearance shrinks with the depth, so the camera can still dive
+			const minY = g < this.waterLevel ? g + Math.min( this.diveClearance, Math.max( 0.15, ( this.waterLevel - g ) * 0.35 ) ) : g + this.minClearance;
 			if ( cam.position.y < minY ) cam.position.y = minY;
 		}
 	}

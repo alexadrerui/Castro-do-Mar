@@ -6,20 +6,24 @@
 // Daniel Sobrado, licenses/LICENSE-Drusniel.md). Here the surface shades like our lakes (the sky's
 // environment map, the depth tint) with the wave slopes of water.js carried by the current, and white
 // water where it runs fast.
-// app.rivers: list, add( record ), remove( river ), at( x, z ), wet( x, z ).
+// The falls (riverCourse.js findRiverFalls) pour white and throw spray (riverMist.js).
+// app.rivers: list, add( record ), remove( river ), at( x, z ), wet( x, z ), levelAt( x, z ), update( camera ),
+// setLight( sunColor, skyColor ) (the sun and the sky for the water and the spray).
 import * as THREE from 'three/webgpu';
 import {
 	Fn, attribute, texture, positionWorld, cameraPosition, time, vec2, vec3, float, mix, smoothstep, clamp,
-	max, pow, dot, normalize, reflect, length, fract, abs, pmremTexture, mx_noise_float, uniform
+	max, pow, dot, normalize, reflect, length, fract, abs, pmremTexture, mx_noise_float, uniform, normalWorld
 } from 'three/tsl';
 import { WATER_LEVEL } from './layout.js';
 import { RiverCourse } from './riverCourse.js';
 import { createWaveTexture } from './water.js';
+import { RiverMist } from './riverMist.js';
 
 const COLUMNS = 12;
 const UNDER_BANK = 1.2; // m the ribbon runs on past the edge, under the banks (the relief hides its border)
 
-// the surface strip: COLUMNS quads across, one row per sample; flow (dx, dz, speed) per vertex
+// the surface strip: COLUMNS quads across, one row per sample; flow (dx, dz, speed, white: the fall's
+// steepness or the plunge below it) per vertex
 function ribbonGeometry( course ) {
 	const S = course.samples;
 	const pos = [], flow = [], idx = [];
@@ -28,7 +32,8 @@ function ribbonGeometry( course ) {
 		for ( let j = 0; j <= COLUMNS; j ++ ) {
 			const across = ( j / COLUMNS * 2 - 1 ) * ( p.width / 2 + UNDER_BANK );
 			pos.push( p.x - p.dz * across, p.y, p.z + p.dx * across );
-			flow.push( p.dx, p.dz, p.flowSpeed );
+			// the fall's steepness and the plunge's white water ride in the 4th component
+			flow.push( p.dx, p.dz, p.flowSpeed, Math.max( Math.min( 1, Math.max( 0, ( p.slope - 0.25 ) / 0.5 ) ), p.plunge ) );
 			if ( i < S.length - 1 && j < COLUMNS ) {
 				const a = i * ( COLUMNS + 1 ) + j, b = a + 1, c = a + COLUMNS + 1, d = c + 1;
 				idx.push( a, b, c, b, d, c ); // facing up (across runs to the left of the flow)
@@ -37,7 +42,7 @@ function ribbonGeometry( course ) {
 	}
 	const g = new THREE.BufferGeometry();
 	g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
-	g.setAttribute( 'riverFlow', new THREE.Float32BufferAttribute( flow, 3 ) );
+	g.setAttribute( 'riverFlow', new THREE.Float32BufferAttribute( flow, 4 ) );
 	g.setIndex( idx );
 	g.computeVertexNormals();
 	g.computeBoundingSphere();
@@ -60,8 +65,8 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 	const hd = heightTex.userData;
 	const groundH = texture( heightTex, wp.xz.sub( vec2( hd.x0, hd.z0 ) ).div( hd.cell ).add( 0.5 ).div( hd.n ) ).r;
 	const depth = max( wp.y.sub( groundH ), 0.0 );
-	const fl = attribute( 'riverFlow', 'vec3' );
-	const dir = fl.xy, speed = fl.z;
+	const fl = attribute( 'riverFlow', 'vec4' );
+	const dir = fl.xy, speed = fl.z, fall = fl.w;
 	// two-phase flow: the detail is carried downstream for a cycle and blended out as it restarts
 	const cycle = 1.6;
 	const ph0 = fract( time.div( cycle ) ), ph1 = fract( time.div( cycle ).add( 0.5 ) );
@@ -76,7 +81,9 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 	const sl = mix( slopes( ph0 ), slopes( ph1 ), wgt );
 	// rougher where it runs fast
 	const strength = mix( 0.12, 0.45, smoothstep( 1.2, 4.0, speed ) );
-	const N = normalize( vec3( sl.x.mul( strength ).negate(), 1.0, sl.y.mul( strength ).negate() ) );
+	// the ribbon's own normal (a fall's sheet tilts toward the viewer below it: taken as level, the
+	// Fresnel term saw a grazing angle there and mirrored the whole sky), bent by the slopes
+	const N = normalize( normalWorld.add( vec3( sl.x.mul( strength ).negate(), 0.0, sl.y.mul( strength ).negate() ) ) );
 	mat.colorNode = Fn( () => {
 		const L = normalize( U.sunDir );
 		const cosT = max( dot( V, N ), 0.0 );
@@ -90,11 +97,20 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 		const n0 = mx_noise_float( vec3( wp.xz.sub( drift( ph0 ) ).mul( vec2( 0.9, 0.9 ) ), 1.3 ) );
 		const n1 = mx_noise_float( vec3( wp.xz.sub( drift( ph1 ) ).mul( vec2( 0.9, 0.9 ) ), 7.1 ) );
 		const streak = smoothstep( 0.25, 0.75, mix( n0, n1, wgt ).mul( 0.5 ).add( 0.5 ) );
-		const white = streak.mul( smoothstep( 2.2, 5.0, speed ) ).mul( 0.75 ).add( smoothstep( 0.0, 0.12, depth ).oneMinus().mul( 0.25 ) );
+		// (on a fall the strands below take over: there the fast-water white covered the whole sheet)
+		const fallM = smoothstep( 0.0, 0.6, fall );
+		const white = streak.mul( smoothstep( 2.2, 5.0, speed ) ).mul( 0.75 ).mul( fallM.oneMinus() ).add( smoothstep( 0.0, 0.12, depth ).oneMinus().mul( 0.25 ) );
 		col.assign( mix( col, vec3( 0.88, 0.92, 0.92 ), clamp( white, 0, 0.85 ) ) );
+		// falls: sheets of white strands pouring down the course (fine across, long along the flow,
+		// carried downstream at the water's speed); the plunge pool below boils white and clears
+		const across = dot( wp.xz, vec2( dir.y.negate(), dir.x ) ), along = dot( wp.xz, dir );
+		const strands = mx_noise_float( vec3( across.mul( 2.8 ), along.mul( 0.35 ).sub( time.mul( speed ).mul( 0.35 ) ), 3.7 ) ).mul( 0.5 ).add( 0.5 );
+		const sheet = smoothstep( 0.38, 0.62, strands );
+		// white strands with the water showing between them (a solid white sheet read as snow)
+		col.assign( mix( col, vec3( 0.9, 0.94, 0.95 ).mul( sheet.mul( 0.2 ).add( 0.85 ) ), fallM.mul( sheet.mul( 0.7 ).add( 0.12 ) ) ) );
 		return col;
 	} )();
-	mat.opacityNode = clamp( mix( 0.35, 0.95, smoothstep( 0.0, 1.2, depth ) ).add( pow( float( 1 ).sub( max( dot( V, N ), 0.0 ) ), 3.0 ).mul( 0.4 ) ), 0, 1 );
+	mat.opacityNode = clamp( mix( 0.35, 0.95, smoothstep( 0.0, 1.2, depth ) ).add( pow( float( 1 ).sub( max( dot( V, N ), 0.0 ) ), 3.0 ).mul( 0.4 ) ).add( fall ), 0, 1 );
 	mat.userData.uniforms = U;
 	MAT = mat;
 	return mat;
@@ -108,6 +124,8 @@ export class Rivers {
 		this.group.name = 'rivers';
 		this.list = [];
 		this.water = null;
+		this.mist = null;
+		this.light = { sunDir: uniform( new THREE.Vector3( 0, 1, 0 ) ), sunColor: uniform( new THREE.Color( 0xfff0d8 ) ), skyColor: uniform( new THREE.Color( 0x9db6d6 ) ) };
 		for ( const r of records ) this.add( r );
 	}
 
@@ -117,13 +135,45 @@ export class Rivers {
 		if ( course.samples.length < 2 ) return null;
 		const river = { record, course };
 		this.list.push( river );
-		if ( this.water ) this._surface( river );
+		if ( this.water ) { this._surface( river ); this._mist(); }
 		return river;
 	}
 
 	remove( river ) {
 		this.list = this.list.filter( ( r ) => r !== river );
 		if ( river.mesh ) { this.group.remove( river.mesh ); river.mesh.geometry.dispose(); }
+		if ( this.water ) this._mist();
+	}
+
+	// the water level over (x, z): a river's, or null (the underwater view, the camera's dive)
+	levelAt( x, z ) {
+		for ( const r of this.list ) { const p = r.course.sample( x, z ); if ( p && p.edge < 0 ) return p.y; }
+		return null;
+	}
+
+	// the spray of every fall, rebuilt when a river comes or goes
+	_mist() {
+		if ( this.mist?.mesh ) { this.group.remove( this.mist.mesh ); this.mist.mesh.geometry.dispose(); }
+		this.mist = new RiverMist( this.list.map( ( r ) => r.course ), this.water.heightTex, this.light );
+		if ( this.mist.mesh ) this.group.add( this.mist.mesh );
+	}
+
+	update( camera ) { this.mist?.update( camera ); }
+
+	// the river level at a grid point within `reach` m of its water (terrain.js setWaterLevels), or null
+	levelAtPoint( x, z, reach = 2.5 ) {
+		for ( const r of this.list ) { const p = r.course.sample( x, z ); if ( p && p.edge < reach ) return p.y; }
+		return null;
+	}
+
+	gridBoxes() {
+		const hf = this.hf;
+		return this.list.map( ( r ) => { const b = r.course.box; return [ Math.floor( ( b[ 0 ] - hf.x0 ) / hf.cell ), Math.floor( ( b[ 1 ] - hf.z0 ) / hf.cell ), Math.ceil( ( b[ 2 ] - hf.x0 ) / hf.cell ), Math.ceil( ( b[ 3 ] - hf.z0 ) / hf.cell ) ]; } );
+	}
+
+	setLight( sunColor, skyColor ) {
+		this.light.sunColor.value.copy( sunColor ); this.light.skyColor.value.copy( skyColor );
+		if ( MAT ) MAT.userData.uniforms.sunColor.value.copy( sunColor );
 	}
 
 	// the river whose course passes over (x, z) within `reach` m of its water, or null
@@ -137,7 +187,9 @@ export class Rivers {
 
 	attachWater( heightTex, sunDir, envMap ) {
 		this.water = { heightTex, sunDir, envMap };
+		this.light.sunDir.value = sunDir; // the sky's own vector: follows the sun
 		for ( const r of this.list ) this._surface( r );
+		this._mist();
 	}
 
 	_surface( river ) {

@@ -94,6 +94,26 @@ function measure( samples ) {
 	}
 }
 
+// A fall starts where the course steepens past FALL_ENTER_SLOPE and ends at its foot, the first sample
+// back under FALL_EXIT_SLOPE; runs that drop less than FALL_MIN_DROP m, or never pass FALL_MIN_PEAK,
+// are rapids (their findRiverFalls). Returns [ { lip, foot, drop, peak } ] (sample indices, metres).
+const FALL_ENTER_SLOPE = 0.35, FALL_EXIT_SLOPE = 0.2, FALL_MIN_DROP = 3, FALL_MIN_PEAK = 0.6;
+export function findRiverFalls( samples ) {
+	const falls = [];
+	let lip = - 1, peak = 0;
+	for ( let i = 0; i <= samples.length; i ++ ) {
+		const slope = i < samples.length ? samples[ i ].slope ?? 0 : 0;
+		if ( lip < 0 ) { if ( slope > FALL_ENTER_SLOPE ) { lip = i; peak = slope; } continue; }
+		peak = Math.max( peak, slope );
+		if ( slope >= FALL_EXIT_SLOPE ) continue;
+		const foot = Math.min( i, samples.length - 1 );
+		const drop = samples[ Math.max( 0, lip - 1 ) ].y - samples[ foot ].y;
+		if ( drop >= FALL_MIN_DROP && peak >= FALL_MIN_PEAK ) falls.push( { lip, foot, drop, peak } );
+		lip = - 1;
+	}
+	return falls;
+}
+
 export class RiverCourse {
 	// record: { points: [ [ x, z, width ] ], levels?: [ y per sample ] }; h(x, z): the relief;
 	// floor: the lowest the water goes (the sea)
@@ -110,6 +130,10 @@ export class RiverCourse {
 		}
 		this.floor = floor;
 		measure( S );
+		this.falls = findRiverFalls( S );
+		// the plunge: white water easing off over ~9 m below the foot of every fall (their `impact`)
+		for ( const p of S ) p.plunge = 0;
+		for ( const f of this.falls ) for ( let i = f.foot; i < S.length && S[ i ].s - S[ f.foot ].s < 12; i ++ ) S[ i ].plunge = Math.max( S[ i ].plunge, Math.exp( - ( S[ i ].s - S[ f.foot ].s ) / 4 ) );
 		this.length = S.length ? S.at( - 1 ).s : 0;
 		// grid index: the segments near each CELL cell
 		this.cells = new Map();

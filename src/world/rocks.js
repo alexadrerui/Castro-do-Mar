@@ -183,6 +183,56 @@ export function createRocks( app, progress ) {
 		}
 	}
 
+	// 2c) River stones (after Drusniel: Gods' End's water/RiverDetails.js, MIT, licenses/LICENSE-Drusniel.md):
+	// boulders strewn along both banks of every river of the terrain editor, bigger where it runs steep,
+	// and a heap of them at the lip and around the plunge pool of every fall. Each river draws from its
+	// own sequence (seeded by its source), so the stones above keep their places.
+	for ( const river of app.rivers?.list ?? [] ) {
+		const S = river.course.samples;
+		const R = mulberry32( ( Math.round( S[ 0 ].x * 13 ) * 73856093 ) ^ ( Math.round( S[ 0 ].z * 13 ) * 19349663 ) ^ 0x726976 );
+		// a stone cannot rest on ground steeper than ~50 degrees across its footprint (it would hang)
+		const rests = ( x, z, s ) => {
+			const r = Math.max( 0.4, s * 0.45 ), c = hf.heightAt( x, z );
+			const a = [ hf.heightAt( x + r, z ), hf.heightAt( x - r, z ), hf.heightAt( x, z + r ), hf.heightAt( x, z - r ) ];
+			return Math.max( c, ...a ) - Math.min( c, ...a ) <= r * 2.4;
+		};
+		const zone = new Uint8Array( S.length );
+		for ( const f of river.course.falls ) for ( let i = Math.max( 0, f.lip - 3 ); i <= Math.min( S.length - 1, f.foot + 8 ); i ++ ) zone[ i ] = 1;
+		for ( let i = 4; i < S.length - 4; i += 2 ) {
+			const p = S[ i ];
+			for ( const side of [ - 1, 1 ] ) {
+				if ( R() < 0.35 ) continue;
+				const across = side * ( p.width * 0.5 - 0.3 + R() ** 2 * 3 ), jitter = ( R() - 0.5 ) * 3;
+				const x = p.x - p.dz * across + p.dx * jitter, z = p.z + p.dx * across + p.dz * jitter;
+				const sc = ( 0.3 + R() ** 2 * 1.4 ) * Math.min( 1.6, p.width / 5 ) + Math.min( 1.5, p.slope ) * ( 0.4 + R() );
+				if ( zone[ i ] || ! rests( x, z, sc ) ) continue;
+				if ( put( shore, x, z, sc, 0.3, 0.8, R ) ) counts.boulders ++;
+			}
+		}
+		// the falls: big blocks framing the lip, a ring around the plunge pool, a few in the run-out
+		for ( const f of river.course.falls ) {
+			const lip = S[ f.lip ], foot = S[ f.foot ];
+			const big = Math.min( 3.5, 0.8 + f.drop * 0.15 ) * Math.min( 1.4, lip.width / 5 + 0.4 );
+			for ( const side of [ - 1, 1 ] ) for ( let k = 0; k < 2; k ++ ) {
+				const across = side * ( lip.width * 0.5 + 0.4 + k * big * 0.8 );
+				const x = lip.x - lip.dz * across + lip.dx * ( R() - 0.5 ) * 2, z = lip.z + lip.dx * across + lip.dz * ( R() - 0.5 ) * 2;
+				if ( put( talus, x, z, big * ( 0.8 + R() * 0.5 ), 0.35, 1, R ) ) counts.boulders ++;
+			}
+			const n = 7 + Math.floor( f.drop / 2 );
+			for ( let k = 0; k < n; k ++ ) {
+				const a = k / n * Math.PI * 2 + R() * 0.5, r = foot.width * ( 0.65 + R() * 0.5 ) + 0.5;
+				const x = foot.x + Math.cos( a ) * r + foot.dx * 2, z = foot.z + Math.sin( a ) * r + foot.dz * 2;
+				const sc = big * ( 0.35 + R() * 0.5 );
+				if ( ! rests( x, z, sc ) ) continue;
+				if ( put( shore, x, z, sc, 0.4, 0.8, R ) ) counts.boulders ++;
+			}
+			for ( let k = 0; k < 4; k ++ ) {
+				const q = S[ Math.min( S.length - 1, f.foot + 3 + Math.floor( R() * 8 ) ) ], across = ( R() - 0.5 ) * q.width * 0.8;
+				if ( put( shore, q.x - q.dz * across, q.z + q.dx * across, 0.3 + R() * 0.6, 0.45, 0.7, R ) ) counts.boulders ++;
+			}
+		}
+	}
+
 	// 3) Gravel: along path edges, at house pads and on the shore near the village.
 	for ( let z = - 260; z < 300; z += 1.3 ) {
 		for ( let x = - 320; x < 260; x += 1.3 ) {

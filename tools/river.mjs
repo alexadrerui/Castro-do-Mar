@@ -59,7 +59,15 @@ try {
 	check( FILES.every( ( f ) => fs.existsSync( f ) ), 'salvo: terrain-edits.bin e world-edits.json' );
 	await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
 	await page.waitForFunction( () => window.__app?.ready, { timeout: 300000, polling: 250 } );
-	const after = await page.evaluate( () => { const a = window.__app; const rv = a.rivers.list[ 0 ]; return { n: a.rivers.list.length, mesh: !! rv?.mesh, mid: rv ? rv.course.samples[ Math.floor( rv.course.samples.length / 2 ) ] : null, len: rv?.course.length }; } );
+	const after = await page.evaluate( () => {
+		const a = window.__app; const rv = a.rivers.list[ 0 ], S = rv?.course.samples;
+		const falls = ( rv?.course.falls ?? [] ).map( ( f ) => ( { lip: S[ f.lip ], foot: S[ f.foot ], drop: f.drop } ) );
+		// the deepest point of the channel (for the dive)
+		let deep = null;
+		for ( const p of S ?? [] ) { if ( p.y < 1 ) continue; const d = p.y - a.hf.heightAt( p.x, p.z ); if ( ! deep || d > deep.d ) deep = { ...p, d }; } // above the sea: the river's own water
+		return { n: a.rivers.list.length, mesh: !! rv?.mesh, mid: S ? S[ Math.floor( S.length / 2 ) ] : null, len: rv?.course.length, falls, mist: a.rivers.mist?.count ?? 0, deep };
+	} );
+	console.log( 'quedas', JSON.stringify( after.falls.map( ( f ) => ( { drop: +f.drop.toFixed( 1 ), x: +f.foot.x.toFixed( 0 ), z: +f.foot.z.toFixed( 0 ) } ) ) ), 'spray', after.mist, 'mais fundo', after.deep?.d?.toFixed( 2 ) );
 	check( after.n === 1 && after.mesh, `depois de recarregar: ${ after.n } rio, ${ Math.round( after.len ?? 0 ) } m` );
 	if ( after.mid ) {
 		const m = after.mid;
@@ -68,10 +76,25 @@ try {
 			[ 'bank', [ m.x - m.dz * 9, m.y + 2.2, m.z + m.dx * 9 ], [ m.x + m.dx * 8, m.y, m.z + m.dz * 8 ] ],
 			[ 'along', [ m.x - m.dx * 10, m.y + 1.6, m.z - m.dz * 10 ], [ m.x + m.dx * 10, m.y - 0.3, m.z + m.dz * 10 ] ]
 		];
+		// the first fall, from below its foot looking up the course
+		const f = after.falls[ 0 ];
+		if ( f ) views.push( [ 'fall', [ f.foot.x + f.foot.dx * 14 - f.foot.dz * 5, f.foot.y + 2.5, f.foot.z + f.foot.dz * 14 + f.foot.dx * 5 ], [ f.lip.x, ( f.lip.y + f.foot.y ) / 2, f.lip.z ] ] );
 		for ( const [ name, pos, at ] of views ) {
 			await page.evaluate( ( pos, at ) => { const a = window.__app; a.dynamicRes = false; a.views.push( { label: 'r', pos, target: at } ); a.setView( a.views.length - 1 ); }, pos, at );
 			await sleep( 2500 );
 			await page.evaluate( ( n ) => window.__app.capture( n ), `${ prefix }_${ name }` );
+		}
+		// a dive in the river's deepest point: the underwater view takes the river's level
+		const d = after.deep;
+		if ( d && d.d > 0.55 ) {
+			// over the river first (the camera's dive limit takes the water level under it), then down
+			const jump = ( dy ) => page.evaluate( ( d, dy ) => { const a = window.__app; a.views.push( { label: 'r', pos: [ d.x - d.dx * 2, d.y + dy, d.z - d.dz * 2 ], target: [ d.x + d.dx * 6, d.y + dy - 0.13, d.z + d.dz * 6 ] } ); a.setView( a.views.length - 1 ); }, d, dy );
+			await jump( 1.5 ); await sleep( 800 );
+			await jump( - 0.3 ); await sleep( 2500 );
+			const under = await page.evaluate( () => window.__app.underwater.on.value );
+			console.log( 'mergulho em', JSON.stringify( { x: d.x.toFixed( 0 ), z: d.z.toFixed( 0 ), nivel: d.y.toFixed( 2 ), fundo: d.d.toFixed( 2 ) } ) );
+			check( under > 0.5, `mergulho no rio: visão submersa ${ under > 0.5 ? 'ligada' : 'desligada' } (fundo ${ d.d.toFixed( 2 ) } m)` );
+			await page.evaluate( ( n ) => window.__app.capture( n ), `${ prefix }_under` );
 		}
 	}
 } finally {
