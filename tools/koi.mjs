@@ -64,7 +64,7 @@ try {
 	// 2. reload with the lake
 	await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
 	await ready();
-	const info = await page.evaluate( () => { const k = window.__app.koi; return k.ponds.map( ( p ) => ( { level: +( p.lake.level ?? 0 ).toFixed( 2 ), area: Math.round( p.lake.area ), deepest: +p.lake.deepest.toFixed( 2 ), fish: p.fishes.length, lotus: p.lotus?.userData.count, cx: p.lake.cx, cz: p.lake.cz, surface: !! p.lake.mesh } ) ); } );
+	const info = await page.evaluate( () => { const k = window.__app.koi; return k.ponds.map( ( p ) => ( { level: +( p.lake.level ?? 0 ).toFixed( 2 ), area: Math.round( p.lake.area ), deepest: +p.lake.deepest.toFixed( 2 ), fish: p.fishes.length, lotus: p.lotus?.userData.count, flora: p.flora?.userData.count, cx: p.lake.cx, cz: p.lake.cz, surface: !! p.lake.mesh } ) ); } );
 	console.log( 'ponds', JSON.stringify( info ) );
 	p = info[ 0 ];
 	if ( p ) {
@@ -74,6 +74,8 @@ try {
 			[ 'above', [ p.cx + 2, L + 16, p.cz + 12 ], [ p.cx, L, p.cz ] ],
 			[ 'bank', [ p.cx + 6, Math.max( g, L + 1 ) + 1.7, p.cz + 11 ], [ p.cx - 1, L - 0.5, p.cz ] ],
 			[ 'close', [ p.cx + 2.5, L + 2.2, p.cz + 3.5 ], [ p.cx, L - 0.6, p.cz ] ],
+			// the cattails of the margin, from the bank across the water (before the dive: a wet lens)
+			[ 'reeds', [ p.cx - 11, L + 1.8, p.cz + 7 ], [ p.cx + 4, L + 0.4, p.cz - 3 ] ],
 			[ 'under', [ p.cx + 3, L - 1.2, p.cz + 3 ], [ p.cx, L - 1.0, p.cz ] ]
 		];
 		for ( const [ name, pos, at ] of shots ) {

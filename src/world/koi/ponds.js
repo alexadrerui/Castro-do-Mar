@@ -1,5 +1,5 @@
 // Koi ponds: every lake made with the terrain editor ("Encher": world/lakeWater.js, at its own
-// level; or "Cavar" below the sea level, closed off from the sea: lakes.js) gets koi (koi.js) and lotus (lotus.js); the sea keeps its own fish
+// level; or "Cavar" below the sea level, closed off from the sea: lakes.js) gets koi (koi.js), lotus (lotus.js) and the lake plants with the cattails of its margin (world/lakeFlora.js); the sea keeps its own fish
 // (world/fish). Nothing is built, and no shader compiled, while there is no lake. Everything is
 // seeded by the lake's position, so the same lake gets the same fish and leaves.
 // The fish swim only while the camera is within ACTIVE m of their lake.
@@ -8,6 +8,7 @@ import { mulberry32 } from '../../core/noise.js';
 import { findLakes } from './lakes.js';
 import { Koi, VARIETIES } from './koi.js';
 import { buildLotus } from './lotus.js';
+import { buildLakeFlora } from '../lakeFlora.js';
 
 const ACTIVE = 160;
 
@@ -42,10 +43,13 @@ export class KoiPonds {
 		}
 		const lotus = buildLotus( lake, this.hf, water, rnd );
 		if ( lotus ) group.add( lotus );
+		// the bed's plants and the cattails of the margin (world/lakeFlora.js)
+		const flora = buildLakeFlora( lake, this.hf, water, rnd );
+		if ( flora ) group.add( flora );
 		this.group.add( group );
 		// a first pose (the bodies are empty until drawn)
 		for ( const f of fishes ) { f.update( 0.016, fishes, 0, null ); f.draw( 0 ); }
-		return { lake, group, fishes, lotus };
+		return { lake, group, fishes, lotus, flora };
 	}
 
 	update( dt, camera ) {
