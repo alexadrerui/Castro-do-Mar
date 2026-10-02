@@ -9,7 +9,7 @@ import { WATER_LEVEL } from './layout.js';
 
 // Tileable wave-slope texture: sum of sines with integer wave vectors so it
 // wraps perfectly. RG store d(h)/dx, d(h)/dz.
-function createWaveTexture( size = 256, seed = 7 ) {
+export function createWaveTexture( size = 256, seed = 7 ) {
 	let s = seed;
 	const rnd = () => ( s = ( s * 16807 ) % 2147483647 ) / 2147483647;
 	const waves = [];

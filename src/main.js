@@ -25,6 +25,7 @@ import { createTerrain } from './world/terrain.js';
 import { createSky, SUN_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { Lakes } from './world/lakeWater.js';
+import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
@@ -183,11 +184,16 @@ async function main() {
 		// reflects the sky's environment map, built here already so they are in the pre-compile
 		const lakes = new Lakes( { hf, seeds: app.worldEdits?.lakes ?? [] } );
 		app.lakes = lakes;
-		if ( lakes.list.length ) setLakeTest( ( x, z ) => lakes.wet( x, z ) );
+		// and the rivers of the editor's "Rio" (world/rivers.js)
+		const rivers = new Rivers( { hf, records: app.worldEdits?.rivers ?? [] } );
+		app.rivers = rivers;
+		scene.add( rivers.group );
+		if ( lakes.list.length || rivers.list.length ) setLakeTest( ( x, z ) => lakes.wet( x, z ) || rivers.wet( x, z ) );
 		scene.add( lakes.group );
-		if ( lakes.list.length || params.has( 'edit' ) ) {
+		if ( lakes.list.length || rivers.list.length || params.has( 'edit' ) ) {
 			sky.buildEnv();
 			lakes.attachWater( terrain.heightTex, sky.state.sunDir, scene.environment );
+			rivers.attachWater( terrain.heightTex, sky.state.sunDir, scene.environment );
 		}
 	} );
 

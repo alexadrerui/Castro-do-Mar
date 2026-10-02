@@ -8,17 +8,20 @@
 //   {
 //     "objects": { "b3": { "x": -40, "z": 12, "yaw": 0.4, "scale": 1.2 }, "s5": { "removed": true } },
 //     "added": [ { "id": "a0", "kind": "building", "type": "round", "x": 10, "z": 40, "r": 5, "seed": 100, "yaw": 0, "scale": 1 } ],
-//     "lakes": [ { "x": -18, "z": -48 } ]
+//     "lakes": [ { "x": -18, "z": -48 } ],
+//     "rivers": [ { "points": [ [ -40, 10, 4 ], [ -20, 30, 6 ] ], "levels": [ 27.5, ... ] } ]
 //   }
 // lakes: the points where the terrain editor's "Encher" poured water (world/lakeWater.js fills each
 // hollow up to its spill height on every load, so editing the relief reshapes the lake).
+// rivers: the courses of the terrain editor's "Rio" (world/rivers.js): points [ x, z, width ] and the
+// water level of every 1.5 m sample (saved: the channel was carved into the relief edits for them).
 // Ids: b<i> = BUILDINGS[ i ], s<i> = STALLS[ i ], p<i> = PROPS[ i ] (indices of the original lists),
 // a<n> = an added object. yaw is a turn added to the object's own rotation, scale is uniform.
 import { BUILDINGS, STALLS, PROPS } from './layout.js';
 
 export const WORLD_EDITS_URL = ( import.meta.env?.BASE_URL ?? '/' ) + 'world-edits.json';
 
-export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [] } );
+export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [], rivers: [] } );
 
 // the edits, or null when there are none
 export async function loadWorldEdits() {
@@ -29,8 +32,9 @@ export async function loadWorldEdits() {
 			const e = await res.json();
 			if ( ! e || typeof e !== 'object' ) return null;
 			const lakes = Array.isArray( e.lakes ) ? e.lakes.filter( ( l ) => Number.isFinite( l?.x ) && Number.isFinite( l?.z ) ) : [];
-			const out = { objects: e.objects || {}, added: Array.isArray( e.added ) ? e.added : [], lakes };
-			return Object.keys( out.objects ).length || out.added.length || lakes.length ? out : null;
+			const rivers = Array.isArray( e.rivers ) ? e.rivers.filter( ( r ) => Array.isArray( r?.points ) && r.points.length >= 2 ) : [];
+			const out = { objects: e.objects || {}, added: Array.isArray( e.added ) ? e.added : [], lakes, rivers };
+			return Object.keys( out.objects ).length || out.added.length || lakes.length || rivers.length ? out : null;
 		} catch ( err ) { /* try the next */ }
 	}
 	return null;

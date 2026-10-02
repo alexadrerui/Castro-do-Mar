@@ -13,6 +13,7 @@
 // load: "Salvar e aplicar" writes public/terrain-edits.bin and reloads.
 //
 // Encher: pours a lake at its own level into the hollow under the click (world/lakeWater.js).
+// Rio: lays a river's course point by point; Enter carves its channel and shows its water (world/rivers.js).
 // Water tools (after the shoreline tools of the Habitat Creator game): dig down to a depth below the
 // water level, fill up to a height above it; both leave a ramp of the chosen width between the new
 // level and the relief as it was before the stroke (natural banks, no step at the rim).
@@ -25,6 +26,7 @@ import * as THREE from 'three/webgpu';
 import { makeSimplex, fbm } from '../core/noise.js';
 import { WATER_LEVEL } from '../world/layout.js';
 import { EDITS_N } from '../world/terrainEdits.js';
+import { RiverCourse, sampleCurve } from '../world/riverCourse.js';
 
 const TOOLS = [
 	{ id: 'raise', label: 'Elevar', hint: 'Levanta o relevo (Shift: baixa)' },
@@ -36,6 +38,7 @@ const TOOLS = [
 	{ id: 'dig', label: 'Cavar', hint: 'Cava até a profundidade abaixo do nível da água, com margem em rampa até o relevo de antes' },
 	{ id: 'fill', label: 'Aterrar', hint: 'Aterra até a altura acima do nível da água, com margem em rampa até o fundo de antes' },
 	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' },
+	{ id: 'river', label: 'Rio', hint: 'Clique os pontos do curso, da nascente à foz (Backspace tira o último); Enter conclui: o nível desce com o terreno, o leito é escavado (Ctrl+Z desfaz) e a água corre. Esc cancela. Shift+clique: remove o rio' },
 	{ id: 'lake', label: 'Encher', hint: 'Clique numa depressão: a água sobe até a borda mais baixa, menos 20 cm (lago com nível próprio, carpas e lótus ao salvar). Shift+clique: remove o lago' }
 ];
 const UNDO_MAX = 40;
@@ -66,6 +69,7 @@ export class TerrainEditor {
 		this.hardness = 0.35;   // 0 = all falloff, 1 = hard edge
 		this.gen = { kind: 'island', freq: 1.2, octaves: 5, height: 14, depth: 6, seed: 7 };
 		this.water = { depth: 4, fill: 1.5, shore: 8 }; // m below / above WATER_LEVEL, ramp width
+		this.river = { width: 5, points: [] };          // "Rio": the course being laid
 
 		this.active = true;
 		this.down = false;
@@ -297,6 +301,75 @@ export class TerrainEditor {
 		this._toast( `Lago: nível ${ res.level.toFixed( 1 ) } m, ${ Math.round( res.area ) } m², até ${ res.deepest.toFixed( 1 ) } m de fundo. Salve para as carpas e o lótus.` );
 	}
 
+	// "Rio": a click adds a point to the course (Shift removes the river under it); Enter carves it
+	_riverClick( p ) {
+		const rivers = this.app.rivers, obj = this.app.objectEditor;
+		if ( ! rivers || ! obj ) { this._toast( 'O Rio precisa do editor de objetos (?edit).' ); return; }
+		if ( this.invert ) {
+			const r = rivers.at( p.x, p.z, 2 );
+			if ( ! r ) { this._toast( 'Nenhum rio aqui.' ); return; }
+			rivers.remove( r );
+			const first = r.record.points[ 0 ];
+			obj.edits.rivers = ( obj.edits.rivers ?? [] ).filter( ( q ) => ! ( q.points[ 0 ][ 0 ] === first[ 0 ] && q.points[ 0 ][ 1 ] === first[ 1 ] ) );
+			obj.changed = true;
+			this._toast( 'Rio removido (o leito escavado fica: use Restaurar para fechar). Salve para aplicar.' );
+			return;
+		}
+		this.river.points.push( [ +p.x.toFixed( 2 ), +p.z.toFixed( 2 ), this.river.width ] );
+		this._riverPreview();
+		this._toast( `Rio: ${ this.river.points.length } ponto(s). Enter conclui, Backspace tira o último, Esc cancela.` );
+	}
+
+	_riverFinish() {
+		const pts = this.river.points, rivers = this.app.rivers, obj = this.app.objectEditor;
+		if ( pts.length < 2 ) { this._toast( 'Marque pelo menos dois pontos do curso.' ); return; }
+		const record = { points: pts.map( ( q ) => q.slice() ) };
+		// the levels on the relief as it is now, saved with the course
+		const course = new RiverCourse( record, ( x, z ) => this.hf.heightAt( x, z ), WATER_LEVEL );
+		record.levels = course.levels();
+		// the channel carved into the edits, as one undoable stroke
+		const { hf } = this, n = hf.n, [ bx0, bz0, bx1, bz1 ] = course.box;
+		const i0 = Math.max( 0, Math.floor( ( bx0 - hf.x0 ) / hf.cell ) ), i1 = Math.min( n - 1, Math.ceil( ( bx1 - hf.x0 ) / hf.cell ) );
+		const j0 = Math.max( 0, Math.floor( ( bz0 - hf.z0 ) / hf.cell ) ), j1 = Math.min( n - 1, Math.ceil( ( bz1 - hf.z0 ) / hf.cell ) );
+		this.stroke = { touched: new Map(), flattenTo: 0, noise: null, last: new THREE.Vector3() };
+		for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) {
+			const k = j * n + i, h0 = hf.data[ k ];
+			const h1 = course.carve( hf.x0 + i * hf.cell, hf.z0 + j * hf.cell, h0 );
+			if ( Math.abs( h1 - h0 ) > 1e-3 ) this._set( k, h1 );
+		}
+		this._markDirty( i0, j0, i1, j1 );
+		this._end();
+		rivers.add( record );
+		( obj.edits.rivers ??= [] ).push( record );
+		obj.changed = true;
+		const S = course.samples;
+		this._toast( `Rio de ${ Math.round( course.length ) } m, descendo ${ ( S[ 0 ].y - S.at( - 1 ).y ).toFixed( 1 ) } m. Leito escavado (Ctrl+Z desfaz a escavação). Salve para aplicar.` );
+		this.river.points = [];
+		this._riverPreview();
+		return record;
+	}
+
+	_riverCancel() { this.river.points = []; this._riverPreview(); }
+
+	// the course being laid, as a line over the relief (to the cursor while the tool is on)
+	_riverPreview() {
+		if ( ! this.riverLine ) {
+			const g = new THREE.BufferGeometry();
+			g.setAttribute( 'position', new THREE.BufferAttribute( new Float32Array( 3 * 4096 ), 3 ) );
+			this.riverLine = new THREE.Line( g, new THREE.LineBasicNodeMaterial( { color: 0x5fc8e8, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95 } ) );
+			this.riverLine.frustumCulled = false; this.riverLine.renderOrder = 999;
+			this.app.scene.add( this.riverLine );
+		}
+		const pts = this.river.points.slice();
+		if ( this.tool === 'river' && this.hit && pts.length ) pts.push( [ this.hit.x, this.hit.z, this.river.width ] );
+		const S = pts.length >= 2 ? sampleCurve( pts ) : [];
+		const a = this.riverLine.geometry.attributes.position, m = Math.min( S.length, 4096 );
+		for ( let q = 0; q < m; q ++ ) a.setXYZ( q, S[ q ].x, Math.max( this.hf.heightAt( S[ q ].x, S[ q ].z ), WATER_LEVEL ) + 0.4, S[ q ].z );
+		a.needsUpdate = true;
+		this.riverLine.geometry.setDrawRange( 0, m );
+		this.riverLine.visible = m > 1;
+	}
+
 	_cellOf( x, z ) {
 		const hf = this.hf;
 		return Math.round( ( z - hf.z0 ) / hf.cell ) * hf.n + Math.round( ( x - hf.x0 ) / hf.cell );
@@ -309,6 +382,7 @@ export class TerrainEditor {
 		this.stroke = { touched: new Map(), flattenTo: this.hit.y, noise: null, last: this.hit.clone() };
 		if ( this.tool === 'generate' ) { this._stamp( this.hit.x, this.hit.z ); this._end(); return false; }
 		if ( this.tool === 'lake' ) { this.stroke = null; this._pour( this.hit ); return false; }
+		if ( this.tool === 'river' ) { this.stroke = null; this._riverClick( this.hit ); return false; }
 		return true;
 	}
 
@@ -444,11 +518,13 @@ export class TerrainEditor {
 			}
 			a.needsUpdate = true;
 		};
-		fill( this.ringOuter, this.radius );
+		const river = this.tool === 'river';
+		fill( this.ringOuter, river ? this.river.width / 2 : this.radius );
+		if ( river && this.river.points.length ) this._riverPreview();
 		const water = this.tool === 'dig' || this.tool === 'fill';
-		fill( this.ringInner, Math.max( 0.5, water ? this.radius - Math.min( this.water.shore, this.radius ) : this.radius * this.hardness * 0.95 ) );
+		fill( this.ringInner, river ? 0.4 : Math.max( 0.5, water ? this.radius - Math.min( this.water.shore, this.radius ) : this.radius * this.hardness * 0.95 ) );
 		const neg = ( this.tool === 'lower' ) !== this.invert;
-		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : this.tool === 'dig' || this.tool === 'lake' ? 0x5fc8e8 : this.tool === 'fill' ? 0xd8b56a : neg ? 0xff9a6a : 0xe6c987;
+		const c = this.tool === 'restore' ? 0x9fd0ff : this.tool === 'generate' ? 0xb7e08a : this.tool === 'dig' || this.tool === 'lake' || this.tool === 'river' ? 0x5fc8e8 : this.tool === 'fill' ? 0xd8b56a : neg ? 0xff9a6a : 0xe6c987;
 		this.ringOuter.material.color.setHex( c );
 		this.ringInner.material.color.setHex( c );
 	}
@@ -480,6 +556,11 @@ export class TerrainEditor {
 			if ( e.key === 'Shift' ) this.invert = true;
 			if ( ! this.active ) return;
 			if ( e.code === 'KeyT' && ! e.ctrlKey && ! e.metaKey ) this.toggleOverhead();
+			if ( this.tool === 'river' && this.river.points.length ) {
+				if ( e.code === 'Enter' ) { e.preventDefault(); this._riverFinish(); }
+				if ( e.code === 'Escape' ) { e.preventDefault(); this._riverCancel(); }
+				if ( e.code === 'Backspace' ) { e.preventDefault(); this.river.points.pop(); this._riverPreview(); }
+			}
 			if ( e.code === 'BracketLeft' ) this._setRadius( this.radius / 1.15 );
 			if ( e.code === 'BracketRight' ) this._setRadius( this.radius * 1.15 );
 			if ( ( e.ctrlKey || e.metaKey ) && e.code === 'KeyZ' ) { e.preventDefault(); e.shiftKey ? this.redoStep() : this.undoStep(); }
@@ -593,6 +674,11 @@ export class TerrainEditor {
 				<label>Aterro <input data-k="wfill" type="range" min="0.2" max="20" step="0.1"><output></output></label>
 				<label>Margem <input data-k="wshore" type="range" min="0" max="60" step="0.5"><output></output></label>
 			</fieldset>
+			<fieldset class="river">
+				<legend>Rio</legend>
+				<label>Largura <input data-k="rwidth" type="range" min="2" max="24" step="0.5"><output></output></label>
+				<div class="row"><button data-act="riverDone">Concluir (Enter)</button><button data-act="riverCancel">Cancelar (Esc)</button></div>
+			</fieldset>
 			<fieldset class="gen">
 				<legend>Procedural (Gerar e Ruído)</legend>
 				<label>Tipo <select data-k="kind"><option value="island">Ilha</option><option value="perlin">Perlin</option></select></label>
@@ -660,6 +746,7 @@ export class TerrainEditor {
 		bind( 'wdepth', () => this.water.depth, ( v ) => { this.water.depth = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
 		bind( 'wfill', () => this.water.fill, ( v ) => { this.water.fill = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
 		bind( 'wshore', () => this.water.shore, ( v ) => { this.water.shore = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
+		bind( 'rwidth', () => this.river.width, ( v ) => { this.river.width = v; }, ( v ) => v.toFixed( 1 ) + ' m' );
 		bind( 'kind', () => this.gen.kind, ( v ) => { this.gen.kind = v; }, String );
 		bind( 'freq', () => this.gen.freq, ( v ) => { this.gen.freq = v; }, ( v ) => v.toFixed( 2 ) );
 		bind( 'octaves', () => this.gen.octaves, ( v ) => { this.gen.octaves = v; }, String );
@@ -675,6 +762,7 @@ export class TerrainEditor {
 			overhead: () => this.toggleOverhead(),
 			dice: () => { this.gen.seed = 1 + Math.floor( Math.random() * 99998 ); seed.value = this.gen.seed; },
 			undo: () => this.undoStep(), redo: () => this.redoStep(),
+			riverDone: () => this._riverFinish(), riverCancel: () => this._riverCancel(),
 			save: () => this.save(), export: () => this.exportFile(), import: () => file.click(),
 			// two clicks within 3 s (no browser dialog)
 			clear: ( b ) => {
