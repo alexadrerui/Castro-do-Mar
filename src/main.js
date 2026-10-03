@@ -331,6 +331,7 @@ async function main() {
 		app.water.reflector.reflector.updateBeforeType = on ? THREE.NodeUpdateType.RENDER : THREE.NodeUpdateType.NONE;
 	};
 	const _sunTint = new THREE.Color();
+	app.nightExposure = 1.5; // the exposure at night: x (1 + this)
 	app.onSunChanged = () => {
 		sky.update( false );
 		updateCloudSun( sky.state.elevation );
@@ -342,6 +343,13 @@ async function main() {
 		const e = sky.state.elevation;
 		const warm = THREE.MathUtils.smoothstep( e, 0, 22 );
 		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
+		// at night the haze takes the night sky's horizon (sky.js), and the exposure rises as the eye
+		// adapts: the moonlit scene stays readable, the lanterns and windows stand out
+		const night = sky.state.night;
+		hazeColor.value.lerp( sky.nightHorizon.value, night );
+		// the far haze (fogNode, past 4-14 km) too: a fixed day colour, it glowed over the distant ranges at night
+		hazeFar.value.setHex( 0x8fa9cc ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) ).lerp( sky.nightHorizon.value, night );
+		renderer.toneMappingExposure = 0.8 * ( 1 + app.nightExposure * night );
 		app.underwater?.setDaylight( hazeColor.value );
 		app.underwater?.setSun( sky.state.sunDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.sunDir, sky.sun, app.underwater?.murk.value );
@@ -438,7 +446,7 @@ async function main() {
 		clouds.ambient.value.copy( hazeColor.value ).multiplyScalar( sky.gain.value / 0.4 );
 		clouds.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1;
 		// the light shafts follow the sun's height and its light under the rain
-		clouds.sunVisible.value = cloudShadowUniforms.sunFade.value * Math.min( 1, sky.sun.intensity / ( sky.state.sunIntensity || sky.sun.intensity ) );
+		clouds.sunVisible.value = sky.state.sunIntensity > 0 ? cloudShadowUniforms.sunFade.value * Math.min( 1, sky.sun.intensity / sky.state.sunIntensity ) : 0; // 0 / 0 with the sun down
 	} );
 	// rain and wet ground (world/weather.js): the panel's "Chuva", app.setRain( 0..1 ), ?rain=0.8
 	const weather = new Weather( app, scene );

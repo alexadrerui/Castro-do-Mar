@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
-import { uniform, vec4, max, dot, normalize, pow, positionWorld, cameraPosition } from 'three/tsl';
+import { uniform, vec4, max, dot, normalize, pow, positionWorld, cameraPosition, mix, smoothstep } from 'three/tsl';
 
 // Preetham sky + procedural clouds (built into SkyMesh), sun light and
 // sky-derived image based lighting.
@@ -32,7 +32,15 @@ export function createSky( scene, renderer ) {
 	// the sun (the disc itself stays far above white).
 	const toSun = max( dot( normalize( positionWorld.sub( cameraPosition ) ), normalize( sky.sunPosition ) ), 0 );
 	const sunDim = pow( toSun, 5 ).mul( 0.5 ).oneMinus();
-	sky.material.colorNode = vec4( skyColor.rgb.mul( gain ).mul( sunDim ), 1 );
+	// The night sky (day and night, phase 2): the Preetham sky goes almost black below the horizon; a
+	// moonlit gradient (deep blue overhead, paler toward the horizon) is added as the sun sinks, by
+	// `night` (0 with the sun 2 degrees up, 1 at 10 degrees down; update())
+	const night = uniform( 0 );
+	const nightZenith = uniform( new THREE.Color().setRGB( 0.012, 0.022, 0.05, THREE.SRGBColorSpace ) );
+	const nightHorizon = uniform( new THREE.Color().setRGB( 0.07, 0.1, 0.17, THREE.SRGBColorSpace ) );
+	const up = normalize( positionWorld.sub( cameraPosition ) ).y;
+	const nightSky = mix( nightHorizon, nightZenith, smoothstep( 0, 0.5, up ) );
+	sky.material.colorNode = vec4( skyColor.rgb.mul( gain ).mul( sunDim ).add( nightSky.mul( night ) ), 1 );
 	sky.frustumCulled = false;
 	sky.layers.enable( 2 );
 	scene.add( sky );
@@ -54,6 +62,8 @@ export function createSky( scene, renderer ) {
 	const hemi = new THREE.HemisphereLight( 0xbfd6f2, 0x3d4a26, 0.15 );
 	scene.add( hemi );
 
+	const _hemiDay = new THREE.Color( 0xbfd6f2 ), _hemiNight = new THREE.Color( 0x5d78b0 );
+	const _groundDay = new THREE.Color( 0x3d4a26 ), _groundNight = new THREE.Color( 0x141a26 );
 	const state = {
 		elevation: 21,   // degrees: late-afternoon
 		azimuth: 238,    // degrees, 0 = north(-z), 90 = east(+x)
@@ -82,9 +92,17 @@ export function createSky( scene, renderer ) {
 		const e = Math.max( 0, state.elevation );
 		const warm = THREE.MathUtils.smoothstep( e, 0, 25 );
 		sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
-		sun.intensity = SUN_MAX * THREE.MathUtils.smoothstep( e, - 1, 8 );
+		// the real elevation (e is clamped at 0: below the horizon the sun stayed at 3.4%, warm, lighting from below)
+		sun.intensity = SUN_MAX * THREE.MathUtils.smoothstep( state.elevation, - 1, 8 );
 		state.sunIntensity = sun.intensity; // clear sky: world/weather.js dims it under rain
 		hemi.intensity = 0.08 + 0.09 * THREE.MathUtils.smoothstep( e, - 5, 30 );
+		// the night (day and night, phase 2): 0 with the sun 2 degrees up, 1 at 10 degrees down
+		const n = THREE.MathUtils.smoothstep( - state.elevation, - 2, 10 );
+		state.night = n;
+		night.value = n;
+		// the sky's light at night: moonlit blue
+		hemi.color.copy( _hemiDay ).lerp( _hemiNight, n );
+		hemi.groundColor.copy( _groundDay ).lerp( _groundNight, n );
 
 		if ( rebuildEnv ) {
 			envRT = pmrem.fromScene( envScene, 0, 1, 2000, envRT ? { renderTarget: envRT } : {} );
@@ -94,5 +112,5 @@ export function createSky( scene, renderer ) {
 	}
 	update( false );
 
-	return { sky, sun, hemi, state, gain, update, buildEnv: () => update( true ) };
+	return { sky, sun, hemi, state, gain, night, nightZenith, nightHorizon, update, buildEnv: () => update( true ) };
 }
