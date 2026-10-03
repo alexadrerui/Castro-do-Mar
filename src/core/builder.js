@@ -5,15 +5,30 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // bucket into a single BufferGeometry (one draw call per material).
 // Every primitive here writes UVs in metres so TSL materials can build
 // masonry / thatch / planks at a consistent real-world scale.
+// Geometries keep position, normal and uv, plus 'sway' where a piece of cloth carries it (see
+// canopy / bunting): its horizontal swing direction turns with the piece's matrix, and the other
+// pieces of the same material get zeros (they hold still), so a bucket merges with one layout.
+const _m3 = new THREE.Matrix3(), _sv = new THREE.Vector3();
 export class GeoBuilder {
 
 	constructor() { this.buckets = new Map(); }
 
 	add( key, geo, matrix = null ) {
 		const g = geo.index ? geo.toNonIndexed() : geo;
-		if ( matrix ) g.applyMatrix4( matrix );
+		if ( matrix ) {
+			g.applyMatrix4( matrix );
+			const sw = g.attributes.sway;
+			if ( sw ) {
+				_m3.setFromMatrix4( matrix );
+				for ( let i = 0; i < sw.count; i ++ ) {
+					_sv.set( sw.getY( i ), 0, sw.getZ( i ) ).applyMatrix3( _m3 ).setY( 0 );
+					if ( _sv.lengthSq() > 1e-12 ) _sv.normalize();
+					sw.setY( i, _sv.x ); sw.setZ( i, _sv.z );
+				}
+			}
+		}
 		if ( ! g.attributes.uv ) g.setAttribute( 'uv', new THREE.BufferAttribute( new Float32Array( g.attributes.position.count * 2 ), 2 ) );
-		for ( const name of Object.keys( g.attributes ) ) if ( ! [ 'position', 'normal', 'uv' ].includes( name ) ) g.deleteAttribute( name );
+		for ( const name of Object.keys( g.attributes ) ) if ( ! [ 'position', 'normal', 'uv', 'sway' ].includes( name ) ) g.deleteAttribute( name );
 		if ( ! this.buckets.has( key ) ) this.buckets.set( key, [] );
 		this.buckets.get( key ).push( g );
 	}
@@ -21,6 +36,7 @@ export class GeoBuilder {
 	build() {
 		const out = new Map();
 		for ( const [ k, list ] of this.buckets ) {
+			if ( list.some( ( g ) => g.attributes.sway ) ) for ( const g of list ) if ( ! g.attributes.sway ) g.setAttribute( 'sway', new THREE.BufferAttribute( new Float32Array( g.attributes.position.count * 4 ), 4 ) );
 			const g = mergeGeometries( list );
 			g.computeBoundingSphere();
 			out.set( k, g );
@@ -210,6 +226,9 @@ export function gableWall( w, y0, rise, z, facing ) {
 }
 
 // Sloped cloth canopy (market stall), sagging in the middle.
+// sway (the cloth in the wind, world/materials.js clothMaterial): x how far a point hangs below the
+// edge it swings about (the tips of the front valance), y / z that edge's horizontal outward normal,
+// w how much it billows (the middle of the sheet; the edges on the frame hold still).
 export function canopy( w, d, hFront, hBack, sag = 0.18, seg = 6 ) {
 	const s = new Soup();
 	for ( let i = 0; i < seg; i ++ ) for ( let j = 0; j < seg; j ++ ) {
@@ -229,12 +248,26 @@ export function canopy( w, d, hFront, hBack, sag = 0.18, seg = 6 ) {
 		s.tri( [ x0, y, z ], [ x1, y, z ], [ xm, y - 0.35, z - 0.02 ], [ 0, 0 ], [ 1, 0 ], [ 0.5, 0.35 ] );
 		s.tri( [ x1, y, z ], [ x0, y, z ], [ xm, y - 0.35, z - 0.02 ], [ 1, 0 ], [ 0, 0 ], [ 0.5, 0.35 ] );
 	}
-	return s.geometry();
+	const g = s.geometry();
+	const p = g.attributes.position, sw = new Float32Array( p.count * 4 );
+	for ( let i = 0; i < p.count; i ++ ) {
+		const x = p.getX( i ), y = p.getY( i ), z = p.getZ( i );
+		const tip = z < - d / 2 - 0.01; // a valance point
+		sw[ i * 4 ] = tip ? 0.35 : 0;
+		sw[ i * 4 + 2 ] = - 1; // the front edge faces -z
+		const u = x / w + 0.5, v = z / d + 0.5;
+		sw[ i * 4 + 3 ] = tip ? 0 : Math.max( 0, Math.sin( Math.PI * u ) * Math.sin( Math.PI * v ) );
+	}
+	g.setAttribute( 'sway', new THREE.BufferAttribute( sw, 4 ) );
+	return g;
 }
 
 // Pennant string: triangular flags hanging along a catenary from a to b.
+// sway as in canopy: the flags swing about the string (x: the tip hangs size x 1.4 below it).
 export function bunting( a, b, n = 12, sag = 0.6, size = 0.35 ) {
 	const s = new Soup();
+	const L = Math.hypot( b.x - a.x, b.z - a.z ) || 1, nx = - ( b.z - a.z ) / L, nz = ( b.x - a.x ) / L;
+	const sw = [];
 	for ( let i = 0; i < n; i ++ ) {
 		const t0 = ( i + 0.1 ) / n, t1 = ( i + 0.9 ) / n, tm = ( i + 0.5 ) / n;
 		const P = ( t ) => [ a.x + ( b.x - a.x ) * t, a.y + ( b.y - a.y ) * t - sag * 4 * t * ( 1 - t ), a.z + ( b.z - a.z ) * t ];
@@ -242,8 +275,11 @@ export function bunting( a, b, n = 12, sag = 0.6, size = 0.35 ) {
 		const tip = [ pm[ 0 ], pm[ 1 ] - size * 1.4, pm[ 2 ] ];
 		s.tri( p0, p1, tip, [ 0, 0 ], [ 1, 0 ], [ 0.5, 1 ] );
 		s.tri( p1, p0, tip, [ 1, 0 ], [ 0, 0 ], [ 0.5, 1 ] );
+		for ( const h of [ 0, 0, size * 1.4, 0, 0, size * 1.4 ] ) sw.push( h, nx, nz, 0 );
 	}
-	return s.geometry();
+	const g = s.geometry();
+	g.setAttribute( 'sway', new THREE.Float32BufferAttribute( sw, 4 ) );
+	return g;
 }
 
 // Straight dry-stone wall segment from a to b (on possibly sloped ground).

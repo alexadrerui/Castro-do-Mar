@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, uv, positionWorld, normalWorld, float, vec2, vec3, color, mix, smoothstep, floor, fract, sin,
-	hash, texture, fwidth, length, clamp, abs, max, uniform
+	hash, texture, fwidth, length, clamp, abs, max, uniform, attribute, positionLocal, modelWorldMatrix,
+	vec4, dot, cos, time
 } from 'three/tsl';
 import { proceduralBump } from './terrain.js';
 import { SURFACE } from './surfaceBake.js';
@@ -165,9 +166,48 @@ export function woodMaterial( T, { a = 0x4a3526, b = 0x755638, plank = 0.24, sea
 	return proxyTone( mat, a, b );
 }
 
+// The wind in the cloth (the awnings, the stall canopies, the bunting). The idea is Cortiz's
+// (Stylized Premium Scenes, https://github.com/CortizLabs/stylized-premium-patreon,
+// src/components/rainyScene/windSway.ts and painterly/materials/wind.ts, MIT, Copyright (c) 2026
+// Christian Ortiz): a piece of cloth ROTATES about the edge it hangs from instead of sliding, so it
+// never stretches; the gust phase travels across the world along the wind and LAGS from the edge to
+// the tip, so the cloth ripples instead of swinging as a plate; a small flutter rides on top. Here
+// the angle turns the hanging vector exactly (the tip swings out downwind and rises), per vertex from
+// the geometry's 'sway' attribute (core/builder.js canopy / bunting), and the middle of a sheet on
+// its frame billows. The wind blows from the south-west, as for the grass and the birds; stronger in
+// the rain (world/weather.js).
+export const clothWind = {
+	dir: uniform( new THREE.Vector2( 0.62, - 0.78 ).normalize() ), // where it blows to (+x -z)
+	strength: uniform( 0.5 ),   // radians of swing at the top of a gust
+	speed: uniform( 1.3 ),      // gust phase, radians per second
+	freq: uniform( 0.05 ),      // gust phase, radians per metre along the wind (~125 m gusts)
+	lag: uniform( 2.5 ),        // radians of phase per metre from the edge to the tip
+	turb: uniform( 0.12 ),      // flutter, radians
+	turbSpeed: uniform( 6.5 ),
+	billow: uniform( 0.1 )      // m: the middle of a canopy rising and falling
+};
+const clothSway = Fn( () => {
+	const W = clothWind;
+	const sw = attribute( 'sway', 'vec4' );
+	const hang = sw.x, nrm = vec2( sw.y, sw.z ), billow = sw.w;
+	const wpos = modelWorldMatrix.mul( vec4( positionLocal, 1 ) ).xyz;
+	const phase = dot( wpos.xz, W.dir ).mul( W.freq ).add( time.mul( W.speed ) ).sub( hang.mul( W.lag ) );
+	const gust = sin( phase ).mul( 0.5 ).add( 0.5 );
+	// how square the edge stands to the wind, and which side is downwind
+	const side = dot( nrm, W.dir );
+	const down = nrm.mul( side.greaterThanEqual( 0 ).select( 1, - 1 ) );
+	const flutter = sin( time.mul( W.turbSpeed ).add( wpos.x.mul( 2.1 ) ).add( wpos.z.mul( 1.7 ) ).add( hang.mul( 9 ) ) ).mul( W.turb );
+	const a = gust.mul( 0.85 ).add( 0.15 ).mul( W.strength ).add( flutter ).mul( abs( side ).mul( 0.7 ).add( 0.3 ) );
+	// the hanging vector ( 0, -hang, 0 ) turned by a about the edge: out downwind and up
+	const swing = vec3( down.x.mul( hang ).mul( sin( a ) ), hang.mul( cos( a ).oneMinus() ), down.y.mul( hang ).mul( sin( a ) ) );
+	const lift = billow.mul( W.billow ).mul( sin( phase.mul( 1.7 ).add( wpos.x.mul( 0.8 ) ) ).mul( 0.7 ).add( gust.mul( 0.6 ) ).sub( 0.3 ) );
+	return positionLocal.add( swing ).add( vec3( 0, lift, 0 ) );
+} );
+
 // Woven cloth (market canopies, bunting, banners).
 export function clothMaterial( T, { a = 0x8c2419, b = 0xb13a28 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
+	mat.positionNode = clothSway();
 	const st = uv();
 	const P = { a: UC( a ), b: UC( b ) };
 	const weave = mix( sin( st.x.mul( 260.0 ) ).mul( sin( st.y.mul( 260.0 ) ) ).mul( 0.5 ).add( 0.5 ), 0.5, aa( st, 0.002, 0.008 ) );

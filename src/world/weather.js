@@ -9,6 +9,7 @@
 // app.weather: setRain( 0..1 ), rain, wetness.
 import * as THREE from 'three/webgpu';
 import { rainFall, rainClock } from './rainImpacts.js';
+import { clothWind } from './materials.js';
 import { cameraPosition, float, fract, hash, instanceIndex, mix, positionGeometry, time, uniform, vec3 } from 'three/tsl';
 
 export const wetness = uniform( 0 );
@@ -98,6 +99,9 @@ export class Weather {
 		// the drops landing (world/rainImpacts.js): rings on the water and the puddles, glints
 		rainFall.value = this.level;
 		rainClock.value += dt;
+		// and the wind in the cloth picks up (world/materials.js clothWind)
+		clothWind.strength.value = 0.5 * ( 1 + 0.6 * this.level );
+		clothWind.turb.value = 0.12 * ( 1 + 1.0 * this.level );
 		const w = wetness.value;
 		wetness.value = this.level > w ? Math.min( this.level, w + dt / 40 ) : Math.max( this.level, w - dt / 120 );
 		this.rain.update( camera, underwater ? 0 : this.level );
@@ -116,6 +120,6 @@ export class Weather {
 		// the sun dims under the rain clouds (sky.update sets its clear-sky intensity on every change)
 		if ( sky.state.sunIntensity !== undefined ) sky.sun.intensity = sky.state.sunIntensity * ( 1 - 0.55 * e );
 		// and the shadows soften (unless the panel switched them off: app.setShadows)
-		if ( this.app.shadowsOn !== false ) sky.sun.shadow.intensity = 1 - 0.6 * e;
+		if ( this.app.shadowsOn !== false ) this.app.shadows?.setIntensity( 1 - 0.6 * e );
 	}
 }
