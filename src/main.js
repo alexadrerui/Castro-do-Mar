@@ -28,7 +28,7 @@ import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
 import { Weather } from './world/weather.js';
 import { Lightning } from './world/lightning.js';
-import { Clouds, loadCloudNoise } from './post/clouds.js';
+import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
@@ -420,7 +420,7 @@ async function main() {
 	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.sunDir } );
 	app.valleyFog = valley;
 	// volumetric cumulus over the sky's own clouds (post/clouds.js); ?clouds=0 leaves them out
-	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { noise: await loadCloudNoise(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.sunDir } );
+	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.sunDir } );
 	app.clouds = clouds;
 	// the sky's flat clouds stay as a thin high layer over the cumulus
 	if ( clouds ) sky.sky.cloudDensity.value = 0.3;

@@ -1,165 +1,117 @@
-// Volumetric cumulus: a layer of clouds between BASE and BASE + THICK metres, raymarched per pixel at
-// reduced resolution (like post/mist.js) and laid over the scene. The shape is a Perlin-Worley noise
-// (billows) eroded by a Worley fbm (the cauliflower edges), both in one tileable 3D texture made on the
-// CPU, under a coverage map: few clouds in fair weather, a closed sky in the rain (the sky's
-// cloudCoverage, the panel's "Nuvens"). Flat bases, rounded tops. Lit by the sun through a short march
-// toward it (Beer-Lambert with the powder term for the dark edges) with a forward and a back scattering
-// lobe, plus the sky's light from above; the distance hazes them like the land. The march stops at the
-// scene's depth, so the mountains stand in front of the clouds behind them.
-// The technique follows the well-known recipe (Schneider, "The real-time volumetric cloudscapes of
-// Horizon: Zero Dawn", SIGGRAPH 2015); the code is ours. app.clouds: coverage, density, sunScale,
-// ambientScale, base, thick, strength; ?clouds=0 leaves the pass out.
+// Volumetric clouds, after takram's @takram/three-clouds (three-geospatial, packages/clouds, v0.7.6:
+// shaders/clouds.glsl, clouds.frag, CloudLayers.ts, qualityPresets.ts), MIT License, Copyright (c) 2024
+// Shota Matsuda, licenses/LICENSE-takram-clouds.md. Its textures are used as they are (public/clouds/:
+// the 128³ shape, the 32³ shape detail and the 512² local weather, one cloud layer per channel).
+// Changes: rewritten in TSL for WebGPU (the original is GLSL for pmndrs' postprocessing); a flat world
+// instead of the globe (the weather tiles over x / z); no Beer shadow map yet (a longer march to the sun
+// instead), no turbulence, no light shafts, no haze; the temporal filter is simpler (below); the
+// sun and sky light are this project's (sky.js), not precomputed atmosphere irradiance; the coverage
+// comes from the sky's cloudCoverage (the panel's "Nuvens", the rain).
+// The model: per layer, the weather texture says where the clouds are, a semi-circle height function
+// rounds their tops and the coverage remaps it; the shape noise carves them, the detail erodes the
+// edges (wispy at the base, billowing at the top); a density profile grows with the height. The march
+// takes 40 m steps growing with the distance, long steps through empty air, and stops once opaque.
+// Light: a few steps toward the sun, multiple scattering as octaves (Wrenninge), a dual-lobe
+// Henyey-Greenstein phase, the powder darkening, the sky's light by height, and the energy-conserving
+// integration of each step (Frostbite 2016, 5.6.3). The distance haze is applied once, at the
+// transmittance-weighted mean depth of the clouds.
+// Temporal filter (after the original's resolve, much simplified): the march is jittered differently
+// every frame (golden-ratio sequence) and blended into a history at 10% a frame; the history is
+// reprojected by the ray's direction (the clouds are kilometres away, the camera's turn is what moves
+// them) and clamped to the 3 x 3 neighbourhood of the new frame (no ghosting). No blur: sharp edges.
+// app.clouds: coverage (the sky's), sunScale, ambientScale, windSpeed, evolve, layer uniforms; ?clouds=0
+// leaves the pass out.
 import * as THREE from 'three/webgpu';
 import {
-	Fn, If, Loop, Break, float, mix, vec2, vec3, vec4, uniform, texture3D, screenUV, screenCoordinate, getViewPosition, interleavedGradientNoise, rtt, dot, exp, max, smoothstep
+	Fn, If, Loop, Break, float, mix, vec2, vec3, vec4, uniform, texture, texture3D, screenUV, screenCoordinate, getViewPosition,
+	getScreenPosition, interleavedGradientNoise, rtt, dot, exp, max, min, pow, log2, fract, uv, passTexture, convertToTexture
 } from 'three/tsl';
-import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
-import { cacheGet, cachePut, hashSources } from '../core/cache.js';
-import srcClouds from './clouds.js?raw';
 
-const SIZE = 64, STEPS = 40, LIGHT_STEPS = 5, MAX_DIST = 60000;
+const MAX_ITER = 192, SUN_STEPS = 4, MAX_DIST = 60000;
+const N = ( x ) => ( typeof x === 'number' ? float( x ) : x );
+const remap = ( v, a, b ) => v.sub( N( a ) ).div( N( b ).sub( N( a ) ).max( 1e-5 ) ).clamp( 0, 1 );
 
-// ---- the noise texture: R Perlin-Worley (shape), G Worley fbm (erosion); all periodic over the tile ----
-function makeNoise( size = SIZE ) {
-	const t0 = performance.now();
-	let seed = 1337;
-	const rnd = () => ( ( seed = ( seed * 16807 ) % 2147483647 ) / 2147483647 );
-	// Worley: one feature point per cell of an f³ grid, distance to the nearest, wrapped
-	const worley = ( f ) => {
-		const pts = new Float32Array( f * f * f * 3 );
-		for ( let i = 0; i < pts.length; i ++ ) pts[ i ] = rnd();
-		const out = new Float32Array( size * size * size );
-		let k = 0;
-		for ( let z = 0; z < size; z ++ ) for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) {
-			const px = x / size * f, py = y / size * f, pz = z / size * f;
-			const cx = Math.floor( px ), cy = Math.floor( py ), cz = Math.floor( pz );
-			let d2 = 9;
-			for ( let dz = - 1; dz <= 1; dz ++ ) for ( let dy = - 1; dy <= 1; dy ++ ) for ( let dx = - 1; dx <= 1; dx ++ ) {
-				const gx = cx + dx, gy = cy + dy, gz = cz + dz;
-				const i = ( ( ( gz % f + f ) % f ) * f * f + ( ( gy % f + f ) % f ) * f + ( ( gx % f + f ) % f ) ) * 3;
-				const qx = gx + pts[ i ] - px, qy = gy + pts[ i + 1 ] - py, qz = gz + pts[ i + 2 ] - pz;
-				const d = qx * qx + qy * qy + qz * qz;
-				if ( d < d2 ) d2 = d;
-			}
-			out[ k ++ ] = 1 - Math.min( 1, Math.sqrt( d2 ) ); // inverted: 1 at the points (billows)
-		}
-		return out;
+// the textures of the original (public/clouds/); the browser caches them
+export async function loadCloudTextures() {
+	const base = import.meta.env.BASE_URL + 'clouds/';
+	const bin = ( f ) => fetch( base + f ).then( ( r ) => { if ( ! r.ok ) throw new Error( f + ' ' + r.status ); return r.arrayBuffer(); } );
+	const [ shape, detail, weather ] = await Promise.all( [ bin( 'shape.bin' ), bin( 'shape_detail.bin' ), new THREE.TextureLoader().loadAsync( base + 'local_weather.png' ) ] );
+	const tex3 = ( buf, n ) => {
+		const t = new THREE.Data3DTexture( new Uint8Array( buf ), n, n, n );
+		t.format = THREE.RedFormat;
+		t.minFilter = t.magFilter = THREE.LinearFilter;
+		t.wrapS = t.wrapT = t.wrapR = THREE.RepeatWrapping;
+		t.unpackAlignment = 1;
+		t.needsUpdate = true;
+		return t;
 	};
-	// Perlin (gradient) noise with period f
-	const perlin = ( f ) => {
-		const g = new Float32Array( f * f * f * 3 );
-		for ( let i = 0; i < f * f * f; i ++ ) {
-			const a = rnd() * Math.PI * 2, zc = rnd() * 2 - 1, r = Math.sqrt( 1 - zc * zc );
-			g[ i * 3 ] = r * Math.cos( a ); g[ i * 3 + 1 ] = r * Math.sin( a ); g[ i * 3 + 2 ] = zc;
-		}
-		const fade = ( t ) => t * t * t * ( t * ( t * 6 - 15 ) + 10 );
-		const out = new Float32Array( size * size * size );
-		let k = 0;
-		for ( let z = 0; z < size; z ++ ) for ( let y = 0; y < size; y ++ ) for ( let x = 0; x < size; x ++ ) {
-			const px = x / size * f, py = y / size * f, pz = z / size * f;
-			const cx = Math.floor( px ), cy = Math.floor( py ), cz = Math.floor( pz );
-			const fx = px - cx, fy = py - cy, fz = pz - cz;
-			const dotc = ( ix, iy, iz ) => {
-				const i = ( ( ( cz + iz ) % f ) * f * f + ( ( cy + iy ) % f ) * f + ( ( cx + ix ) % f ) ) * 3;
-				return g[ i ] * ( fx - ix ) + g[ i + 1 ] * ( fy - iy ) + g[ i + 2 ] * ( fz - iz );
-			};
-			const u = fade( fx ), v = fade( fy ), w = fade( fz );
-			const l = ( a, b, t ) => a + ( b - a ) * t;
-			out[ k ++ ] = l( l( l( dotc( 0, 0, 0 ), dotc( 1, 0, 0 ), u ), l( dotc( 0, 1, 0 ), dotc( 1, 1, 0 ), u ), v ),
-				l( l( dotc( 0, 0, 1 ), dotc( 1, 0, 1 ), u ), l( dotc( 0, 1, 1 ), dotc( 1, 1, 1 ), u ), v ), w );
-		}
-		return out;
-	};
-	const w4 = worley( 4 ), w8 = worley( 8 ), w16 = worley( 16 );
-	const p4 = perlin( 4 ), p8 = perlin( 8 ), p16 = perlin( 16 );
-	const n = size * size * size, data = new Uint8Array( n * 2 );
-	const clamp01 = ( v ) => Math.min( 1, Math.max( 0, v ) );
-	for ( let i = 0; i < n; i ++ ) {
-		const wf = w4[ i ] * 0.625 + w8[ i ] * 0.25 + w16[ i ] * 0.125;
-		const pf = clamp01( ( p4[ i ] + p8[ i ] * 0.5 + p16[ i ] * 0.25 ) * 0.7 + 0.5 );
-		// Perlin-Worley: the Perlin fbm remapped by the Worley (billowy, connected)
-		const pw = clamp01( ( pf - ( 1 - wf ) ) / ( 1 - ( 1 - wf ) * 0.999 ) * 0.5 + pf * 0.5 );
-		data[ i * 2 ] = Math.round( clamp01( pw ) * 255 );
-		data[ i * 2 + 1 ] = Math.round( clamp01( w8[ i ] * 0.625 + w16[ i ] * 0.375 ) * 255 );
-	}
-	console.info( 'cloud noise (ms)', Math.round( performance.now() - t0 ) );
-	return data;
-}
-
-// the noise texels, from the IndexedDB cache (core/cache.js) when this file has not changed: ~0.26 s
-// of the main thread at every load otherwise
-export async function loadCloudNoise() {
-	const key = 'clouds:' + hashSources( srcClouds );
-	const cached = await cacheGet( key );
-	if ( cached?.data?.length === SIZE * SIZE * SIZE * 2 ) return cached.data;
-	const data = makeNoise();
-	cachePut( key, { data }, 'clouds:' );
-	return data;
-}
-
-function noiseTexture( data, size = SIZE ) {
-	const tex = new THREE.Data3DTexture( data, size, size, size );
-	tex.format = THREE.RGFormat;
-	tex.minFilter = tex.magFilter = THREE.LinearFilter;
-	tex.wrapS = tex.wrapT = tex.wrapR = THREE.RepeatWrapping;
-	tex.unpackAlignment = 1;
-	tex.needsUpdate = true;
-	return tex;
+	weather.wrapS = weather.wrapT = THREE.RepeatWrapping;
+	weather.colorSpace = THREE.NoColorSpace;
+	weather.generateMipmaps = true;
+	weather.minFilter = THREE.LinearMipmapLinearFilter;
+	return { shape: tex3( shape, 128 ), detail: tex3( detail, 32 ), weather };
 }
 
 export class Clouds {
 
-	// noise (loadCloudNoise()), scenePass (its depth), camera, hazeAmount( d, y ) (the land's haze),
+	// textures (loadCloudTextures()), scenePass (its depth), camera, hazeAmount( d, y ) (the land's haze),
 	// hazeColor (uniform), sunDir (vector, followed by reference)
-	constructor( { noise: noiseData, scenePass, camera, hazeAmount, hazeColor, sunDir, resolutionScale = 0.5 } ) {
-		const noise = noiseTexture( noiseData ?? makeNoise() );
-		this.strength = uniform( 1 );            // 0: off (under the water)
-		this.coverage = uniform( 0.55 );         // the sky's cloudCoverage (main.js keeps them together)
-		this.density = uniform( 0.12 );         // extinction per metre in the densest core
-		this.base = uniform( 1100 ); this.thick = uniform( 900 );
-		this.shapeScale = uniform( 1 / 2600 );   // m: one tile of the shape noise
-		this.detailScale = uniform( 1 / 420 );
-		this.erosion = uniform( 0.45 );
-		this.mapScale = uniform( 1 / 14000 );    // the coverage map (where the clouds are)
-		this.sunColor = uniform( new THREE.Color( 1, 0.95, 0.85 ) );
-		this.sunScale = uniform( 7 );
-		this.ambient = uniform( new THREE.Color( 0.55, 0.65, 0.8 ) );
-		this.ambientScale = uniform( 1.1 );
+	constructor( { textures, scenePass, camera, hazeAmount, hazeColor, sunDir, resolutionScale = 0.5 } ) {
+		const { shape: shapeTex, detail: detailTex, weather: weatherTex } = textures;
+		this.strength = uniform( 1 );       // 0: off (under the water)
+		this.coverage = uniform( 0.55 );    // the sky's cloudCoverage (main.js keeps them together)
 		this.time = uniform( 0 );
-		// the cumulus drift and change shape: a wind at the cloud level (m/s; 8 was too slow to see a few
-		// km away), the shape noise walked through its third axis (tiles per second: they grow and fade
-		// over minutes; a rigid stamp before) and the erosion of the edges
-		this.windSpeed = uniform( 18 );
-		this.evolve = uniform( 0.0012 );
-		this.detailEvolve = uniform( 0.006 );
+		this.frame = uniform( 0 );
+		this.windSpeed = uniform( 18 );     // m/s, from the south-west
+		this.evolve = uniform( 3 );         // m/s: the shape noise drifts down through the clouds (they change)
+		this.sunColor = uniform( new THREE.Color( 1, 0.95, 0.85 ) );
+		this.sunScale = uniform( 12 );
+		this.ambient = uniform( new THREE.Color( 0.55, 0.65, 0.8 ) );
+		this.ambientScale = uniform( 2.5 );
+		this.weatherScale = uniform( 1 / 60000 ); // m: one tile of the weather (cells of ~1-2 km)
+		this.shapeRepeat = uniform( 0.0003 ); this.detailRepeat = uniform( 0.006 );
+		// the layers (x, y, z, w = the weather's r, g, b, a): the original's two cumulus layers; b
+		// (cirrus) and a are off, the sky's own flat clouds stay as the high layer
+		const v4 = ( x, y, z, w ) => uniform( new THREE.Vector4( x, y, z, w ) );
+		const L = this.layers = {
+			minH: v4( 750, 1000, 0, 0 ), maxH: v4( 1400, 2200, 0, 0 ),
+			densityScale: v4( 0.2, 0.2, 0, 0 ), shapeAmount: v4( 1, 1, 0, 0 ), detailAmount: v4( 1, 1, 0, 0 ),
+			weatherExp: v4( 1, 1, 1, 1 ), bias: v4( 0.35, 0.35, 0.35, 0.35 ), filterW: v4( 0.6, 0.6, 0.5, 0.6 ),
+			profLin: v4( 0.75, 0.75, 0.75, 0.75 ), profConst: v4( 0.25, 0.25, 0.25, 0.25 )
+		};
+		this.base = uniform( 750 ); this.top = uniform( 2200 ); // the span of the enabled layers
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
 		this.camPos = camPos;
 		const depthTex = scenePass.getTextureNode( 'depth' );
-		// the wind from the south-west
-		const wind = vec3( 0.7071, 0, - 0.7071 ).mul( this.time.mul( this.windSpeed ) );
-		const morph = vec3( 0, this.time.mul( this.evolve ), 0 );
+		const windDir = vec2( 0.7071, - 0.7071 );
+		const wind = windDir.mul( this.time.mul( this.windSpeed ) );
+		// the panel's 0.55 (fair weather) -> 0.3 (the original's example), the rain's 0.95 -> ~0.6 (a closed sky that keeps the relief of its base: above ~0.6 the filter width of 0.6 fills the whole layer)
+		const cov = this.coverage.sub( 0.55 ).mul( 0.65 ).add( 0.3 ).clamp( 0, 1 );
 
-		const remap = ( v, a, b ) => v.sub( a ).div( b.sub( a ).max( 1e-4 ) ).clamp( 0, 1 );
-		// density at p (0..1) and the height fraction in the layer
-		const density = ( p, cheap ) => {
-			const h = p.y.sub( this.base ).div( this.thick ).clamp( 0, 1 );
-			const q = p.add( wind );
-			// where: a low-frequency map from a slice of the noise, cut by the coverage
-			const m = texture3D( noise, vec3( q.xz.mul( this.mapScale ), 0.37 ).xzy ).level( 0 );
-			const cov = remap( m.r.mul( 0.75 ).add( m.g.mul( 0.25 ) ), this.coverage.oneMinus().mul( 0.95 ), this.coverage.oneMinus().mul( 0.95 ).add( 0.25 ) );
-			// the cumulus profile: a flat base, a dome narrowing upwards (more so where the cover is thin)
-			const grad = smoothstep( 0, 0.08, h ).mul( smoothstep( cov.mul( 0.7 ).add( 0.25 ), 0.15, h ) );
-			const shape = texture3D( noise, q.mul( this.shapeScale ).add( morph ) ).level( 0 ).r;
-			let d = remap( shape.mul( grad ), cov.oneMinus(), float( 1 ) ).mul( cov );
-			// an overcast sky (the rain) closes into one sheet, thinner toward the top
-			d = max( d, smoothstep( 0.75, 0.95, this.coverage ).mul( shape.mul( 0.5 ).add( 0.3 ) ).mul( smoothstep( 0, 0.1, h ) ).mul( smoothstep( 0.9, 0.3, h ) ) );
-			if ( ! cheap ) {
-				// erosion by the Worley fbm, wispier at the base, billowing at the top
-				const det = texture3D( noise, q.mul( this.detailScale ).add( vec3( 0, this.time.mul( this.detailEvolve ), 0 ) ) ).level( 0 ).g;
-				d = remap( d, mix( det.oneMinus(), det, h.mul( 3 ).clamp( 0, 1 ) ).mul( this.erosion ), float( 1 ) );
+		const weatherAt = ( p, mip ) => {
+			const hf = remap( vec4( p.y ), L.minH, L.maxH );
+			const lw = pow( texture( weatherTex, p.xz.sub( wind ).mul( this.weatherScale ) ).level( mip ), L.weatherExp );
+			// semi-circle: rounded tops
+			const x = pow( hf, L.bias ).mul( 2 ).sub( 1 ).clamp( - 1, 1 );
+			const factor = x.mul( x ).oneMinus().mul( cov ).oneMinus();
+			return { hf, density: remap( mix( lw, vec4( 1 ), L.filterW ), factor, factor.add( L.filterW ) ) };
+		};
+		// the media at p: per-layer density (vec4) and their sum (the extinction, all scattering)
+		const mediaAt = ( w, p, detail ) => {
+			const q = vec3( p.x.sub( wind.x ), p.y.add( this.time.mul( this.evolve ) ), p.z.sub( wind.y ) );
+			const shape = texture3D( shapeTex, q.mul( this.shapeRepeat ) ).level( 0 ).r;
+			const d = remap( w.density, vec4( shape.oneMinus() ).mul( L.shapeAmount ), 1 ).toVar();
+			if ( detail ) {
+				If( detail, () => {
+					const det = texture3D( detailTex, q.mul( this.detailRepeat ) ).level( 0 ).r;
+					// fluffy at the top, whippy at the bottom
+					const mod = mix( vec4( pow( det, 6 ) ), vec4( det.oneMinus() ), remap( w.hf, 0.2, 0.4 ) ).mul( L.detailAmount );
+					d.assign( remap( d.mul( 2 ), mod.mul( 0.5 ), 1 ) );
+				} );
 			}
-			return d;
+			const dd = d.mul( L.densityScale ).mul( w.hf.mul( L.profLin ).add( L.profConst ) ).clamp( 0, 1 );
+			return { d: dd, sum: dd.x.add( dd.y ).add( dd.z ).add( dd.w ) };
 		};
 
 		const march = Fn( () => {
@@ -169,51 +121,72 @@ export class Clouds {
 			const ray = target.sub( camPos );
 			const surf = depth.greaterThanEqual( 0.99999 ).select( float( 1e9 ), ray.length() );
 			const dir = ray.normalize();
-			const top = this.base.add( this.thick );
 			const dy = dir.y.greaterThanEqual( 0 ).select( dir.y.max( 1e-5 ), dir.y.min( - 1e-5 ) );
-			const t0 = this.base.sub( camPos.y ).div( dy ), t1 = top.sub( camPos.y ).div( dy );
+			const t0 = this.base.sub( camPos.y ).div( dy ), t1 = this.top.sub( camPos.y ).div( dy );
 			const tStart = t0.min( t1 ).max( 0 );
-			const tEnd = t0.max( t1 ).min( surf ).min( MAX_DIST );
-			const len = tEnd.sub( tStart ).max( 0 );
-			const col = vec3( 0 ).toVar(), T = float( 1 ).toVar();
+			const len = t0.max( t1 ).min( surf ).min( MAX_DIST ).sub( tStart ).max( 0 );
+			const col = vec3( 0 ).toVar(), T = float( 1 ).toVar(), wSum = float( 0 ).toVar(), tSum = float( 0 ).toVar();
 			If( len.greaterThan( 1 ), () => {
-				const stepLen = len.div( STEPS );
-				const jitter = interleavedGradientNoise( screenCoordinate.xy );
-				// the phase: a forward lobe (silver lining toward the sun) and a softer back lobe
+				const jitter = fract( interleavedGradientNoise( screenCoordinate.xy ).add( this.frame.mul( 0.618034 ) ) );
 				const cosT = dot( dir, sun );
-				const hg = ( g ) => float( 1 - g * g ).div( float( 1 + g * g ).sub( cosT.mul( 2 * g ) ).pow( 1.5 ) ).mul( 1 / ( 4 * Math.PI ) );
-				const phase = mix( hg( - 0.15 ), hg( 0.75 ), 0.45 ).mul( 4 * Math.PI ).max( 0.35 );
-				Loop( STEPS, ( { i } ) => {
-					If( T.lessThan( 0.02 ), () => { Break(); } );
-					const t = tStart.add( float( i ).add( jitter ).mul( stepLen ) );
+				// dual-lobe Henyey-Greenstein, the anisotropy attenuated per scattering octave
+				const hg = ( g ) => float( 1 - g * g ).div( float( 1 + g * g ).sub( cosT.mul( 2 * g ) ).max( 1e-7 ).pow( 1.5 ) ).mul( 1 / ( 4 * Math.PI ) );
+				const phase = ( c ) => hg( 0.7 * c ).add( hg( - 0.2 * c ) ).mul( 0.5 );
+				const sunIrr = this.sunColor.mul( this.sunScale ), skyIrr = this.ambient.mul( this.ambientScale );
+				const step = float( 40 ).add( tStart.mul( 0.012 ) ).toVar();
+				const r = step.mul( jitter ).mul( 2 ).toVar();
+				Loop( MAX_ITER, () => {
+					If( r.greaterThan( len ), () => { Break(); } );
+					const t = tStart.add( r );
 					const p = camPos.add( dir.mul( t ) );
-					const d = density( p, false );
-					If( d.greaterThan( 0.002 ), () => {
-						// toward the sun: optical depth over ~1 km in growing steps
-						const od = float( 0 ).toVar();
-						for ( let k = 0; k < LIGHT_STEPS; k ++ ) {
-							const lt = ( k + 0.5 ) * ( k + 1 ) * 38;
-							od.addAssign( density( p.add( sun.mul( lt ) ), true ).mul( ( k + 1 ) * 76 ) );
-						}
-						const sigma = d.mul( this.density );
-						const beer = exp( od.mul( this.density ).negate() );
-						const powder = exp( od.mul( this.density ).mul( - 2 ) ).oneMinus().mul( 0.7 ).add( 0.3 );
-						const h = p.y.sub( this.base ).div( this.thick ).clamp( 0, 1 );
-						const lit = this.sunColor.mul( this.sunScale ).mul( beer.mul( powder ).mul( phase ) )
-							.add( this.ambient.mul( this.ambientScale ).mul( h.mul( 0.6 ).add( 0.4 ) ) );
-						// hazed with the distance like the land
-						const lum = mix( lit, hazeColor.mul( 1.6 ), hazeAmount( t, p.y ).mul( 1.25 ).clamp( 0, 1 ) );
-						const a = exp( sigma.mul( stepLen ).negate() );
-						col.addAssign( T.mul( lum ).mul( a.oneMinus() ) );
-						T.mulAssign( a );
+					const mip = log2( t.div( 3000 ).max( 1 ) );
+					const w = weatherAt( p, mip );
+					const any = w.density.x.add( w.density.y ).add( w.density.z ).add( w.density.w ).greaterThan( 1e-4 );
+					If( any, () => {
+						const m = mediaAt( w, p, mip.mul( 0.5 ).add( jitter.sub( 0.5 ).mul( 0.5 ) ).lessThan( 0.5 ) );
+						If( m.sum.greaterThan( 1e-5 ), () => {
+							// optical depth toward the sun: steps doubling from 60 m (~0.9 km)
+							const od = float( 0 ).toVar();
+							let s = 60, at = 60 * 0.5;
+							for ( let k = 0; k < SUN_STEPS; k ++ ) {
+								const ps = p.add( sun.mul( float( at ).add( jitter.sub( 0.5 ).mul( s ) ) ) );
+								od.addAssign( mediaAt( weatherAt( ps, mip ), ps, false ).sum.mul( s ) );
+								at += s * 1.5; s *= 2;
+							}
+							// multiple scattering as octaves (a: attenuation, b: contribution, c: phase)
+							const ms = float( 0 ).toVar();
+							let a = 1, b = 1, c = 1;
+							for ( let k = 0; k < 8; k ++ ) { ms.addAssign( exp( od.mul( - b ) ).mul( phase( c ) ).mul( a ) ); a *= 0.5; b *= 0.5; c *= 0.5; }
+							const grad = dot( w.hf.mul( 0.5 ).add( 0.5 ), m.d.div( m.sum ) );
+							const powder = exp( m.sum.mul( - 150 ) ).mul( 0.8 ).oneMinus();
+							// radiance per unit scattering; the step's in-scattering, energy-conserving
+							const rad = sunIrr.mul( ms ).add( skyIrr.mul( grad ).mul( 1 / ( 4 * Math.PI ) ) ).mul( powder );
+							const Ts = exp( m.sum.mul( step ).negate() );
+							col.addAssign( rad.mul( Ts.oneMinus() ).mul( T ) );
+							T.mulAssign( Ts );
+							wSum.addAssign( t.mul( T ) ); tSum.addAssign( T );
+						} );
+						If( T.lessThan( 0.01 ), () => { Break(); } );
+						step.mulAssign( 1.012 );
+						r.addAssign( step );
+					} ).Else( () => {
+						// empty air: longer steps, up to 900 m far away
+						step.mulAssign( 1.012 );
+						r.addAssign( mix( step, float( 900 ), mip.min( 1 ) ) );
 					} );
 				} );
+				// the land's haze at the clouds' mean depth (aerial perspective)
+				If( tSum.greaterThan( 0 ), () => {
+					const front = wSum.div( tSum );
+					const hz = hazeAmount( front, camPos.y.add( dir.y.mul( front ) ) ).mul( 1.25 ).clamp( 0, 1 );
+					col.assign( mix( col, hazeColor.mul( 1.6 ).mul( T.oneMinus() ), hz ) );
+				} );
 			} );
-			return vec4( col, T );
+			return vec4( col, remap( T, 0.01, 1 ) );
 		} );
 
 		this.pass = rtt( march(), null, null, { type: THREE.HalfFloatType, resolutionScale } );
-		this.smooth = gaussianBlur( this.pass, vec2( 1 ), 1, { resolutionScale } );
+		this.smooth = new CloudHistory( this.pass, camera, resolutionScale, this.frame ).getTextureNode();
 	}
 
 	update( dt ) { this.time.value += dt; }
@@ -224,4 +197,91 @@ export class Clouds {
 		const s = this.strength;
 		return src.mul( mix( float( 1 ), c.a, s ) ).add( c.rgb.mul( s ) );
 	}
+}
+
+// ---- the temporal filter: ping-pong history (as three's AfterImageNode) ----
+const _size = new THREE.Vector2(), _quad = new THREE.QuadMesh();
+let _state;
+
+class CloudHistory extends THREE.TempNode {
+
+	// frame: the march's jitter index, advanced here at every render (also with the clouds frozen, as
+	// tools/verify.mjs does: a still jitter shows the raw march's noise)
+	constructor( input, camera, resolutionScale, frame ) {
+		super( 'vec4' );
+		this.frame = frame;
+		this.input = convertToTexture( input );
+		this.camera = camera;
+		this.scale = resolutionScale;
+		const opts = { depthBuffer: false, type: THREE.HalfFloatType };
+		this._rtA = new THREE.RenderTarget( 1, 1, opts ); this._rtA.texture.name = 'clouds.historyA';
+		this._rtB = new THREE.RenderTarget( 1, 1, opts ); this._rtB.texture.name = 'clouds.historyB';
+		this._out = passTexture( this, this._rtA.texture );
+		this._old = texture( this._rtB.texture );
+		this._prevView = new THREE.Matrix4(); this._prevProj = new THREE.Matrix4();
+		this.prevView = uniform( this._prevView ); this.prevProj = uniform( this._prevProj );
+		this.reset = uniform( 1 );
+		this._material = null;
+		this.updateBeforeType = THREE.NodeUpdateType.FRAME;
+	}
+
+	getTextureNode() { return this._out; }
+
+	updateBefore( frame ) {
+		const { renderer } = frame;
+		_state = THREE.RendererUtils.resetRendererState( renderer, _state );
+		renderer.getDrawingBufferSize( _size );
+		const w = Math.max( 1, Math.round( _size.x * this.scale ) ), h = Math.max( 1, Math.round( _size.y * this.scale ) );
+		if ( this._rtA.width !== w || this._rtA.height !== h ) { this._rtA.setSize( w, h ); this._rtB.setSize( w, h ); this.reset.value = 1; }
+		this._out.value = this._rtA.texture;
+		this._old.value = this._rtB.texture;
+		_quad.material = this._material;
+		renderer.setRenderTarget( this._rtA );
+		_quad.render( renderer );
+		this.reset.value = 0;
+		this.frame.value = ( this.frame.value + 1 ) % 1024;
+		// the view of this frame, for the next one's reprojection
+		this._prevView.copy( this.camera.matrixWorldInverse );
+		this._prevProj.copy( this.camera.projectionMatrix );
+		const t = this._rtA; this._rtA = this._rtB; this._rtB = t;
+		THREE.RendererUtils.restoreRendererState( renderer, _state );
+	}
+
+	setup( builder ) {
+		const cur = this.input, old = this._old, camera = this.camera;
+		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse );
+		const resolve = Fn( () => {
+			const st = uv();
+			const c = cur.sample( st ).toVar();
+			// the new frame's neighbourhood: the history is clamped into it
+			const px = vec2( 1 ).div( vec2( cur.size( 0 ) ) );
+			const lo = c.toVar(), hi = c.toVar();
+			for ( const [ dx, dy ] of [ [ - 1, - 1 ], [ 0, - 1 ], [ 1, - 1 ], [ - 1, 0 ], [ 1, 0 ], [ - 1, 1 ], [ 0, 1 ], [ 1, 1 ] ] ) {
+				const n = cur.sample( st.add( px.mul( vec2( dx, dy ) ) ) );
+				lo.assign( min( lo, n ) ); hi.assign( max( hi, n ) );
+			}
+			// where this pixel's ray pointed last frame (a point 4 km out: the clouds' distance)
+			const vdir = getViewPosition( st, float( 1 ), camProjInv ).normalize();
+			const wdir = camWorld.mul( vec4( vdir, 0 ) ).xyz;
+			const P = camWorld.mul( vec4( 0, 0, 0, 1 ) ).xyz.add( wdir.mul( 4000 ) );
+			const pv = this.prevView.mul( vec4( P, 1 ) ).xyz;
+			const pst = getScreenPosition( pv, this.prevProj );
+			const inside = pst.x.greaterThan( 0 ).and( pst.x.lessThan( 1 ) ).and( pst.y.greaterThan( 0 ) ).and( pst.y.lessThan( 1 ) ).and( pv.z.lessThan( 0 ) );
+			const h = old.sample( pst ).clamp( lo, hi );
+			const a = inside.and( this.reset.lessThan( 0.5 ) ).select( float( 0.1 ), float( 1 ) );
+			return mix( h, c, a );
+		} );
+		const m = this._material || ( this._material = new THREE.NodeMaterial() );
+		m.name = 'cloudsHistory';
+		m.fragmentNode = resolve();
+		builder.getNodeProperties( this ).input = cur;
+		return this._out;
+	}
+
+	dispose() {
+		super.dispose();
+		this._rtA.dispose(); this._rtB.dispose();
+		this._material?.dispose();
+	}
+
 }
