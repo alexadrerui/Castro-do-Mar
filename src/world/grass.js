@@ -364,6 +364,8 @@ export class GrassField {
 		this.hf = hf;
 		this.origin = new THREE.Vector2( hf.x0, hf.z0 );
 		const { data, res } = buildDensity( app );
+		// the CPU copy, for the meadow flowers (world/meadowFlora.js): G is the meadow
+		this.density = { data, res, texel: DENSITY_TEXEL, x0: hf.x0, z0: hf.z0 };
 		this.maskTex = new THREE.DataTexture( data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType );
 		this.maskTex.minFilter = this.maskTex.magFilter = THREE.LinearFilter;
 		this.maskTex.generateMipmaps = false;

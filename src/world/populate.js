@@ -9,6 +9,7 @@ import { addProxies } from '../core/proxies.js';
 import { createSmoke } from './smoke.js';
 import { buildPickBVH } from '../controls/focus.js';
 import { loadDetailTexture } from './granite/detail.js';
+import { createMeadowFlora } from './meadowFlora.js';
 
 // Populates the world with props, phase by phase.
 export async function populate( app, progress ) {
@@ -22,6 +23,14 @@ export async function populate( app, progress ) {
 	app.grass = grass;
 	app.layers.grass = { label: 'Grama', object: grass.group };
 	app.onFrame.push( () => grass.update( app.camera ) );
+	// flowers, seed heads, foxgloves and leaf litter among the grass (Drusniel's meadow plants)
+	// (?flora=0 leaves them out)
+	if ( new URLSearchParams( location.search ).get( 'flora' ) !== '0' ) {
+		const flora = createMeadowFlora( app, grass.density, veg );
+		app.scene.add( flora );
+		app.layers.flora = { label: 'Flores', object: flora };
+		console.info( 'meadow flora', JSON.stringify( flora.userData.counts ) );
+	}
 	await loadDetailTexture(); // the granite's detail texels, from the cache after the first load
 	const rocks = createRocks( app, ( p ) => progress( 0.5 + p * 0.3 ) );
 	app.scene.add( rocks );
