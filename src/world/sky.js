@@ -36,8 +36,10 @@ export function createSky( scene, renderer ) {
 	// moonlit gradient (deep blue overhead, paler toward the horizon) is added as the sun sinks, by
 	// `night` (0 with the sun 2 degrees up, 1 at 10 degrees down; update())
 	const night = uniform( 0 );
-	const nightZenith = uniform( new THREE.Color().setRGB( 0.012, 0.022, 0.05, THREE.SRGBColorSpace ) );
-	const nightHorizon = uniform( new THREE.Color().setRGB( 0.07, 0.1, 0.17, THREE.SRGBColorSpace ) );
+	// a neutral, slightly cool grey (the reference: Three.js Sky Pro's "Moonlit Night", mean colour of the
+	// frame ~( 17.5, 18.5, 20.4 ) / 255; the first saturated blue read as a filter, not as moonlight)
+	const nightZenith = uniform( new THREE.Color().setRGB( 0.02, 0.022, 0.027, THREE.SRGBColorSpace ) );
+	const nightHorizon = uniform( new THREE.Color().setRGB( 0.08, 0.085, 0.096, THREE.SRGBColorSpace ) );
 	const up = normalize( positionWorld.sub( cameraPosition ) ).y;
 	const nightSky = mix( nightHorizon, nightZenith, smoothstep( 0, 0.5, up ) );
 	sky.material.colorNode = vec4( skyColor.rgb.mul( gain ).mul( sunDim ).add( nightSky.mul( night ) ), 1 );
@@ -62,8 +64,8 @@ export function createSky( scene, renderer ) {
 	const hemi = new THREE.HemisphereLight( 0xbfd6f2, 0x3d4a26, 0.15 );
 	scene.add( hemi );
 
-	const _hemiDay = new THREE.Color( 0xbfd6f2 ), _hemiNight = new THREE.Color( 0x5d78b0 );
-	const _groundDay = new THREE.Color( 0x3d4a26 ), _groundNight = new THREE.Color( 0x141a26 );
+	const _hemiDay = new THREE.Color( 0xbfd6f2 ), _hemiNight = new THREE.Color( 0x8c96aa );
+	const _groundDay = new THREE.Color( 0x3d4a26 ), _groundNight = new THREE.Color( 0x1c1e23 );
 	const state = {
 		elevation: 21,   // degrees: late-afternoon
 		azimuth: 238,    // degrees, 0 = north(-z), 90 = east(+x)
@@ -100,7 +102,7 @@ export function createSky( scene, renderer ) {
 		const n = THREE.MathUtils.smoothstep( - state.elevation, - 2, 10 );
 		state.night = n;
 		night.value = n;
-		// the sky's light at night: moonlit blue
+		// the sky's light at night: a cool grey
 		hemi.color.copy( _hemiDay ).lerp( _hemiNight, n );
 		hemi.groundColor.copy( _groundDay ).lerp( _groundNight, n );
 

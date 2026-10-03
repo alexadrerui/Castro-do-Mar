@@ -510,7 +510,8 @@ async function main() {
 		const greenness = smoothstep( 0.0, 0.12, rgb.g.sub( max( rgb.r, rgb.b ) ) );
 		rgb.assign( mix( rgb, mix( vec3( luma ), rgb, 0.78 ), greenness ) );
 		rgb.assign( mix( rgb, rgb.mul( rgb ).mul( rgb.mul( - 2.0 ).add( 3.0 ) ), 0.22 ) );
-		rgb.addAssign( vec3( - 0.012, 0.0, 0.022 ).mul( luma.oneMinus().pow( 2.0 ) ) );
+		// (30% of it at night: almost all of the frame is shadow then, and in full it turned the moonlit grey blue)
+		rgb.addAssign( vec3( - 0.012, 0.0, 0.022 ).mul( luma.oneMinus().pow( 2.0 ) ).mul( sky.night.mul( - 0.7 ).add( 1 ) ) );
 		rgb.addAssign( vec3( 0.06, 0.02, - 0.04 ).mul( luma.pow( 2.0 ) ) );
 		rgb.assign( rgb.mul( 0.97 ).add( 0.012 ) ); // lifted blacks
 		// soft vignette
