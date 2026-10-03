@@ -432,6 +432,8 @@ async function main() {
 		// the sky's light from above, with the lightning's flashes (sky.gain)
 		clouds.ambient.value.copy( hazeColor.value ).multiplyScalar( sky.gain.value / 0.4 );
 		clouds.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1;
+		// the light shafts follow the sun's height and its light under the rain
+		clouds.sunVisible.value = cloudShadowUniforms.sunFade.value * Math.min( 1, sky.sun.intensity / ( sky.state.sunIntensity || sky.sun.intensity ) );
 	} );
 	// rain and wet ground (world/weather.js): the panel's "Chuva", app.setRain( 0..1 ), ?rain=0.8
 	const weather = new Weather( app, scene );

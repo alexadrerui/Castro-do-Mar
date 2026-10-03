@@ -4,7 +4,7 @@
 // the 128³ shape, the 32³ shape detail and the 512² local weather, one cloud layer per channel).
 // Changes: rewritten in TSL for WebGPU (the original is GLSL for pmndrs' postprocessing); a flat world
 // instead of the globe (the weather tiles over x / z); the Beer shadow map is a single cascade
-// (world/cloudShadow.js, it shades the ground too), no turbulence, no light shafts, no haze; the temporal filter is simpler (below); the
+// (world/cloudShadow.js, it shades the ground too), no turbulence, no haze; the light shafts act on this project's haze (apply()); the temporal filter is simpler (below); the
 // sun and sky light are this project's (sky.js), not precomputed atmosphere irradiance; the coverage
 // comes from the sky's cloudCoverage (the panel's "Nuvens", the rain).
 // The model: per layer, the weather texture says where the clouds are, a semi-circle height function
@@ -28,7 +28,7 @@ import {
 } from 'three/tsl';
 import { cloudMap, CLOUD_MAP, marchLength, mapLookup, sunUp, mapCentreFor } from '../world/cloudShadow.js';
 
-const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000;
+const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000, SHAFT_STEPS = 24, SHAFT_DIST = 30000;
 const N = ( x ) => ( typeof x === 'number' ? float( x ) : x );
 const remap = ( v, a, b ) => v.sub( N( a ) ).div( N( b ).sub( N( a ) ).max( 1e-5 ) ).clamp( 0, 1 );
 
@@ -224,6 +224,49 @@ export class Clouds {
 			const has = front.greaterThanEqual( 0 );
 			return vec4( has.select( front, L ), od.div( last.sub( front ).max( ds ) ).mul( has.select( 1, 0 ) ), od, 1 );
 		} );
+		// Light shafts (the original's shadow length, here on this project's haze): along the view ray, the
+		// haze each stretch adds (hazeAmount's increments) times how much of the sun the clouds take
+		// there (the shadow map, as the clouds' own far shadow); the sum is the share of the haze in the
+		// clouds' shadow, removed from the scene's haze in apply(). Steps crowd near the camera; jittered
+		// and smoothed by a second temporal history.
+		this.shafts = uniform( 1.5 );        // strength (0: off)
+		this.shaftOpacity = uniform( 0.25 ); // per unit optical depth
+		this.shaftSky = uniform( 0.6 );      // over the sky (the haze ends at SHAFT_DIST)
+		this.shaftGlow = uniform( 1 );       // the lit haze's forward scattering toward the sun
+		this.shaftDebug = uniform( 0 );      // 1: shows the shadowed (red) and lit (green) shares (x 4)
+		const shaftFrag = Fn( () => {
+			const depth = depthTex.sample( screenUV ).r;
+			const vp = getViewPosition( screenUV, depth, camProjInv );
+			const ray = camWorld.mul( vec4( vp, 1 ) ).xyz.sub( camPos );
+			const isSky = depth.greaterThanEqual( 0.99999 );
+			const dir = ray.normalize();
+			const L = isSky.select( float( SHAFT_DIST ), ray.length().min( SHAFT_DIST ) );
+			const jitter = fract( interleavedGradientNoise( screenCoordinate.xy ).add( this.frame.mul( 0.618034 ) ) );
+			const S = float( 0 ).toVar(), Lt = float( 0 ).toVar(), hzPrev = float( 0 ).toVar();
+			Loop( SHAFT_STEPS, ( { i } ) => {
+				const f = float( i ).add( 1 ).div( SHAFT_STEPS );
+				const t = L.mul( f.mul( f ) );
+				const tm = L.mul( float( i ).add( jitter ).div( SHAFT_STEPS ).pow( 2 ) ); // inside the stretch
+				const hz = hazeAmount( t, camPos.y.add( dir.y.mul( t ) ) );
+				const p = camPos.add( dir.mul( tm ) );
+				const look = mapLookup( p );
+				const bsm = cloudMap.tex.sample( look.st ).level( 0 );
+				const fromFront = marchLength().sub( p.y.sub( cloudMap.base ).div( sunUp() ) ).sub( bsm.x );
+				const od = bsm.y.mul( fromFront.max( 0 ) ).min( bsm.z ).mul( look.inside );
+				const dh = hz.sub( hzPrev ).max( 0 ), sunlit = exp( od.mul( this.shaftOpacity ).negate() );
+				S.addAssign( dh.mul( sunlit.oneMinus() ) );
+				Lt.addAssign( dh.mul( sunlit ) );
+				hzPrev.assign( hz );
+			} );
+			const k = isSky.select( this.shaftSky, float( 1 ) );
+			return vec4( S.mul( k ), Lt.mul( k ), 0, 1 );
+		} );
+		this.shaftPass = rtt( shaftFrag(), null, null, { type: THREE.HalfFloatType, resolutionScale } );
+		this.shaftSmooth = new CloudHistory( this.shaftPass, camera, resolutionScale, null ).getTextureNode();
+		this.hazeColor = hazeColor;
+		this.sun = sun;
+		this.sunVisible = uniform( 1 ); // the sun's light share (main.js: with its height, the rain)
+
 		this._mapMat = new THREE.NodeMaterial();
 		this._mapMat.name = 'cloudsShadowMap';
 		this._mapMat.fragmentNode = mapFrag();
@@ -253,7 +296,19 @@ export class Clouds {
 	apply( src ) {
 		const c = this.smooth;
 		const s = this.strength;
-		return src.mul( mix( float( 1 ), c.a, s ) ).add( c.rgb.mul( s ) );
+		// the shafts: the sun's part of the haze taken where the clouds shade it, more toward the sun
+		// (forward scattering)
+		const camWorld = uniform( this.camera.matrixWorld ), camProjInv = uniform( this.camera.projectionMatrixInverse );
+		const dir = camWorld.mul( vec4( getViewPosition( screenUV, float( 1 ), camProjInv ), 0 ) ).xyz.normalize();
+		const cosT = dot( dir, this.sun );
+		// Henyey-Greenstein g = 0.7 (the haze's forward lobe), per 4 pi
+		const mie = float( 0.51 ).div( float( 1.49 ).sub( cosT.mul( 1.4 ) ).pow( 1.5 ) ).mul( 1 / ( 4 * Math.PI ) );
+		const k = this.shafts.mul( this.sunVisible ).mul( s );
+		const sh = this.shaftSmooth;
+		const shade = sh.r.mul( cosT.max( 0 ).pow( 6 ).mul( 2 ).add( 0.4 ) ).mul( k );
+		const glow = this.sunColor.mul( sh.g.mul( mie ).mul( this.shaftGlow ).mul( k ) );
+		const lit = src.sub( this.hazeColor.mul( shade ) ).max( src.mul( 0.25 ) ).add( glow );
+		return mix( lit.mul( mix( float( 1 ), c.a, s ) ).add( c.rgb.mul( s ) ), vec3( sh.r, sh.g, 0 ).mul( 4 ), this.shaftDebug );
 	}
 }
 
@@ -297,7 +352,7 @@ class CloudHistory extends THREE.TempNode {
 		renderer.setRenderTarget( this._rtA );
 		_quad.render( renderer );
 		this.reset.value = 0;
-		this.frame.value = ( this.frame.value + 1 ) % 1024;
+		if ( this.frame ) this.frame.value = ( this.frame.value + 1 ) % 1024;
 		// the view of this frame, for the next one's reprojection
 		this._prevView.copy( this.camera.matrixWorldInverse );
 		this._prevProj.copy( this.camera.projectionMatrix );
