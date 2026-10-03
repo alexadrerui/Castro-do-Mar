@@ -357,14 +357,18 @@ async function main() {
 		hazeColor.value.lerp( sky.nightHorizon.value, night );
 		// the far haze (fogNode, past 4-14 km) too: a fixed day colour, it glowed over the distant ranges at night
 		hazeFar.value.setHex( 0x8fa9cc ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) ).lerp( sky.nightHorizon.value, night );
-		renderer.toneMappingExposure = 0.8 * ( 1 + app.nightExposure * night );
+		// the eye adapts from the sunset on (phase 6): from the sun 8 degrees up, full 6 degrees down
+		const adapt = THREE.MathUtils.smoothstep( - e, - 8, 6 );
+		renderer.toneMappingExposure = 0.8 * ( 1 + app.nightExposure * adapt );
 		// things that are not lit by the lights but kept a fixed day colour, white at night: the
 		// shore's foam (water.js) and the chimney smoke (smoke.js, unlit sprites) take the moonlight
 		// and the night sky's grey (day: unchanged)
-		_nightLit.copy( sky.sun.color ).multiplyScalar( sky.sun.intensity / MOON_MAX * 0.18 ).add( _nightAmb.copy( sky.nightHorizon.value ).multiplyScalar( 1.2 ) );
-		app.water.uniforms.foamLight.value.setRGB( 1, 1, 1 ).lerp( _nightLit, night );
-		for ( const l of app.lakes?.list ?? [] ) l.water?.uniforms.foamLight?.value.setRGB( 1, 1, 1 ).lerp( _nightLit, night );
-		app.smoke?.uniforms.tint.value.copy( _smokeDay ).lerp( _nightLit, night );
+		const lit = e > - 1 ? sky.sun.intensity / SUN_MAX * 0.8 : sky.sun.intensity / MOON_MAX * 0.18; // the sun's or the moon's light
+		_nightLit.copy( sky.sun.color ).multiplyScalar( lit ).add( _nightAmb.copy( sky.nightHorizon.value ).multiplyScalar( 1.2 ) );
+		// (with the eye's adaptation, from the sunset on: in the dusk they stayed white)
+		app.water.uniforms.foamLight.value.setRGB( 1, 1, 1 ).lerp( _nightLit, adapt );
+		for ( const l of app.lakes?.list ?? [] ) l.water?.uniforms.foamLight?.value.setRGB( 1, 1, 1 ).lerp( _nightLit, adapt );
+		app.smoke?.uniforms.tint.value.copy( _smokeDay ).lerp( _nightLit, adapt );
 		app.underwater?.setDaylight( hazeColor.value );
 		app.underwater?.setSun( sky.state.lightDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.lightDir, sky.sun, app.underwater?.murk.value );
@@ -447,7 +451,10 @@ async function main() {
 	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.lightDir } );
 	app.valleyFog = valley;
 	// volumetric cumulus over the sky's own clouds (post/clouds.js); ?clouds=0 leaves them out
-	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.lightDir } );
+	// the clouds' light: the scene's (sun, moon), but after the sunset the sun still lights the clouds
+	// from below the horizon (they are 750-2200 m up) in a deep orange, down to 5 degrees below
+	const cloudLight = new THREE.Vector3().copy( sky.state.lightDir ), _afterglow = new THREE.Color( 1, 0.32, 0.14 );
+	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: cloudLight } );
 	app.clouds = clouds;
 	if ( ! clouds ) clearCloudMap( renderer ); // no clouds, no cloud shadows
 	// the cirrus of the volumetric clouds replace the sky's flat clouds
@@ -456,7 +463,18 @@ async function main() {
 		clouds.update( dt );
 		clouds.coverage.value = sky.sky.cloudCoverage.value; // the panel's "Nuvens" and the rain
 		clouds.overcast(); // thinner, softer cumulus under a closed sky
-		clouds.sunColor.value.copy( sky.sun.color ).multiplyScalar( sky.sun.intensity / SUN_MAX );
+		const se = sky.state.elevation;
+		if ( se > - 5 ) {
+			// the sun, low or just set: the clouds keep a golden, then orange-red light that the ground
+			// has lost (one curve: no gap where the sun's own light reaches 0 at -1 degree)
+			cloudLight.copy( sky.state.sunDir );
+			const glow = 0.45 * THREE.MathUtils.smoothstep( se, - 5, - 0.5 ) * ( 1 - THREE.MathUtils.smoothstep( se, 3, 10 ) ) * ( 1 - 0.55 * ( app.weather?.wetness?.value ?? 0 ) );
+			const k = Math.max( se > - 1 ? sky.sun.intensity / SUN_MAX : 0, glow );
+			clouds.sunColor.value.copy( se > - 1 ? sky.sun.color : _afterglow ).multiplyScalar( k );
+		} else {
+			cloudLight.copy( sky.state.lightDir );
+			clouds.sunColor.value.copy( sky.sun.color ).multiplyScalar( sky.sun.intensity / SUN_MAX );
+		}
 		// the sky's light from above, with the lightning's flashes (sky.gain)
 		clouds.ambient.value.copy( hazeColor.value ).multiplyScalar( sky.gain.value / 0.4 );
 		clouds.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1;
