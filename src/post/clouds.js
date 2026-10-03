@@ -4,7 +4,7 @@
 // the 128³ shape, the 32³ shape detail and the 512² local weather, one cloud layer per channel).
 // Changes: rewritten in TSL for WebGPU (the original is GLSL for pmndrs' postprocessing); a flat world
 // instead of the globe (the weather tiles over x / z); the Beer shadow map is a single cascade
-// (world/cloudShadow.js, it shades the ground too), no turbulence, no haze; the light shafts act on this project's haze (apply()); the temporal filter is simpler (below); the
+// (world/cloudShadow.js, it shades the ground too), no turbulence; the light shafts act on this project's haze (apply()); the temporal filter is simpler (below); the
 // sun and sky light are this project's (sky.js), not precomputed atmosphere irradiance; the coverage
 // comes from the sky's cloudCoverage (the panel's "Nuvens", the rain).
 // The model: per layer, the weather texture says where the clouds are, a semi-circle height function
@@ -28,7 +28,7 @@ import {
 } from 'three/tsl';
 import { cloudMap, CLOUD_MAP, marchLength, mapLookup, sunUp, mapCentreFor } from '../world/cloudShadow.js';
 
-const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000, SHAFT_STEPS = 24, SHAFT_DIST = 30000, CIRRUS_STEPS = 4, CIRRUS_DIST = 90000;
+const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000, SHAFT_STEPS = 24, SHAFT_DIST = 30000, CIRRUS_STEPS = 4, CIRRUS_DIST = 90000, HAZE_DIST = 60000;
 const N = ( x ) => ( typeof x === 'number' ? float( x ) : x );
 const remap = ( v, a, b ) => v.sub( N( a ) ).div( N( b ).sub( N( a ) ).max( 1e-5 ) ).clamp( 0, 1 );
 
@@ -303,6 +303,14 @@ export class Clouds {
 		this.shaftSmooth = new CloudHistory( this.shaftPass, camera, resolutionScale, null ).getTextureNode();
 		this.hazeColor = hazeColor;
 		this.sun = sun;
+		this.depthTex = depthTex;
+		// The sparse haze (the original's approximateHaze): a density falling exponentially with the
+		// height, integrated in closed form along the view ray (no march), in front of the scene and the
+		// clouds; lit by the sun (dual-lobe phase, the share of the ray in the clouds' shadow taken out,
+		// from the shafts' pass) and by the sky. Per pixel in apply().
+		this.haze = uniform( 1e-5 );          // extinction at sea level, 1/m (the original: 3e-5; our haze already exists)
+		this.hazeExponent = uniform( 1e-3 );  // 1/m: a scale height of 1 km
+		this.hazeScattering = 0.9; this.hazeAbsorption = 0.5;
 		this.sunVisible = uniform( 1 ); // the sun's light share (main.js: with its height, the rain)
 
 		this._mapMat = new THREE.NodeMaterial();
@@ -346,7 +354,25 @@ export class Clouds {
 		const shade = sh.r.mul( cosT.max( 0 ).pow( 6 ).mul( 2 ).add( 0.4 ) ).mul( k );
 		const glow = this.sunColor.mul( sh.g.mul( mie ).mul( this.shaftGlow ).mul( k ) );
 		const lit = src.sub( this.hazeColor.mul( shade ) ).max( src.mul( 0.25 ) ).add( glow );
-		return mix( lit.mul( mix( float( 1 ), c.a, s ) ).add( c.rgb.mul( s ) ), vec3( sh.r, sh.g, 0 ).mul( 4 ), this.shaftDebug );
+		const clouded = lit.mul( mix( float( 1 ), c.a, s ) ).add( c.rgb.mul( s ) );
+		// the sparse haze over all of it: optical depth from the camera's height along the ray, to the
+		// surface or HAZE_DIST over the sky
+		const depth = this.depthTex.sample( screenUV ).r;
+		const dist = depth.greaterThanEqual( 0.99999 ).select( float( HAZE_DIST ), getViewPosition( screenUV, depth, camProjInv ).length().min( HAZE_DIST ) );
+		const camY = camWorld.mul( vec4( 0, 0, 0, 1 ) ).y.max( 0 );
+		const a = this.hazeExponent, ay = a.mul( dir.y );
+		const ext0 = this.haze.mul( exp( a.mul( camY ).negate() ) );
+		// (1 - e^(-a y t)) / (a y), t when a y -> 0
+		const path = ay.abs().lessThan( 1e-6 ).select( dist, exp( ay.mul( dist ).negate() ).oneMinus().div( ay ) );
+		const od = ext0.mul( path ).mul( this.hazeScattering + this.hazeAbsorption ).mul( s );
+		const Th = exp( od.negate() );
+		const hg = ( g ) => float( 1 - g * g ).div( float( 1 + g * g ).sub( cosT.mul( 2 * g ) ).max( 1e-7 ).pow( 1.5 ) ).mul( 1 / ( 4 * Math.PI ) );
+		const sunLit = sh.g.div( sh.r.add( sh.g ).max( 1e-4 ) ).mul( sh.r.add( sh.g ).greaterThan( 1e-4 ).select( 1, 0 ) ).add( sh.r.add( sh.g ).lessThanEqual( 1e-4 ).select( 1, 0 ) );
+		const Lh = this.sunColor.mul( this.sunScale ).mul( hg( 0.7 ).add( hg( - 0.2 ) ).mul( 0.5 ) ).mul( sunLit ).mul( this.sunVisible )
+			.add( this.ambient.mul( this.ambientScale ).mul( 1 / ( 4 * Math.PI ) ) )
+			.mul( this.hazeScattering / ( this.hazeScattering + this.hazeAbsorption ) ).mul( Th.oneMinus() );
+		const hazed = clouded.mul( Th ).add( Lh );
+		return mix( hazed, vec3( sh.r, sh.g, 0 ).mul( 4 ), this.shaftDebug );
 	}
 }
 
