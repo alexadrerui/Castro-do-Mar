@@ -619,7 +619,7 @@ async function main() {
 		terrain.update( camera );
 		focus.snap(); // the lens settled on this view, also with the loop paused
 		app.hud?.updateFocus( focus );
-		app.shadows.markDirty();
+		if ( app.shadowsOn ) app.shadows.markDirty();
 		app.renderFrame();
 		const blob = await new Promise( ( r ) => canvas.toBlob( r, 'image/png' ) );
 		renderer.setPixelRatio( prev.pr ); renderer.setSize( prev.w, prev.h, false );
@@ -732,6 +732,12 @@ async function main() {
 		// and what only shows under the water (marine snow, the surface seen from below, the water's
 		// shadow layer from below...): one frame with the camera dived, every geometry drawing nothing
 		if ( compiled && ! params.has( 'nodiveprep' ) ) prepareDive();
+		// The sun's shadows off by default (03/10/2026, the user's choice): the terrain drawn into the
+		// three cascades every frame cost ~1.6 ms and took views 0 and 2 from 60 to ~55 FPS in the real
+		// window (tools/fps.mjs). Compiled above all the same, so the panel's "Sombras" (or ?shadows=1)
+		// turns them on without new pipelines. Planned fix: a coarse terrain only for the shadow pass
+		// (CLAUDE.md, Performance).
+		app.setShadows( params.get( 'shadows' ) === '1' );
 	} );
 
 
