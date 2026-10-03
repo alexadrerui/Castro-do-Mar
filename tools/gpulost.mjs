@@ -11,7 +11,7 @@ await ready();
 const before = await p.evaluate( () => {
 	const a = window.__app;
 	a.views.push( { label: 't', pos: [ - 30, 45, 40 ], target: [ 0, 28, 0 ] } ); a.setView( a.views.length - 1 );
-	a.sky.state.elevation = 33; a.sky.state.azimuth = 200; a.onSunChanged();
+	a.clock.set( 9 ); // the clock (world/clock.js): 09:00
 	return { pos: a.camera.position.toArray(), elev: a.sky.state.elevation };
 } );
 const nav = p.waitForNavigation( { timeout: 60000 } );
@@ -19,9 +19,9 @@ await p.evaluate( () => window.__app.renderer.onDeviceLost( { api: 'WebGPU', mes
 await nav;
 await ready();
 await new Promise( ( r ) => setTimeout( r, 1500 ) );
-const after = await p.evaluate( () => { const a = window.__app; return { pos: a.camera.position.toArray(), elev: a.sky.state.elevation, azi: a.sky.state.azimuth, ui: document.getElementById( 'o-elev' )?.textContent }; } );
+const after = await p.evaluate( () => { const a = window.__app; return { pos: a.camera.position.toArray(), elev: a.sky.state.elevation, azi: a.sky.state.azimuth, ui: document.getElementById( 'o-hour' )?.textContent }; } );
 const dist = Math.hypot( ...after.pos.map( ( v, i ) => v - before.pos[ i ] ) );
-check( dist < 0.5 && after.elev === 33 && after.azi === 200 && after.ui === '33.0°', `perda 1: recarregou e voltou à vista (distância ${ dist.toFixed( 2 ) } m, sol ${ after.elev }°/${ after.azi }°, painel ${ after.ui })` );
+check( dist < 0.5 && Math.abs( after.elev - 25.7 ) < 0.1 && after.ui === '09:00', `perda 1: recarregou e voltou à vista (distância ${ dist.toFixed( 2 ) } m, sol ${ after.elev }°/${ after.azi }°, painel ${ after.ui })` );
 // second loss within the window: message, no reload
 let reloaded = false;
 p.once( 'framenavigated', () => { reloaded = true; } );

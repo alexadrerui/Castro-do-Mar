@@ -27,6 +27,7 @@ import { createWater } from './world/water.js';
 import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
 import { Weather } from './world/weather.js';
+import { Clock } from './world/clock.js';
 import { Lightning } from './world/lightning.js';
 import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
@@ -348,6 +349,9 @@ async function main() {
 		app.seabed?.updateSun( sky.state.sunDir );
 		app.fish?.updateSun( sky.state.sunDir );
 	};
+	// the time of day (world/clock.js): stopped at the opening; the panel's presets and "passar o tempo"
+	app.clock = new Clock( app );
+	app.onFrame.push( ( dt ) => app.clock.update( dt ) );
 
 	// Post: scene pass -> tone map / sRGB -> colour grade (late-afternoon look).
 	const post = new THREE.RenderPipeline( renderer );

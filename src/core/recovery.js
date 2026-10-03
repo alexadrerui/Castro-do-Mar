@@ -59,7 +59,7 @@ export function installRecovery( app ) {
 				t: Date.now(),
 				pos: c.position.toArray(),
 				target: c.position.clone().addScaledVector( d, 20 ).toArray(),
-				sun: { elevation: app.sky.state.elevation, azimuth: app.sky.state.azimuth },
+				sun: { elevation: app.sky.state.elevation, azimuth: app.sky.state.azimuth, hour: app.clock?.hour },
 				clouds: app.sky.sky.cloudCoverage.value
 			} );
 		}
@@ -82,8 +82,9 @@ export function restoreAfterRecovery( app ) {
 		if ( el ) { el.value = v; el.dispatchEvent( new Event( 'input' ) ); } else apply();
 	};
 	if ( s.sun ) {
-		slide( 'r-elev', s.sun.elevation, () => { app.sky.state.elevation = s.sun.elevation; app.onSunChanged(); } );
-		slide( 'r-azi', s.sun.azimuth, () => { app.sky.state.azimuth = s.sun.azimuth; app.onSunChanged(); } );
+		// the clock's hour (world/clock.js; the panel follows it), else the sun as it was
+		if ( Number.isFinite( s.sun.hour ) && app.clock ) app.clock.set( s.sun.hour );
+		else { app.sky.state.elevation = s.sun.elevation; app.sky.state.azimuth = s.sun.azimuth; app.onSunChanged(); }
 	}
 	if ( Number.isFinite( s.clouds ) ) slide( 'r-cloud', s.clouds, () => { app.sky.sky.cloudCoverage.value = s.clouds; } );
 	app.hud?.toast?.( 'Vista recuperada depois da reinicialização da GPU.' );

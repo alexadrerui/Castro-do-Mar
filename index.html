@@ -77,8 +77,14 @@
 				<div class="grid-btn" id="views"></div>
 
 				<h3>Sol & Céu</h3>
-				<label>Elevação <output id="o-elev"></output><input type="range" id="r-elev" min="-4" max="80" step="0.5" /></label>
-				<label>Azimute <output id="o-azi"></output><input type="range" id="r-azi" min="0" max="360" step="1" /></label>
+				<label>Hora <output id="o-hour"></output></label>
+				<div class="grid-btn" id="day">
+					<button data-preset="manha" title="09:00">Manhã</button>
+					<button data-preset="tarde" title="15:32">Tarde</button>
+					<button data-preset="noite" title="23:00">Noite</button>
+					<button id="b-play" title="Deixa o tempo passar">▶ Passar o tempo</button>
+				</div>
+				<label>Velocidade <output id="o-speed"></output><input type="range" id="r-speed" min="0.2" max="6" step="0.1" /></label>
 				<label>Nuvens <output id="o-cloud"></output><input type="range" id="r-cloud" min="0" max="1" step="0.01" /></label>
 				<label>Chuva <output id="o-rain"></output><input type="range" id="r-rain" min="0" max="1" step="0.01" /></label>
 				<div class="grid-btn"><button id="b-strike" title="Raio (L); acima de 60% de chuva há tempestade">Raio <kbd>L</kbd></button></div>

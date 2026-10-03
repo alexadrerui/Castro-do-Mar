@@ -1,4 +1,6 @@
 // Heads-up display: compass, stats, view presets, sun/sky/quality controls.
+import { Clock, PRESETS } from '../world/clock.js';
+
 const $ = ( id ) => document.getElementById( id );
 
 export class HUD {
@@ -30,8 +32,17 @@ export class HUD {
 
 		// sliders
 		const sky = app.sky;
-		this._range( 'r-elev', 'o-elev', sky.state.elevation, ( v ) => { sky.state.elevation = v; app.onSunChanged(); }, ( v ) => v.toFixed( 1 ) + '°' );
-		this._range( 'r-azi', 'o-azi', sky.state.azimuth, ( v ) => { sky.state.azimuth = v; app.onSunChanged(); }, ( v ) => v.toFixed( 0 ) + '°' );
+		// the time of day (world/clock.js): three presets, the time passing and its speed (game hours per real minute)
+		const clock = app.clock;
+		const hourOut = $( 'o-hour' ), play = $( 'b-play' );
+		const showHour = ( h ) => { hourOut.textContent = Clock.format( h ); };
+		showHour( clock.hour );
+		clock.listeners.push( showHour );
+		for ( const b of document.querySelectorAll( '#day [data-preset]' ) ) b.onclick = () => clock.set( PRESETS[ b.dataset.preset ] );
+		const showPlay = () => { play.textContent = clock.playing ? '⏸ Parar o tempo' : '▶ Passar o tempo'; play.classList.toggle( 'on', clock.playing ); };
+		showPlay();
+		play.onclick = () => { clock.playing = ! clock.playing; showPlay(); };
+		this._range( 'r-speed', 'o-speed', clock.speed, ( v ) => { clock.speed = v; }, ( v ) => '1 dia em ' + Math.round( 24 / v ) + ' min' );
 		this._range( 'r-cloud', 'o-cloud', sky.sky.cloudCoverage.value, ( v ) => { sky.sky.cloudCoverage.value = v; }, ( v ) => Math.round( v * 100 ) + '%' );
 		this._range( 'r-rain', 'o-rain', app.weather?.target ?? 0, ( v ) => app.setRain?.( v ), ( v ) => Math.round( v * 100 ) + '%' );
 		$( 'b-strike' )?.addEventListener( 'click', () => app.strike?.() );
