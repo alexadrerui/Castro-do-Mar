@@ -448,7 +448,9 @@ export class GrassField {
 		// wind from the south-west (off the Atlantic): travelling gusts, ~35 m and ~15 m cells
 		const windDir = new THREE.Vector2( 0.62, - 0.78 );
 		const windDir3 = vec3( windDir.x, 0, windDir.y ), windPerp3 = vec3( - windDir.y, 0, windDir.x );
-		const windStrength = float( 0.35 );
+		// a uniform: main.js calms it at night (the blades flickered against the moonlit gaps)
+		this.wind = uniform( 0.35 );
+		const windStrength = this.wind;
 		const gustAt = ( xz ) => {
 			const p = xz.sub( vec2( windDir.x, windDir.y ).mul( time.mul( 5.5 ) ) );
 			const nz = vnoise( p.div( 35 ) ).mul( 0.62 ).add( vnoise( p.div( 15 ).add( 0.37 ) ).mul( 0.38 ) );

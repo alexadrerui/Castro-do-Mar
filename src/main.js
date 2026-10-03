@@ -373,6 +373,12 @@ async function main() {
 		app.water.uniforms.foamLight.value.setRGB( 1, 1, 1 ).lerp( _nightLit, adapt );
 		for ( const l of app.lakes?.list ?? [] ) l.water?.uniforms.foamLight?.value.setRGB( 1, 1, 1 ).lerp( _nightLit, adapt );
 		app.smoke?.uniforms.tint.value.copy( _smokeDay ).lerp( _nightLit, adapt );
+		// the wind calms at night (to 30%): the leaves and blades swaying over the moonlit sky and clouds
+		// opened and closed bright gaps in the dark crowns at every frame (they flickered); without wind
+		// the flicker fell from 1.3% to 0.06% of the pixels (tools/flicker.mjs, a wood at 23:00)
+		const calm = 1 - 0.7 * night;
+		for ( const m of [ app.foliageMaterial, app.canopyMaterial, app.fernMaterial ] ) if ( m?.userData.foliage ) m.userData.foliage.wind.value = calm;
+		if ( app.grass?.wind ) app.grass.wind.value = 0.35 * calm;
 		app.underwater?.setDaylight( hazeColor.value );
 		app.underwater?.setSun( sky.state.lightDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.lightDir, sky.sun, app.underwater?.murk.value );

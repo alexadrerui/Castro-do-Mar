@@ -228,6 +228,7 @@ export async function createVegetation( app, progress ) {
 	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture } );
 	app.canopyMaterial = canopy;
 	const { material: fernMat } = createFoliageMaterial( sunDir, { fern: true } );
+	app.fernMaterial = fernMat;
 	const oakImpostor = oakAtlas.createMaterial( { bark: OAK_BARK } );
 	const pineImpostor = pineAtlas.createMaterial( { bark: PINE_BARK } );
 	app.oakImpostors = oakAtlas;

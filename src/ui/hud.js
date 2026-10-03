@@ -35,7 +35,10 @@ export class HUD {
 		// the time of day (world/clock.js): three presets, the time passing and its speed (game hours per real minute)
 		const clock = app.clock;
 		const hourOut = $( 'o-hour' ), play = $( 'b-play' );
-		const showHour = ( h ) => { hourOut.textContent = Clock.format( h ); };
+		const hourRange = $( 'r-hour' );
+		const showHour = ( h ) => { hourOut.textContent = Clock.format( h ); hourRange.value = h; };
+		// the hour by hand: the sun along its arc (its height), the moon and the stars with it
+		hourRange.addEventListener( 'input', () => clock.set( + hourRange.value ) );
 		showHour( clock.hour );
 		clock.listeners.push( showHour );
 		for ( const b of document.querySelectorAll( '#day [data-preset]' ) ) b.onclick = () => clock.set( PRESETS[ b.dataset.preset ] );
