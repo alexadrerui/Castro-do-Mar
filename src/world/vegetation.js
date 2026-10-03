@@ -17,7 +17,7 @@ import srcVegetation from './vegetation.js?raw';
 import { makeSimplex, fbm, mulberry32, cellRand, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
-import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
+import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, PATHS, HAMLETS, footprintR } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
 
 const nV = makeSimplex( 606 );
@@ -312,6 +312,8 @@ export async function createVegetation( app, progress ) {
 				if ( pick < pinePref ) sp = 'pine';
 				else if ( pick < pinePref + 0.025 ) sp = 'birch';
 				else sp = 'oak';
+				// the hamlets' core is open around the track: birches only (the third reference)
+				if ( sp !== 'birch' && HAMLETS.some( ( hm ) => Math.hypot( px - hm.x, pz - hm.z ) < hm.r * 0.5 ) ) sp = 'birch';
 				const s = ( sp === 'pine' ? 0.6 + R() * 0.8 : 0.7 + R() * 0.6 ) * ( 1 - 0.3 * ss( 200, 420, h ) );
 				if ( place( sp, px, pz, s, 0.08, R ) ) counts[ sp ] ++;
 			} else if ( r < dens * 0.72 + ( 0.3 + 0.5 * patch ) * steep * altitude * c * 0.9 ) {
@@ -348,6 +350,35 @@ export async function createVegetation( app, progress ) {
 	for ( const [ sp, x, z, s ] of featured ) {
 		const f = freeSpot( x, z );
 		if ( f && place( sp, f[ 0 ], f[ 1 ], s ) ) counts[ sp === 'gold' ? 'birch' : sp ] ++;
+	}
+	// the hamlets (layout.js HAMLETS, the third reference): young birches lining the track beyond its
+	// fences, and birches among the trees around; their own random sequence
+	{
+		const R = mulberry32( 5454 );
+		const ok = ( x, z ) => clearance( x, z, app.mask, 0.6 ) > 0 && ! inLake( x, z );
+		for ( const hm of HAMLETS ) {
+			for ( const p of PATHS ) for ( let i = 1; i < p.pts.length; i ++ ) {
+				const [ ax, az ] = p.pts[ i - 1 ], [ bx, bz ] = p.pts[ i ];
+				const L = Math.hypot( bx - ax, bz - az ), tx = ( bx - ax ) / L, tz = ( bz - az ) / L;
+				for ( let t = 0; t < L; t += 3.2 ) {
+					const cx = ax + tx * t, cz = az + tz * t;
+					if ( Math.hypot( cx - hm.x, cz - hm.z ) > hm.r * 0.9 ) continue;
+					for ( const side of [ - 1, 1 ] ) {
+						if ( R() > 0.6 ) continue;
+						const o = p.w * 0.6 + 1.7 + R() * 2.4, j = ( R() - 0.5 ) * 2;
+						const x = cx - tz * o * side + tx * j, z = cz + tx * o * side + tz * j;
+						const sc = 0.3 + R() * 0.3;
+						if ( ok( x, z ) && place( 'birch', x, z, sc, 0.08, R ) ) counts.birch ++;
+					}
+				}
+			}
+			for ( let k = 0; k < 70; k ++ ) {
+				const a = R() * Math.PI * 2, d = Math.sqrt( R() ) * hm.r, x = hm.x + Math.cos( a ) * d, z = hm.z + Math.sin( a ) * d;
+				const sc = 0.5 + R() * 0.55;
+				if ( pathDistance( x, z ).d < 6 || ! ok( x, z ) ) continue;
+				if ( place( 'birch', x, z, sc, 0.08, R ) ) counts.birch ++;
+			}
+		}
 	}
 	// gorse and bracken on the ledges of the mine cliff (world/fort.js), with their own random sequence
 	const lrnd = mulberry32( 3131 );

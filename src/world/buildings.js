@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { GeoBuilder, box, post, beam, ringWall, coneRoof, gableRoof, gableWall, canopy, bunting, straightWall } from '../core/builder.js';
 import { mulberry32 } from '../core/noise.js';
-import { BUILDINGS, STALLS, WALLS, FIELDS, VILLAGE, PROPS, PATHS, FORT, footprintR } from './layout.js';
+import { BUILDINGS, STALLS, WALLS, FIELDS, VILLAGE, PROPS, PATHS, FORT, footprintR, HAMLETS } from './layout.js';
 import { buildCastroHouse, CASTRO_HOUSE } from './castroHouse.js';
 
 const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
@@ -170,7 +170,8 @@ const laneSegs = () => {
 };
 // free ground beside lane pi: near the village and off everything else (extra: [ x, z, r ] to avoid)
 function laneFree( x, z, pi, segs, extra = [], near = LANE_NEAR ) {
-	if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) > near ) return false;
+	// near the village, or inside a hamlet (layout.js HAMLETS)
+	if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) > near && ! HAMLETS.some( ( h ) => Math.hypot( x - h.x, z - h.z ) < h.r ) ) return false;
 	for ( const b of BUILDINGS ) if ( Math.hypot( x - b.x, z - b.z ) < footprintR( b, 0.7 ) + ( b.awning ? 4.2 : 1.5 ) ) return false;
 	for ( const s of STALLS ) if ( ! s.removed && Math.hypot( x - s[ 0 ], z - s[ 1 ] ) < 4.2 ) return false;
 	for ( const p of PROPS ) if ( Math.hypot( x - p.x, z - p.z ) < ( p.type === 'pen' ? 5 : 2.5 ) ) return false;
@@ -359,6 +360,13 @@ function hut( B, b, y ) {
 	const top = y + 2.1;
 	const rj = ( a, t2 ) => ( 0.07 * Math.sin( a * 6 + b.seed ) + 0.04 * Math.sin( a * 13 ) ) * Math.pow( 1 - t2, 2 );
 	B.add( 'thatch', coneRoof( R, top - H * over / R + 0.05, top - H * over / R + 0.05 + H, { seg: 24, rings: 5, sag: - 0.3, thick: 0.35, jitter: rj } ), M( b.x, 0, b.z ) );
+	// a small window beside the door with the hearth's glow behind it (the third reference)
+	if ( b.window ) {
+		const a = doorAngle( b ) + 1.1, ca = Math.cos( a ), sa = Math.sin( a ), rr = r + 0.06;
+		B.add( 'ember', box( 0.04, 0.38, 0.46 ), M( b.x + ca * rr, y + 1.25, b.z + sa * rr, - a ) );
+		B.add( 'woodPost', box( 0.1, 0.06, 0.62 ), M( b.x + ca * ( rr + 0.02 ), y + 1.19, b.z + sa * ( rr + 0.02 ), - a ) );
+		B.add( 'woodPost', box( 0.1, 0.06, 0.62 ), M( b.x + ca * ( rr + 0.02 ), y + 1.63, b.z + sa * ( rr + 0.02 ), - a ) );
+	}
 }
 
 // ----------------------------------------------------------- long house

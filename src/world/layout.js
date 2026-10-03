@@ -65,8 +65,8 @@ export const PATHS = [
 	// inner village loop
 	{ w: 2.8, pts: [ [ - 70, - 8 ], [ - 45, - 12 ], [ - 22, - 8 ], [ - 4, 2 ], [ 12, 0 ], [ 30, - 8 ], [ 50, - 6 ], [ 62, 8 ], [ 66, 30 ], [ 58, 48 ], [ 40, 58 ], [ 20, 44 ] ] },
 	{ w: 2.4, pts: [ [ - 45, - 12 ], [ - 52, 12 ], [ - 40, 34 ], [ - 18, 42 ], [ 4, 40 ], [ 20, 44 ] ] },
-	// uphill track to the north-west
-	{ w: 2.2, pts: [ [ - 22, - 8 ], [ - 30, - 40 ], [ - 45, - 80 ], [ - 75, - 130 ], [ - 120, - 190 ], [ - 170, - 250 ] ] },
+	// uphill track to the north-west, up to the hamlet and the lookout on the knoll's top (HAMLETS)
+	{ w: 2.2, pts: [ [ - 22, - 8 ], [ - 30, - 40 ], [ - 45, - 80 ], [ - 75, - 130 ], [ - 120, - 190 ], [ - 150, - 224 ], [ - 177, - 236 ] ] },
 	// coastal track past the watchtower
 	{ w: 2.0, pts: [ [ - 5, - 22 ], [ 0, - 44 ], [ 6, - 62 ], [ 8, - 100 ], [ 0, - 150 ] ] },
 	// track up to the mine yard under the tower cliff
@@ -119,10 +119,23 @@ export const BUILDINGS = [
 	{ type: 'hut', x: - 76, z: - 5, r: 2.4, seed: 25 },
 	// watch hut on the western edge (small tower in the perspective reference)
 	{ type: 'lookout', x: - 84, z: 26, seed: 31 },
-	{ type: 'lookout', x: - 170, z: - 230, seed: 32 },
+	{ type: 'lookout', x: - 189, z: - 236, seed: 32 }, // on the knoll's top, at the end of the track (HAMLETS)
 	// the composite castro house (world/castroHouse.js, ref/casa_castro) on the west side, its door toward
 	// the market; r = CASTRO_HOUSE.footprintR
-	{ type: 'castro', x: - 63, z: 24, r: 9.5, rot: 1.95, seed: 7 }
+	{ type: 'castro', x: - 63, z: 24, r: 9.5, rot: 1.95, seed: 7 },
+	// the hamlet on the track up the knoll (HAMLETS): a house on the left and a hut on the right, the
+	// doors on the track
+	{ type: 'long', x: - 151.5, z: - 214, w: 5, l: 8, rot: 0.72, seed: 33 },
+	{ type: 'hut', x: - 141.8, z: - 222.6, r: 2.6, seed: 34, door: 2.42, window: true }
+];
+
+// Hamlets out of the village (the third reference, ref/ref_lanes.png, at the place of
+// ref/ref_trilha_local.png): within r of the centre the lanes get what the village lanes have (fences,
+// lamp posts, log steps, edge stones; buildings.js villageLanes) and low banks along the track
+// (heightfield.js); young birches line the track (vegetation.js) and rocks stand where listed
+// ( [ x, z, size ], rocks.js).
+export const HAMLETS = [
+	{ x: - 152, z: - 222, r: 46, rocks: [ [ - 142.4, - 210.3, 1.15 ], [ - 141.2, - 207.8, 0.8 ], [ - 143.8, - 212.4, 0.7 ] ] }
 ];
 
 // Ground footprint radius of a building (pads in the relief, trampled ground, vegetation clearance);

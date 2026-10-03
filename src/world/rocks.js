@@ -8,7 +8,7 @@ import { makeSimplex, fbm, mulberry32, cellRand, smoothstep as ss } from '../cor
 import { clearance, editedClearance, sampleMask, inLake, SHADOW_REACH } from './vegetation.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, natureAt, texelSeed } from './natureEdits.js';
-import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
+import { VILLAGE, WATER_LEVEL, SPINE, MINE, HAMLETS } from './layout.js';
 import { proceduralBump } from './terrain.js';
 import { buildRockGeometry, ROCK_STYLES } from './granite/geometry.js';
 import { getDetailTexture } from './granite/detail.js';
@@ -176,6 +176,13 @@ export function createRocks( app, progress ) {
 			if ( put( shore, px, pz, 0.5 + Math.pow( R(), 2.2 ) * 3.2, 0.35, 1, R ) ) counts.boulders ++;
 		}
 		progress?.( 0.6 + 0.25 * ( z - hf.z0 ) / hf.size );
+	}
+
+	// 2a) The rocks of the hamlets (layout.js HAMLETS: a pale outcrop beside the track, the third
+	// reference), with a sequence of their own
+	{
+		const R = mulberry32( 5353 );
+		for ( const hm of HAMLETS ) for ( const [ x, z, size ] of hm.rocks ?? [] ) if ( put( tors, x, z, size, 0.45, 0.6, R ) ) counts.boulders ++;
 	}
 
 	// 2b) Talus of granite blocks along the spine's village-side cliff.

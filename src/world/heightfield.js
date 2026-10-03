@@ -1,5 +1,5 @@
 import { makeSimplex, fbm, ridged, smoothstep, lerp, clamp } from '../core/noise.js';
-import { TERRAIN, MASK, VILLAGE, FORT, MINE, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS, footprintR } from './layout.js';
+import { TERRAIN, MASK, VILLAGE, FORT, MINE, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS, footprintR, HAMLETS } from './layout.js';
 
 const nA = makeSimplex( 890 );
 const nB = makeSimplex( 31 );
@@ -299,6 +299,13 @@ function sculpt( x, z, h ) {
 	if ( p.d < p.w + 2 ) {
 		const w = 1 - smoothstep( p.w * 0.4, p.w + 2, p.d );
 		h -= 0.25 * w;
+	}
+	// In a hamlet (HAMLETS, the third reference): low earth banks along both sides of the track
+	for ( const hm of HAMLETS ) {
+		const dh = Math.hypot( x - hm.x, z - hm.z );
+		if ( dh > hm.r || p.d > p.w + 3 ) continue;
+		const bank = smoothstep( p.w * 0.55, p.w * 0.95, p.d ) * ( 1 - smoothstep( p.w + 0.9, p.w + 2.8, p.d ) );
+		h += 0.5 * bank * ( 1 - smoothstep( hm.r * 0.75, hm.r, dh ) ) * ( 0.75 + 0.25 * nC( x * 0.4, z * 0.4 ) );
 	}
 
 	// Fields: gently flattened plots.
