@@ -54,6 +54,7 @@ import srcNoise from './core/noise.js?raw';
 import srcWorker from './world/gen.worker.js?raw';
 import srcGenFields from './world/genFields.js?raw';
 import srcHorizon from './world/horizon.js?raw';
+import { isSky, setReversedDepth } from './core/depth.js';
 
 const params = new URLSearchParams( location.search );
 const FORCE_WEBGL = params.has( 'webgl' );
@@ -102,7 +103,10 @@ async function main() {
 	let renderer, scene, camera, hf, terrain;
 
 	await loader.run( 'gpu', async () => {
-		renderer = new THREE.WebGPURenderer( { canvas, antialias: false, forceWebGL: FORCE_WEBGL, powerPreference: 'high-performance', trackTimestamp: params.has( 'perf' ) } );
+		// ?revz=1: reversed depth (float32, even precision to the far plane; core/depth.js), WebGPU only (test)
+		const reversedDepth = params.get( 'revz' ) === '1' && ! FORCE_WEBGL;
+		setReversedDepth( reversedDepth );
+		renderer = new THREE.WebGPURenderer( { canvas, antialias: false, forceWebGL: FORCE_WEBGL, powerPreference: 'high-performance', trackTimestamp: params.has( 'perf' ), reversedDepthBuffer: reversedDepth } );
 		renderer.setPixelRatio( app.pixelRatio );
 		renderer.setSize( innerWidth, innerHeight );
 		renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -523,7 +527,7 @@ async function main() {
 		const depth = scenePass.getTextureNode( 'depth' ).sample( screenUV ).r;
 		const vp = getViewPosition( screenUV, depth, camProjInv );
 		const wy = camWorld.mul( vec4( vp, 1 ) ).y;
-		const k = hazeAmount( length( vp ), wy ).mul( scatter ).mul( depth.lessThan( 0.99999 ).select( 1, 0 ) ).clamp( 0, 1 );
+		const k = hazeAmount( length( vp ), wy ).mul( scatter ).mul( isSky( depth ).select( 0, 1 ) ).clamp( 0, 1 );
 		return mix( src, sceneBlur.rgb, k );
 	};
 

@@ -3,6 +3,7 @@ import {
 	Fn, Loop, float, vec2, vec3, vec4, uniform, screenUV, screenCoordinate, interleavedGradientNoise, rtt, exp, length, min, max
 } from 'three/tsl';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { isSky } from '../core/depth.js';
 
 // Sun shafts (god rays) as screen-space light scattering (Mitchell, "Volumetric Light Scattering
 // as a Post-Process", GPU Gems 3, ch. 13). The light source is the sky visible around the sun:
@@ -34,7 +35,7 @@ export class Godrays {
 
 		// source: the sky only, brightest at the sun (the disc itself clamped: fp16 and no spikes)
 		const source = Fn( () => {
-			const sky = depth.sample( screenUV ).r.greaterThanEqual( 0.99999 ).select( float( 1 ), float( 0 ) );
+			const sky = isSky( depth.sample( screenUV ).r ).select( float( 1 ), float( 0 ) );
 			const d = length( screenUV.sub( this.sunUV ).mul( vec2( this.aspect, 1 ) ) );
 			const c = min( color.sample( screenUV ).rgb, vec3( 4 ) );
 			return vec4( c.mul( sky ).mul( exp( d.mul( this.falloff ).negate() ) ), 1 );

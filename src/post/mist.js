@@ -3,6 +3,7 @@ import {
 	Fn, Loop, float, mix, vec2, vec3, vec4, uniform, texture3D, screenUV, screenCoordinate, getViewPosition, interleavedGradientNoise, rtt
 } from 'three/tsl';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { isSky } from '../core/depth.js';
 
 // Low-lying mist (brétema) over the water and the low valleys. After three's
 // webgpu_postprocessing_fog: a slab of fog between the water level and `top`, raymarched in a few
@@ -72,7 +73,7 @@ export class Mist {
 			const vp = getViewPosition( screenUV, depth, camProjInv );
 			const target = camWorld.mul( vec4( vp, 1 ) ).xyz;
 			const ray = target.sub( camPos );
-			const surf = depth.greaterThanEqual( 0.99999 ).select( float( 1e6 ), ray.length() );
+			const surf = isSky( depth ).select( float( 1e6 ), ray.length() );
 			const dir = ray.normalize();
 			// the ray inside the slab [ bottom, top ]
 			const dy = dir.y.greaterThanEqual( 0 ).select( dir.y.max( 1e-5 ), dir.y.min( - 1e-5 ) );

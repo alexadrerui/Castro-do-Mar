@@ -27,6 +27,7 @@ import {
 	getScreenPosition, interleavedGradientNoise, rtt, dot, exp, max, min, pow, log2, fract, uv, passTexture, convertToTexture
 } from 'three/tsl';
 import { cloudMap, CLOUD_MAP, marchLength, mapLookup, sunUp, mapCentreFor } from '../world/cloudShadow.js';
+import { isSky } from '../core/depth.js';
 
 const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000, SHAFT_STEPS = 24, SHAFT_DIST = 30000, CIRRUS_STEPS = 4, CIRRUS_DIST = 90000, HAZE_DIST = 60000;
 const N = ( x ) => ( typeof x === 'number' ? float( x ) : x );
@@ -123,7 +124,7 @@ export class Clouds {
 			const vp = getViewPosition( screenUV, depth, camProjInv );
 			const target = camWorld.mul( vec4( vp, 1 ) ).xyz;
 			const ray = target.sub( camPos );
-			const surf = depth.greaterThanEqual( 0.99999 ).select( float( 1e9 ), ray.length() );
+			const surf = isSky( depth ).select( float( 1e9 ), ray.length() );
 			const dir = ray.normalize();
 			const dy = dir.y.greaterThanEqual( 0 ).select( dir.y.max( 1e-5 ), dir.y.min( - 1e-5 ) );
 			const t0 = this.base.sub( camPos.y ).div( dy ), t1 = this.top.sub( camPos.y ).div( dy );
@@ -277,9 +278,9 @@ export class Clouds {
 			const depth = depthTex.sample( screenUV ).r;
 			const vp = getViewPosition( screenUV, depth, camProjInv );
 			const ray = camWorld.mul( vec4( vp, 1 ) ).xyz.sub( camPos );
-			const isSky = depth.greaterThanEqual( 0.99999 );
+			const sky = isSky( depth );
 			const dir = ray.normalize();
-			const L = isSky.select( float( SHAFT_DIST ), ray.length().min( SHAFT_DIST ) );
+			const L = sky.select( float( SHAFT_DIST ), ray.length().min( SHAFT_DIST ) );
 			const jitter = fract( interleavedGradientNoise( screenCoordinate.xy ).add( this.frame.mul( 0.618034 ) ) );
 			const S = float( 0 ).toVar(), Lt = float( 0 ).toVar(), hzPrev = float( 0 ).toVar();
 			Loop( SHAFT_STEPS, ( { i } ) => {
@@ -297,7 +298,7 @@ export class Clouds {
 				Lt.addAssign( dh.mul( sunlit ) );
 				hzPrev.assign( hz );
 			} );
-			const k = isSky.select( this.shaftSky, float( 1 ) );
+			const k = sky.select( this.shaftSky, float( 1 ) );
 			return vec4( S.mul( k ), Lt.mul( k ), 0, 1 );
 		} );
 		this.shaftPass = rtt( shaftFrag(), null, null, { type: THREE.HalfFloatType, resolutionScale } );
@@ -370,7 +371,7 @@ export class Clouds {
 		// the sparse haze over all of it: optical depth from the camera's height along the ray, to the
 		// surface or HAZE_DIST over the sky
 		const depth = this.depthTex.sample( screenUV ).r;
-		const dist = depth.greaterThanEqual( 0.99999 ).select( float( HAZE_DIST ), getViewPosition( screenUV, depth, camProjInv ).length().min( HAZE_DIST ) );
+		const dist = isSky( depth ).select( float( HAZE_DIST ), getViewPosition( screenUV, depth, camProjInv ).length().min( HAZE_DIST ) );
 		const camY = camWorld.mul( vec4( 0, 0, 0, 1 ) ).y.max( 0 );
 		const a = this.hazeExponent, ay = a.mul( dir.y );
 		const ext0 = this.haze.mul( exp( a.mul( camY ).negate() ) );

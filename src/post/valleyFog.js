@@ -18,6 +18,7 @@ import {
 	getViewPosition, interleavedGradientNoise, screenCoordinate, rtt
 } from 'three/tsl';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { isSky } from '../core/depth.js';
 
 const TAU = Math.PI * 2;
 const SAMPLES = 6, RES = 0.35;
@@ -71,7 +72,7 @@ export class ValleyFog {
 			const target = camWorld.mul( vec4( vp, 1 ) ).xyz;
 			const ray = target.sub( camPos );
 			// the sky: as far as the march reaches
-			const len = depth.greaterThanEqual( 0.99999 ).select( this.maxDistance, ray.length().min( this.maxDistance ) );
+			const len = isSky( depth ).select( this.maxDistance, ray.length().min( this.maxDistance ) );
 			const dir = ray.normalize();
 			const step = len.div( SAMPLES );
 			const jitter = interleavedGradientNoise( screenCoordinate.xy );
