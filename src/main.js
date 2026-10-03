@@ -35,6 +35,7 @@ import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
+import { Kuwahara } from './post/kuwahara.js';
 import { createSunShadows } from './world/sunShadows.js';
 import { generateFields } from './world/genFields.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
@@ -501,12 +502,23 @@ async function main() {
 		rgb.mulAssign( smoothstep( 0.35, 0.85, v ).oneMinus().mul( 0.22 ).add( 0.78 ) );
 		return vec4( mix( c.rgb, clamp( rgb, 0.0, 1.0 ), grade ), 1.0 );
 	} )();
-	// the four outputs: with / without depth of field, with / without bloom
+	// the outputs: with / without depth of field, with / without bloom, and the "oil paint" (post/kuwahara.js,
+	// the panel's option): the scene painted in place of the depth of field (the paint smooths already,
+	// and the depth of field would sample the unpainted scene); built only when first chosen
 	const outputs = {};
+	let paint = null;
 	const output = () => {
-		const key = ( focus.enabled ? 'f' : 's' ) + ( bloomOn ? 'b' : '' );
-		return outputs[ key ] || ( outputs[ key ] = graded( focus.enabled ? focus.node : scenePass, bloomOn ) );
+		const key = ( paint ? 'p' : focus.enabled ? 'f' : 's' ) + ( bloomOn ? 'b' : '' );
+		const input = paint ? paint.node( scenePass.getTextureNode() ) : focus.enabled ? focus.node : scenePass;
+		return outputs[ key ] || ( outputs[ key ] = graded( input, bloomOn ) );
 	};
+	app.setPaint = ( on ) => {
+		paint = on ? ( app.paint ??= new Kuwahara() ) : null;
+		post.outputNode = output();
+		post.needsUpdate = true;
+	};
+	// ?paint=1 starts with it on
+	if ( params.get( 'paint' ) === '1' ) { paint = app.paint = new Kuwahara(); post.outputNode = output(); }
 	post.outputNode = output();
 	app.setFocus = ( on ) => {
 		focus.enabled = on;

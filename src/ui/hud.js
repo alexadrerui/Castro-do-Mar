@@ -41,6 +41,8 @@ export class HUD {
 		$( 'c-refl' ).onchange = ( e ) => app.setReflections( e.target.checked );
 		$( 'c-focus' ).onchange = ( e ) => this.setFocus( e.target.checked );
 		$( 'c-bloom' ).onchange = ( e ) => { app.setBloom( e.target.checked ); this.toast( e.target.checked ? 'Brilho ligado' : 'Brilho desligado' ); };
+		$( 'c-paint' ).checked = !! app.paint && new URLSearchParams( location.search ).get( 'paint' ) === '1';
+		$( 'c-paint' ).onchange = ( e ) => { app.setPaint( e.target.checked ); this.toast( e.target.checked ? 'Pintura a óleo ligada' : 'Pintura a óleo desligada' ); };
 
 		$( 'side-toggle' ).onclick = () => $( 'side' ).classList.toggle( 'collapsed' );
 		window.addEventListener( 'keydown', ( e ) => {

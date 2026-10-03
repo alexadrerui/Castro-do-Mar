@@ -69,7 +69,7 @@ O painel controla o sol (elevação e azimute), nuvens, chuva, névoa, brilho e 
 **Câmera e imagem**
 - Voo livre e mergulho.
 - Profundidade de campo com foco automático (raycast com BVH) ou pelo clique.
-- Gradação de cor de fim de tarde.
+- Gradação de cor de fim de tarde e, como opção, o modo pintura a óleo.
 
 ## Editor (`?edit`)
 
@@ -89,6 +89,7 @@ Três abas compartilham o botão "Salvar e aplicar". No servidor de desenvolvime
 | `?webgl` | força WebGL 2 |
 | `?nocache` | ignora o cache do IndexedDB |
 | `?rain=1` | começa chovendo (0 a 1) |
+| `?paint=1` | começa com a pintura a óleo |
 | `?clouds=0`, `?mist=0`, `?valley=0`, `?godrays=0`, `?scatter=0`, `?cloudshadow=0`, `?flora=0` | desligam nuvens volumétricas, brétema, névoa de vale, god rays, espalhamento na névoa, sombra das nuvens e flores do prado |
 | `?reflectms=0` | reflexo da água capturado a cada quadro |
 | `?perf` | timestamps de GPU |
@@ -135,7 +136,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
   - a névoa de vale (`src/post/valleyFog.js`);
   - a chuva com chão molhado (`src/world/weather.js`);
   - as plantas do prado (`src/world/meadowFlora.js`).
-- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz"): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; e a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`.
+- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz"): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`; e o modo pintura a óleo (`src/post/kuwahara.js`, Kuwahara anisotrópico, que ele adapta de Maxime Heckel).
 - **[Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX)** (MIT, Copyright (c) 2026 Sahil K, em `licenses/LICENSE-LightningVFX.md`): o raio com ramos, as rachaduras, as faíscas e a onda de choque (`src/world/lightning.js`), portados para TSL e adaptados.
 - **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados. A licença está em `src/world/koi/LICENSE-AndyLePool`.
 - **shader-studio** (void032, MIT): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.
