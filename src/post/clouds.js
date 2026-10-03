@@ -28,7 +28,7 @@ import {
 } from 'three/tsl';
 import { cloudMap, CLOUD_MAP, marchLength, mapLookup, sunUp, mapCentreFor } from '../world/cloudShadow.js';
 
-const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000, SHAFT_STEPS = 24, SHAFT_DIST = 30000;
+const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000, SHAFT_STEPS = 24, SHAFT_DIST = 30000, CIRRUS_STEPS = 4, CIRRUS_DIST = 90000;
 const N = ( x ) => ( typeof x === 'number' ? float( x ) : x );
 const remap = ( v, a, b ) => v.sub( N( a ) ).div( N( b ).sub( N( a ) ).max( 1e-5 ) ).clamp( 0, 1 );
 
@@ -72,16 +72,17 @@ export class Clouds {
 		this.ambientScale = uniform( 2.5 );
 		this.weatherScale = uniform( 1 / 60000 ); // m: one tile of the weather (cells of ~1-2 km)
 		this.shapeRepeat = uniform( 0.0003 ); this.detailRepeat = uniform( 0.006 );
-		// the layers (x, y, z, w = the weather's r, g, b, a): the original's two cumulus layers; b
-		// (cirrus) and a are off, the sky's own flat clouds stay as the high layer
+		// the layers (x, y, z, w = the weather's r, g, b, a): the original's two cumulus layers and its
+		// cirrus (b, 7.5-8 km, thin, no detail; marched apart, below); a is off
 		const v4 = ( x, y, z, w ) => uniform( new THREE.Vector4( x, y, z, w ) );
 		const L = this.layers = {
-			minH: v4( 750, 1000, 0, 0 ), maxH: v4( 1400, 2200, 0, 0 ),
-			densityScale: v4( 0.2, 0.2, 0, 0 ), shapeAmount: v4( 1, 1, 0, 0 ), detailAmount: v4( 1, 1, 0, 0 ),
+			minH: v4( 750, 1000, 7500, 0 ), maxH: v4( 1400, 2200, 8000, 0 ),
+			densityScale: v4( 0.2, 0.2, 0.003, 0 ), shapeAmount: v4( 1, 1, 0.4, 0 ), detailAmount: v4( 1, 1, 0, 0 ),
 			weatherExp: v4( 1, 1, 1, 1 ), bias: v4( 0.35, 0.35, 0.35, 0.35 ), filterW: v4( 0.6, 0.6, 0.5, 0.6 ),
 			profLin: v4( 0.75, 0.75, 0.75, 0.75 ), profConst: v4( 0.25, 0.25, 0.25, 0.25 )
 		};
-		this.base = uniform( 750 ); this.top = uniform( 2200 ); // the span of the enabled layers
+		this.base = uniform( 750 ); this.top = uniform( 2200 ); // the span of the cumulus layers (the main march)
+		this.cirrus = uniform( 1 );                            // the cirrus layer's strength (0: off)
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
 		this.camPos = camPos;
@@ -188,6 +189,43 @@ export class Clouds {
 					const front = wSum.div( tSum );
 					const hz = hazeAmount( front, camPos.y.add( dir.y.mul( front ) ) ).mul( 1.25 ).clamp( 0, 1 );
 					col.assign( mix( col, hazeColor.mul( 1.6 ).mul( T.oneMinus() ), hz ) );
+				} );
+			} );
+			// The cirrus (layer z), above the cumulus: a short march of its own through the slab (the
+			// main one would cross ~5 km of empty air to it), composited behind them. Thin: the light
+			// toward the sun from a single optical depth estimate, the same phase and integration.
+			If( this.cirrus.greaterThan( 0 ).and( T.greaterThan( 0.01 ) ), () => {
+				const c0 = L.minH.z.sub( camPos.y ).div( dy ), c1 = L.maxH.z.sub( camPos.y ).div( dy );
+				const cs = c0.min( c1 ).max( 0 ), ce = c0.max( c1 ).min( surf ).min( CIRRUS_DIST );
+				If( ce.greaterThan( cs ), () => {
+					const jit = fract( interleavedGradientNoise( screenCoordinate.xy ).add( this.frame.mul( 0.618034 ) ) );
+					const cosT = dot( dir, sun );
+					const hg = ( g ) => float( 1 - g * g ).div( float( 1 + g * g ).sub( cosT.mul( 2 * g ) ).max( 1e-7 ).pow( 1.5 ) ).mul( 1 / ( 4 * Math.PI ) );
+					const phase = ( c ) => hg( 0.7 * c ).add( hg( - 0.2 * c ) ).mul( 0.5 );
+					const ds = ce.sub( cs ).div( CIRRUS_STEPS );
+					const cc = vec3( 0 ).toVar(), Tc = float( 1 ).toVar();
+					const mid = cs.add( ce ).mul( 0.5 );
+					const mip = log2( mid.div( 3000 ).max( 1 ) );
+					const sunPath = float( 250 ).div( sun.y.max( 0.1 ) ).min( 2500 );
+					for ( let k = 0; k < CIRRUS_STEPS; k ++ ) {
+						const t = cs.add( ds.mul( jit.add( k ) ) );
+						const p = camPos.add( dir.mul( t ) );
+						const w = weatherAt( p, mip );
+						const e = mediaAt( w, p, false ).d.z.mul( this.cirrus );
+						const od = e.mul( sunPath );
+						const ms = float( 0 ).toVar();
+						let a = 1, b = 1, c = 1;
+						for ( let o = 0; o < 4; o ++ ) { ms.addAssign( exp( od.mul( - b ) ).mul( phase( c ) ).mul( a ) ); a *= 0.5; b *= 0.5; c *= 0.5; }
+						const rad = this.sunColor.mul( this.sunScale ).mul( ms ).add( this.ambient.mul( this.ambientScale ).mul( 1 / ( 4 * Math.PI ) ) );
+						const Ts = exp( e.mul( ds ).negate() );
+						cc.addAssign( rad.mul( Ts.oneMinus() ).mul( Tc ) );
+						Tc.mulAssign( Ts );
+					}
+					// the haze toward them, then behind the cumulus
+					const hz = hazeAmount( mid, camPos.y.add( dir.y.mul( mid ) ) ).mul( 1.25 ).clamp( 0, 1 );
+					cc.assign( mix( cc, hazeColor.mul( 1.6 ).mul( Tc.oneMinus() ), hz ) );
+					col.addAssign( cc.mul( T ) );
+					T.mulAssign( Tc );
 				} );
 			} );
 			return vec4( col, remap( T, 0.01, 1 ) );

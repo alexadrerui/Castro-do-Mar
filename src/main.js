@@ -423,8 +423,8 @@ async function main() {
 	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.sunDir } );
 	app.clouds = clouds;
 	if ( ! clouds ) clearCloudMap( renderer ); // no clouds, no cloud shadows
-	// the sky's flat clouds stay as a thin high layer over the cumulus
-	if ( clouds ) sky.sky.cloudDensity.value = 0.3;
+	// the cirrus of the volumetric clouds replace the sky's flat clouds
+	if ( clouds ) sky.sky.cloudDensity.value = 0;
 	if ( clouds ) app.onFrame.push( ( dt ) => {
 		clouds.update( dt );
 		clouds.coverage.value = sky.sky.cloudCoverage.value; // the panel's "Nuvens" and the rain
