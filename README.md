@@ -59,7 +59,7 @@ O painel controla o sol (elevação e azimute), nuvens, chuva, névoa, brilho e 
 - Céu de Preetham com nuvens 2D altas e cúmulos volumétricos em raymarch, que se deslocam com o vento e mudam de forma.
 - Sombra das nuvens no chão, god rays, bloom e espalhamento na névoa.
 - Brétema baixa sobre a água e névoa que deita nos vales.
-- Chuva com chão e telhados molhados, tempo fechado e tempestade com raios e trovão.
+- Chuva com chão e telhados molhados, poças com os anéis das gotas, anéis na água e brilhos dos impactos, tempo fechado e tempestade com raios e trovão.
 
 **Vida**
 - Gaivotas que planam sobre a baía, gaivotas que pousam nos telhados, no muro e nas pedras (e decolam quando a câmera chega perto) e charrões que pairam e mergulham.
@@ -134,6 +134,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
   - a névoa de vale (`src/post/valleyFog.js`);
   - a chuva com chão molhado (`src/world/weather.js`);
   - as plantas do prado (`src/world/meadowFlora.js`).
+- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz"): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado.
 - **[Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX)** (MIT, Copyright (c) 2026 Sahil K, em `licenses/LICENSE-LightningVFX.md`): o raio com ramos, as rachaduras, as faíscas e a onda de choque (`src/world/lightning.js`), portados para TSL e adaptados.
 - **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados. A licença está em `src/world/koi/LICENSE-AndyLePool`.
 - **shader-studio** (void032, MIT): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.

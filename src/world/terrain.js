@@ -2,11 +2,12 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, normalWorld, positionView, normalView, faceDirection,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, abs, sin, cross, dot, normalize, length,
-	attribute, fwidth
+	attribute, fwidth, cameraViewMatrix, vec4
 } from 'three/tsl';
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';
 import { cloudShade } from './cloudShadow.js';
+import { rainRipples, rainGlints } from './rainImpacts.js';
 import { wetness } from './weather.js';
 
 // Screen-space bump from an arbitrary procedural height node (the built-in
@@ -187,11 +188,18 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	// and drifting cloud shadows (world/cloudShadow.js)
 	// wet ground under the rain (world/weather.js): darker, the rock less so
 	const wetM = wetness.mul( snowM.oneMinus() );
+	// puddles (world/rainImpacts.js): as the ground wets, water lies in the hollows of the paths, the
+	// trampled ground, the fields and on flat rock; darker, mirror-smooth, pocked with rings in the rain
+	const flat = smoothstep( 0.93, 0.985, normalWorld.y );
+	const holds = max( max( smoothstep( 0.2, 0.7, pathM ), smoothstep( 0.3, 0.8, dirtM ) ), max( fieldM.mul( 0.6 ), rockAll.mul( smoothstep( 0.55, 0.75, nRock3 ) ) ) );
+	const puddleM = smoothstep( 0.6, 0.66, nMed.add( nFine.sub( 0.5 ).mul( 0.2 ) ).add( wetness.mul( 0.18 ) ).sub( 0.18 ) )
+		.mul( holds ).mul( flat ).mul( smoothstep( 0.25, 0.8, wetness ) ).mul( underM.oneMinus() ).mul( lakeWet.oneMinus() ).mul( snowM.oneMinus() );
+	col = mix( col, col.mul( vec3( 0.55, 0.56, 0.6 ) ), puddleM.mul( 0.85 ) );
 	mat.colorNode = col.mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() ).mul( wetM.mul( rockAll.mul( 0.08 ).sub( 0.22 ) ).add( 1 ) );
 	mat.aoNode = mix( float( 0.6 ), float( 1.0 ), ao );
 
 	// roughness: wet near water, rock slightly smoother
-	mat.roughnessNode = mix( mix( float( 0.96 ), float( 0.82 ), rockM ).sub( smoothstep( WATER_LEVEL, WATER_LEVEL + 0.8, wp.y ).oneMinus().mul( 0.4 ) ), float( 0.48 ), wetM.mul( 0.8 ) );
+	mat.roughnessNode = mix( mix( mix( float( 0.96 ), float( 0.82 ), rockM ).sub( smoothstep( WATER_LEVEL, WATER_LEVEL + 0.8, wp.y ).oneMinus().mul( 0.4 ) ), float( 0.48 ), wetM.mul( 0.8 ) ), float( 0.06 ), puddleM );
 	mat.metalnessNode = float( 0 );
 
 	// ---- micro relief (normal detail) ----
@@ -201,7 +209,12 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	const hSea = mix( nFine.mul( 0.2 ).add( ripples.mul( 0.35 ) ), hRock, rockM );
 	const hDetail = mix( mix( mix( hGrass, hPath, pathM ), hRock, rockAll ), hSea, underM ).mul( U.detail );
 	const bumpFade = smoothstep( 80, 420, viewDist ).oneMinus();
-	mat.normalNode = proceduralBump( hDetail, mix( 0.35, 1.4, rockAll ).mul( nearFade.mul( 0.8 ).add( 0.2 ) ).mul( bumpFade ) );
+	const bumped = proceduralBump( hDetail, mix( 0.35, 1.4, rockAll ).mul( nearFade.mul( 0.8 ).add( 0.2 ) ).mul( bumpFade ).mul( puddleM.oneMinus() ) );
+	// the rain on the puddles: ring slopes in world x / z (the ripples are too small to resolve past ~60 m)
+	const rip = rainRipples( wp.xz, puddleM.mul( smoothstep( 40, 60, viewDist ).oneMinus() ) ).mul( 0.09 );
+	mat.normalNode = normalize( bumped.add( cameraViewMatrix.mul( vec4( rip.x.negate(), 0, rip.y.negate(), 0 ) ).xyz ) );
+	// and the impacts glinting on everything wet that faces up, out to where a drop is a pixel
+	mat.emissiveNode = rainGlints( wp.xz, wetM.mul( smoothstep( 0.4, 0.8, normalWorld.y ) ).mul( smoothstep( 70, 110, viewDist ).oneMinus() ).mul( underM.oneMinus() ) ).mul( 0.5 );
 
 	const group = new THREE.Group();
 	group.name = 'terrain';

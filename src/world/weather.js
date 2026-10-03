@@ -8,6 +8,7 @@
 // panel's own values and back to them when it stops; past 60% it storms (world/lightning.js).
 // app.weather: setRain( 0..1 ), rain, wetness.
 import * as THREE from 'three/webgpu';
+import { rainFall, rainClock } from './rainImpacts.js';
 import { cameraPosition, float, fract, hash, instanceIndex, mix, positionGeometry, time, uniform, vec3 } from 'three/tsl';
 
 export const wetness = uniform( 0 );
@@ -94,6 +95,9 @@ export class Weather {
 	update( dt, camera, underwater ) {
 		// the rain eases in and out over a few seconds; the ground wets in ~40 s and dries in ~2 min
 		this.level += ( this.target - this.level ) * Math.min( 1, dt / 4 );
+		// the drops landing (world/rainImpacts.js): rings on the water and the puddles, glints
+		rainFall.value = this.level;
+		rainClock.value += dt;
 		const w = wetness.value;
 		wetness.value = this.level > w ? Math.min( this.level, w + dt / 40 ) : Math.max( this.level, w - dt / 120 );
 		this.rain.update( camera, underwater ? 0 : this.level );

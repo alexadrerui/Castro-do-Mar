@@ -5,6 +5,7 @@ import {
 	mx_noise_float, pmremTexture, vec4
 } from 'three/tsl';
 import { PlanarReprojection } from './planarReprojection.js';
+import { rainRipples } from './rainImpacts.js';
 import { WATER_LEVEL } from './layout.js';
 
 // Tileable wave-slope texture: sum of sines with integer wave vectors so it
@@ -118,7 +119,9 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	} )();
 	const strength = mix( 0.6, 0.05, smoothstep( 40, 2200, dist ) ).mul( U.waveStrength )
 		.mul( smoothstep( 0.0, 1.5, depth ).mul( 0.7 ).add( 0.3 ) );
-	const N = normalize( vec3( slope.x.mul( strength ).negate(), 1.0, slope.y.mul( strength ).negate() ) );
+	// raindrops landing (world/rainImpacts.js): their rings added to the wave slopes, near the camera
+	const rain = rainRipples( wp.xz, smoothstep( 45, 75, dist ).oneMinus() ).mul( 0.12 );
+	const N = normalize( vec3( slope.x.mul( strength ).add( rain.x ).negate(), 1.0, slope.y.mul( strength ).add( rain.y ).negate() ) );
 
 	// planar reflection with wave distortion (the sea); a lake reflects the sky's environment map
 	let refl = null, reflNode, reproj = null, reflWeight = float( 1 );
