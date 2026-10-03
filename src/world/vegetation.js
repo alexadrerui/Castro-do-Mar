@@ -48,7 +48,10 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false }
 	const mat = new THREE.MeshPhysicalNodeMaterial( { side: THREE.DoubleSide, specularIntensity: 0.2 } );
 	mat.alphaTest = 0.45;
 	mat.alphaToCoverage = true;
-	const card = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w;
+	// aux.w: 1 a leaf card, 0 a solid part, -1 a thin opaque surface (meadowFlora.js petals and leaves:
+	// no card texture, but the card's unflipped normal)
+	const card = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w.max( 0 );
+	const thin = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w.lessThan( - 0.5 ).select( 1, 0 );
 	const tex = texture( clusters ?? foliageAtlas(), uv() );
 	let cover = clusters ? tex.r : tex.a;
 	if ( clusters ) {
@@ -115,8 +118,11 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false }
 	mat.roughnessNode = mix( float( 0.9 ), float( 0.75 ), leaf );
 	// both faces of the thin cards and fronds keep the same soft (bent-up / volumetric) normal:
 	// DoubleSide would flip it on the back faces, and the undersides seen from below turned black;
-	// solid parts (trunks and branches) keep the usual flip
-	mat.normalNode = fern ? normalViewGeometry : normalViewGeometry.mul( select( card.greaterThan( 0.5 ), float( 1 ), faceDirection ) );
+	// solid parts (trunks and branches) keep the usual flip. The meadow flowers' thin petals and
+	// leaves too: curled, they show both faces at once, and in the wind each facet that turned edge-on
+	// flipped its normal, its light jumping between bright and dark from frame to frame (they flickered)
+	mat.normalNode = fern ? normalViewGeometry : normalViewGeometry.mul( select( card.add( thin ).greaterThan( 0.5 ), float( 1 ), faceDirection ) );
+	mat.userData.foliage = U; // QA (tools/flicker.mjs): wind 0 holds the plants still
 	return { material: mat, uniforms: U };
 }
 

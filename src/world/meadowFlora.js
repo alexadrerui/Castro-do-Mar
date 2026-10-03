@@ -105,7 +105,7 @@ class PlantBuilder {
 
 	// this project's vertex format (plants.js finalize): non-indexed (the colours are linear already:
 	// THREE.Color converts the hex strings; once more and the plants went dark, as the pines did once),
-	// aux = ( leaf 0: the vertex colour as is, sway by height, ao, card 0 ), an empty uv
+	// aux = ( leaf 0: the vertex colour as is, sway by height, ao, -1: thin, no card ), an empty uv
 	build( height ) {
 		const g = new THREE.BufferGeometry();
 		g.setAttribute( 'position', new THREE.Float32BufferAttribute( this.positions, 3 ) );
@@ -119,6 +119,7 @@ class PlantBuilder {
 			const t = Math.max( 0, p.getY( i ) ) / height;
 			aux[ i * 4 + 1 ] = Math.min( 1, t * t ) * 0.45; // sway: the heads move, the roots stay
 			aux[ i * 4 + 2 ] = 0.7 + 0.3 * Math.min( 1, t * 2 ); // a little darker at the ground
+			aux[ i * 4 + 3 ] = - 1; // thin: the same normal on both faces (vegetation.js createFoliageMaterial)
 		}
 		geo.setAttribute( 'aux', new THREE.BufferAttribute( aux, 4 ) );
 		geo.setAttribute( 'uv', new THREE.BufferAttribute( new Float32Array( n * 2 ), 2 ) );
