@@ -4,7 +4,7 @@ import {
 } from 'three/tsl';
 import { SURFACE } from './surfaceBake.js';
 import { ChunkedInstances } from '../core/chunked.js';
-import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
+import { makeSimplex, fbm, mulberry32, cellRand, smoothstep as ss } from '../core/noise.js';
 import { clearance, editedClearance, sampleMask, inLake, SHADOW_REACH } from './vegetation.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, natureAt, texelSeed } from './natureEdits.js';
@@ -126,17 +126,20 @@ export function createRocks( app, progress ) {
 		m.compose( pos, q, sc );
 		const item = list[ Math.floor( R() * list.length ) ], ex = [ tint( R ) ];
 		// erased by the nature brush: the draws above are used up all the same
-		if ( R === rnd && nature && erased( nature, CH.rocks, x, z ) ) return false;
+		if ( ( R === rnd || R.cell ) && nature && erased( nature, CH.rocks, x, z ) ) return false;
 		item.add_( m, ex );
 		return true;
 	};
 	const counts = { boulders: 0, gravel: 0 };
 
-	// 1) Granite tors on the hills and around the village: clusters.
+	// 1) Granite tors on the hills and around the village: clusters. The grids of 1), 2) and 3) draw
+	// from a random sequence per cell (cellRand): a cell skipped around a moved house or under a lake
+	// does not shift the rocks of the cells after it.
 	const step = 12;
-	for ( let z = hf.z0 + 20; z < hf.z0 + hf.size - 20; z += step ) {
-		for ( let x = hf.x0 + 20; x < hf.x0 + hf.size - 20; x += step ) {
-			const px = x + ( rnd() - 0.5 ) * step, pz = z + ( rnd() - 0.5 ) * step;
+	for ( let z = hf.z0 + 20, j = 0; z < hf.z0 + hf.size - 20; z += step, j ++ ) {
+		for ( let x = hf.x0 + 20, i = 0; x < hf.x0 + hf.size - 20; x += step, i ++ ) {
+			const R = cellRand( i, j, 77 );
+			const px = x + ( R() - 0.5 ) * step, pz = z + ( R() - 0.5 ) * step;
 			const h = hf.heightAt( px, pz );
 			if ( h < 2 || h > 700 || inLake( px, pz ) ) continue;
 			const slope = hf.slopeAt( px, pz );
@@ -145,31 +148,32 @@ export function createRocks( app, progress ) {
 			const distV = Math.hypot( px - VILLAGE.x, pz - VILLAGE.z );
 			let p = Math.min( 1, 2 * outcrop * ( 0.25 + 0.75 * hill ) * ( 0.4 + ss( 0.25, 0.7, slope ) ) );
 			if ( distV < 130 ) p = Math.max( p * 0.8, 0.12 * outcrop + 0.04 );
-			if ( rnd() > p * 0.9 ) continue;
+			if ( R() > p * 0.9 ) continue;
 			if ( ( distV < 380 ? clearance( px, pz, app.mask, 2 ) : editedClearance( px, pz, 2 ) ) <= 0 ) continue;
-			const k = 1 + Math.floor( rnd() * 5 );
-			const big = 1.5 + rnd() * 5.0 * ( 0.4 + 0.6 * hill );
-			for ( let i = 0; i < k; i ++ ) {
-				const a = rnd() * Math.PI * 2, r = i ? big * ( 0.8 + rnd() * 1.4 ) : 0;
+			const k = 1 + Math.floor( R() * 5 );
+			const big = 1.5 + R() * 5.0 * ( 0.4 + 0.6 * hill );
+			for ( let n = 0; n < k; n ++ ) {
+				const a = R() * Math.PI * 2, r = n ? big * ( 0.8 + R() * 1.4 ) : 0;
 				const bx = px + Math.cos( a ) * r, bz = pz + Math.sin( a ) * r;
 				if ( ( distV < 380 ? clearance( bx, bz, app.mask, 1 ) : editedClearance( bx, bz, 1 ) ) <= 0 ) continue;
-				if ( put( tors, bx, bz, big * ( i ? 0.35 + rnd() * 0.5 : 1 ) ) ) counts.boulders ++;
+				if ( put( tors, bx, bz, big * ( n ? 0.35 + R() * 0.5 : 1 ), 0.25, 1, R ) ) counts.boulders ++;
 			}
 		}
 		progress?.( 0.6 * ( z - hf.z0 ) / hf.size );
 	}
 
 	// 2) Rocky shore: boulders along the waterline (both references).
-	for ( let z = hf.z0 + 20; z < hf.z0 + hf.size - 20; z += 3 ) {
-		for ( let x = hf.x0 + 20; x < hf.x0 + hf.size - 20; x += 3 ) {
-			const px = x + ( rnd() - 0.5 ) * 3, pz = z + ( rnd() - 0.5 ) * 3;
+	for ( let z = hf.z0 + 20, j = 0; z < hf.z0 + hf.size - 20; z += 3, j ++ ) {
+		for ( let x = hf.x0 + 20, i = 0; x < hf.x0 + hf.size - 20; x += 3, i ++ ) {
+			const R = cellRand( i, j, 78 );
+			const px = x + ( R() - 0.5 ) * 3, pz = z + ( R() - 0.5 ) * 3;
 			const h = hf.heightAt( px, pz );
 			if ( h < - 2.2 || h > 5 || inLake( px, pz ) ) continue;
 			const band = 1 - ss( 1.5, 5, Math.abs( h - 0.8 ) );
 			const n = 0.5 + 0.5 * nR( px * 0.05, pz * 0.05 );
-			if ( rnd() > band * ( 0.12 + 0.35 * n ) ) continue;
+			if ( R() > band * ( 0.12 + 0.35 * n ) ) continue;
 			if ( pathDistance( px, pz ).d < 3 ) continue;
-			if ( put( shore, px, pz, 0.5 + Math.pow( rnd(), 2.2 ) * 3.2, 0.35 ) ) counts.boulders ++;
+			if ( put( shore, px, pz, 0.5 + Math.pow( R(), 2.2 ) * 3.2, 0.35, 1, R ) ) counts.boulders ++;
 		}
 		progress?.( 0.6 + 0.25 * ( z - hf.z0 ) / hf.size );
 	}
@@ -241,17 +245,18 @@ export function createRocks( app, progress ) {
 	}
 
 	// 3) Gravel: along path edges, at house pads and on the shore near the village.
-	for ( let z = - 260; z < 300; z += 1.3 ) {
-		for ( let x = - 320; x < 260; x += 1.3 ) {
-			const px = x + ( rnd() - 0.5 ) * 1.3, pz = z + ( rnd() - 0.5 ) * 1.3;
+	for ( let z = - 260, j = 0; z < 300; z += 1.3, j ++ ) {
+		for ( let x = - 320, i = 0; x < 260; x += 1.3, i ++ ) {
+			const R = cellRand( i, j, 79 );
+			const px = x + ( R() - 0.5 ) * 1.3, pz = z + ( R() - 0.5 ) * 1.3;
 			const h = hf.heightAt( px, pz );
 			if ( h < - 0.5 || inLake( px, pz ) ) continue;
 			const [ path, dirt ] = sampleMask( app.mask, px, pz );
 			const edge = path > 0.05 && path < 0.85 ? 0.5 : path >= 0.85 ? 0.12 : 0;
 			const shore = h < 3 ? 0.3 : 0;
 			const p = edge + dirt * 0.05 + shore;
-			if ( p <= 0 || rnd() > p ) continue;
-			if ( put( gravel, px, pz, 0.06 + Math.pow( rnd(), 2 ) * 0.28, 0.3 ) ) counts.gravel ++;
+			if ( p <= 0 || R() > p ) continue;
+			if ( put( gravel, px, pz, 0.06 + Math.pow( R(), 2 ) * 0.28, 0.3, 1, R ) ) counts.gravel ++;
 		}
 	}
 

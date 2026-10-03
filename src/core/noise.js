@@ -12,6 +12,15 @@ export function mulberry32( seed ) {
 	};
 }
 
+// A random sequence of its own for cell ( i, j ) of a scatter grid: a cell skipped (cleared around a
+// moved house, under a lake, an edited relief) no longer shifts the draws of every cell after it.
+// `cell` marks it as the procedural scatter's (the nature brush may erase what it places).
+export function cellRand( i, j, salt ) {
+	const r = mulberry32( ( Math.imul( i + 1, 73856093 ) ^ Math.imul( j + 1, 19349663 ) ^ salt ) >>> 0 );
+	r.cell = true;
+	return r;
+}
+
 const F2 = 0.5 * ( Math.sqrt( 3 ) - 1 );
 const G2 = ( 3 - Math.sqrt( 3 ) ) / 6;
 const GRAD = [ [ 1, 1 ], [ - 1, 1 ], [ 1, - 1 ], [ - 1, - 1 ], [ 1, 0 ], [ - 1, 0 ], [ 0, 1 ], [ 0, - 1 ] ];

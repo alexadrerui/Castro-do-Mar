@@ -14,7 +14,7 @@ import srcLeafAtlas from './leafAtlas.js?raw';
 import srcImpostors from './impostors.js?raw';
 import srcTrees from './trees.js?raw';
 import srcVegetation from './vegetation.js?raw';
-import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
+import { makeSimplex, fbm, mulberry32, cellRand, smoothstep as ss } from '../core/noise.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
 import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, footprintR } from './layout.js';
@@ -269,23 +269,24 @@ export async function createVegetation( app, progress ) {
 		m.compose( pos, q, sc );
 		const kind = sp === 'gold' ? 'birch' : sp;
 		const extra = [ sp === 'gold' ? [ 0.47, 0.32, 0.045 ] : tint( sp, R ) ];
-		if ( R === rnd && nature && erased( nature, CH[ kind ], x, z ) ) return false;
+		if ( ( R === rnd || R.cell ) && nature && erased( nature, CH[ kind ], x, z ) ) return false;
 		species[ kind ].add_( m, extra );
 		return true;
 	};
 
-	// Jittered-grid scatter over the whole terrain.
+	// Jittered-grid scatter over the whole terrain, each cell with its own random sequence (cellRand).
 	const step = 9;
 	const x0 = hf.x0 + 10, x1 = hf.x0 + hf.size - 10, z0 = hf.z0 + 10, z1 = hf.z0 + hf.size - 10;
 	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, fern: 0 };
 	// understory: bracken in the woodland patches and the lowlands, gorse / broom on the high open hills
-	const shrub = ( x, z, s, patch, h ) => {
+	const shrub = ( x, z, s, patch, h, R ) => {
 		const fernP = ( 0.25 + 0.45 * patch ) * ( 1 - ss( 90, 220, h ) );
-		if ( rnd() < fernP ) { if ( place( 'fern', x, z, 0.8 + rnd() * 0.5, 0.3 ) ) counts.fern ++; } else if ( place( 'bush', x, z, s, 0.5 ) ) counts.bush ++;
+		if ( R() < fernP ) { if ( place( 'fern', x, z, 0.8 + R() * 0.5, 0.3, R ) ) counts.fern ++; } else if ( place( 'bush', x, z, s, 0.5, R ) ) counts.bush ++;
 	};
-	for ( let z = z0; z < z1; z += step ) {
-		for ( let x = x0; x < x1; x += step ) {
-			const px = x + ( rnd() - 0.5 ) * step, pz = z + ( rnd() - 0.5 ) * step;
+	for ( let z = z0, j = 0; z < z1; z += step, j ++ ) {
+		for ( let x = x0, i = 0; x < x1; x += step, i ++ ) {
+			const R = cellRand( i, j, 890 );
+			const px = x + ( R() - 0.5 ) * step, pz = z + ( R() - 0.5 ) * step;
 			const h = hf.heightAt( px, pz );
 			if ( h < 1.6 || h > 430 || inLake( px, pz ) ) continue;
 			const slope = hf.slopeAt( px, pz );
@@ -302,23 +303,23 @@ export async function createVegetation( app, progress ) {
 			const c = distV < 360 ? clearance( px, pz, app.mask ) : editedClearance( px, pz );
 			if ( c <= 0 ) continue;
 			dens *= c;
-			const r = rnd();
+			const r = R();
 			if ( r < dens * 0.72 ) {
 				// tree: pines higher up & on islands/coast, oaks on the lowlands
 				const pinePref = ss( 40, 140, h ) * 0.6 + ( h < 30 && distV > 250 ? 0.5 : 0 ) + 0.2;
-				const pick = rnd();
+				const pick = R();
 				let sp;
 				if ( pick < pinePref ) sp = 'pine';
 				else if ( pick < pinePref + 0.025 ) sp = 'birch';
 				else sp = 'oak';
-				const s = ( sp === 'pine' ? 0.6 + rnd() * 0.8 : 0.7 + rnd() * 0.6 ) * ( 1 - 0.3 * ss( 200, 420, h ) );
-				if ( place( sp, px, pz, s ) ) counts[ sp ] ++;
+				const s = ( sp === 'pine' ? 0.6 + R() * 0.8 : 0.7 + R() * 0.6 ) * ( 1 - 0.3 * ss( 200, 420, h ) );
+				if ( place( sp, px, pz, s, 0.08, R ) ) counts[ sp ] ++;
 			} else if ( r < dens * 0.72 + ( 0.3 + 0.5 * patch ) * steep * altitude * c * 0.9 ) {
-				shrub( px, pz, 0.6 + rnd() * 0.9, patch, h );
+				shrub( px, pz, 0.6 + R() * 0.9, patch, h, R );
 			}
 			// extra shrub clumps (gorse / broom / bracken) on the open hills
-			if ( ! nearVillage && h > 3 && rnd() < 0.9 * steep * altitude ) {
-				for ( let k = 0; k < 2; k ++ ) shrub( px + ( rnd() - 0.5 ) * step, pz + ( rnd() - 0.5 ) * step, 0.5 + rnd() * 0.8, patch, h );
+			if ( ! nearVillage && h > 3 && R() < 0.9 * steep * altitude ) {
+				for ( let k = 0; k < 2; k ++ ) shrub( px + ( R() - 0.5 ) * step, pz + ( R() - 0.5 ) * step, 0.5 + R() * 0.8, patch, h, R );
 			}
 		}
 		progress?.( ( z - z0 ) / ( z1 - z0 ) * 0.9 );
