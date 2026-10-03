@@ -2,7 +2,7 @@
 // (+ `settle` ms of frames) with its full descriptor (shaders hashed), then reports:
 //   - identical descriptors built more than once (three.js cache misses),
 //   - for a shader pair built with several descriptors, which fields differ,
-//   - call stacks of the pipelines built after the first frame.
+//   - call stacks of the pipelines built after the first frame, and their vertex inputs.
 // node tools/pipedup.mjs [settle ms=15000] [extra url params]
 import puppeteer from 'puppeteer-core';
 
@@ -14,7 +14,7 @@ const browser = await puppeteer.launch( {
 	defaultViewport: { width: 1600, height: 900 }
 } );
 const page = await browser.newPage();
-page.on( 'console', ( m ) => { if ( /^(first frame|bakes:)/.test( m.text() ) || m.type() === 'error' ) console.log( '[page]', m.text() ); } );
+page.on( 'console', ( m ) => { if ( /^(first frame|bakes:|precompile)/.test( m.text() ) || m.type() === 'error' ) console.log( '[page]', m.text() ); } );
 await page.evaluateOnNewDocument( () => {
 	const log = window.__pipes = [];
 	const hash = ( s ) => { let h = 0; for ( let i = 0; i < s.length; i ++ ) h = ( h * 31 + s.charCodeAt( i ) ) | 0; return ( h >>> 0 ).toString( 16 ); };
@@ -78,6 +78,8 @@ const res = await page.evaluate( () => {
 		topPairs: pairs.slice( 0, 12 ),
 		afterReady: after.length,
 		topStacks: [ ...stacks ].sort( ( a, b ) => b[ 1 ] - a[ 1 ] ).slice( 0, 4 ).map( ( [ s, n ] ) => n + ' × ' + s ),
+		// the late ones by their vertex inputs (the stacks are three.js internals only)
+		afterInputs: after.map( ( r ) => ( window.__code[ r.vs ] || '' ).match( /@location\( ?\d+ ?\) +(\w+)/g )?.map( ( m ) => m.split( /\s+/ ).pop() ).join( ',' ) + ' | ms ' + r.ms + ' | ' + ( r.targets || '' ).slice( 0, 60 ) ),
 		layouts: new Set( L.map( ( r ) => r.layout ) ).size,
 	};
 } );

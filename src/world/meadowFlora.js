@@ -2,7 +2,7 @@
 // The plant meshes are ported from Drusniel: Gods' End (https://github.com/danielsobrado/drusniel-gods-end,
 // src/foliage/MeadowGeometry.js at commit 95cc587), MIT License, Copyright (c) Daniel Sobrado; see
 // licenses/LICENSE-Drusniel.md. Changes: this project's vertex format (non-indexed, uv, color,
-// aux = leaf, sway, ao, card), so every plant shares the birch's foliage material (vegetation.js
+// aux = leaf, sway, ao, card), so every plant shares the canvas-atlas foliage material (vegetation.js
 // createFoliageMaterial: no new shader, the project sits at the browser's shader cache limit); a
 // light LOD; the daisy also as a buttercup; a foxglove (Digitalis purpurea) built with the same
 // builder; placed by this project's grass density mask, the woodland and the village clearance.
@@ -11,7 +11,7 @@ import { ChunkedInstances } from '../core/chunked.js';
 import { mulberry32, makeSimplex, fbm, smoothstep as ss } from '../core/noise.js';
 import { VILLAGE } from './layout.js';
 import { CH, natureAt } from './natureEdits.js';
-import { inLake } from './vegetation.js';
+import { inLake, sampleMask } from './vegetation.js';
 
 const UP = new THREE.Vector3( 0, 1, 0 );
 const FORWARD = new THREE.Vector3( 0, 0, 1 );
@@ -234,7 +234,7 @@ function plantGeometry( kind, lod ) {
 
 const RADIUS = 480; // around the village
 
-// app: hf, foliageMaterial (the birch's), the vegetation group (its trees), natureEdits;
+// app: hf, foliageMaterial (vegetation.js, canvas atlas), the vegetation group (its trees), natureEdits;
 // density: the grass density mask (grass.js GrassField.density, G = meadow)
 export function createMeadowFlora( app, density, vegetation ) {
 	const { hf } = app;
@@ -275,6 +275,8 @@ export function createMeadowFlora( app, density, vegetation ) {
 			if ( Math.hypot( px - VILLAGE.x, pz - VILLAGE.z ) > RADIUS ) continue;
 			const meadow = meadowAt( px, pz );
 			if ( meadow < 0.35 ) continue;
+			// the density mask's 4 m texels blur over the tracks: the fine path mask keeps them clear
+			if ( sampleMask( app.mask, px, pz )[ 0 ] > 0.2 ) continue;
 			const patch = ss( - 0.05, 0.45, fbm( noise, px * 0.022, pz * 0.022, 2 ) );
 			if ( r0 > meadow * ( 0.12 + 0.8 * patch * patch ) ) continue;
 			let kind;
@@ -295,7 +297,7 @@ export function createMeadowFlora( app, density, vegetation ) {
 			for ( let i = 0; i < count; i ++ ) {
 				p.set( matrices[ i * 16 + 12 ], 0, matrices[ i * 16 + 14 ] );
 				if ( Math.hypot( p.x - VILLAGE.x, p.z - VILLAGE.z ) > RADIUS ) continue;
-				const free = ( x, z ) => hf.heightAt( x, z ) > 1.5 && ! inLake( x, z ) && natureAt( app.natureEdits, CH.grass, x, z ) > - 0.5;
+				const free = ( x, z ) => hf.heightAt( x, z ) > 1.5 && ! inLake( x, z ) && natureAt( app.natureEdits, CH.grass, x, z ) > - 0.5 && sampleMask( app.mask, x, z )[ 0 ] <= 0.2;
 				if ( ch.name === 'oak' ) for ( let k = 0, n = 3 + Math.floor( rt() * 4 ); k < n; k ++ ) {
 					const a = rt() * Math.PI * 2, d = 0.8 + rt() * 3;
 					const x = p.x + Math.cos( a ) * d, z = p.z + Math.sin( a ) * d;

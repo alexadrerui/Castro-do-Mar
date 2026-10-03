@@ -319,7 +319,12 @@ export async function createVegetation( app, progress ) {
 			}
 			// extra shrub clumps (gorse / broom / bracken) on the open hills
 			if ( ! nearVillage && h > 3 && R() < 0.9 * steep * altitude ) {
-				for ( let k = 0; k < 2; k ++ ) shrub( px + ( R() - 0.5 ) * step, pz + ( R() - 0.5 ) * step, 0.5 + R() * 0.8, patch, h, R );
+				for ( let k = 0; k < 2; k ++ ) {
+					// off the cell's centre: their own clearance test (they stood on the tracks)
+					const sx = px + ( R() - 0.5 ) * step, sz = pz + ( R() - 0.5 ) * step, ss_ = 0.5 + R() * 0.8;
+					if ( ( distV < 360 ? clearance( sx, sz, app.mask ) : editedClearance( sx, sz ) ) <= 0 || inLake( sx, sz ) ) continue;
+					shrub( sx, sz, ss_, patch, h, R );
+				}
 			}
 		}
 		progress?.( ( z - z0 ) / ( z1 - z0 ) * 0.9 );
@@ -332,7 +337,18 @@ export async function createVegetation( app, progress ) {
 		[ 'oak', 8, 58, 1.0 ], [ 'oak', - 28, 50, 0.9 ], [ 'pine', 55, - 55, 1.0 ], [ 'oak', 30, 58, 0.95 ],
 		[ 'gold', - 62, 58, 0.9 ], [ 'oak', 72, 22, 0.9 ], [ 'pine', - 95, - 40, 1.1 ], [ 'oak', - 5, 30, 0.8 ]
 	];
-	for ( const [ sp, x, z, s ] of featured ) if ( place( sp, x, z, s ) ) counts[ sp === 'gold' ? 'birch' : sp ] ++;
+	// a featured tree standing on a track or a pad (the layout moved under it) goes to the nearest free spot
+	const freeSpot = ( x, z ) => {
+		for ( let r = 0; r <= 12; r += 1 ) for ( let k = 0, n = Math.max( 1, r * 3 ); k < n; k ++ ) {
+			const a = k / n * Math.PI * 2, fx = x + Math.cos( a ) * r, fz = z + Math.sin( a ) * r;
+			if ( clearance( fx, fz, app.mask, 1 ) > 0 ) return [ fx, fz ];
+		}
+		return null;
+	};
+	for ( const [ sp, x, z, s ] of featured ) {
+		const f = freeSpot( x, z );
+		if ( f && place( sp, f[ 0 ], f[ 1 ], s ) ) counts[ sp === 'gold' ? 'birch' : sp ] ++;
+	}
 	// gorse and bracken on the ledges of the mine cliff (world/fort.js), with their own random sequence
 	const lrnd = mulberry32( 3131 );
 	for ( const p of mineLedgeSpots() ) if ( place( p.kind, p.x, p.z, p.s, 0.3, lrnd, p.y ) ) counts[ p.kind ] ++;

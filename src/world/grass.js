@@ -17,7 +17,7 @@ import { mulberry32, smoothstep as ss } from '../core/noise.js';
 import { meadowTone } from './terrain.js';
 import { clearance, editedClearance, inLake } from './vegetation.js';
 import { CH, natureAt } from './natureEdits.js';
-import { VILLAGE } from './layout.js';
+import { VILLAGE, MASK } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
 
 // The world is divided into CELL x CELL metre cells. Every visible cell near the camera draws one
@@ -440,7 +440,7 @@ export class GrassField {
 	_createMaterial( terrain, sunDir ) {
 		const hf = this.hf;
 		const origin = vec2( hf.x0, hf.z0 );
-		const hTex = texture( terrain.heightTex ), macro = texture( terrain.macroTex ), mTex = texture( this.maskTex );
+		const hTex = texture( terrain.heightTex ), macro = texture( terrain.macroTex ), mTex = texture( this.maskTex ), pTex = texture( terrain.maskTex );
 		const heightAt = ( xz ) => hTex.sample( xz.sub( origin ).div( hf.cell ).add( 0.5 ).div( hf.n ) ).level( 0 ).x;
 		const camPos = this.camPos;
 		const sun = uniform( sunDir );
@@ -486,7 +486,16 @@ export class GrassField {
 			// dune tufts are sparse, the meadow is a closed sward
 			const duneF = dune.div( dune.add( lush ).add( 1e-3 ) );
 			const grassP = mix( lush, dune.mul( 0.4 ), duneF );
-			const density = select( isGrass, grassP, select( isOat, m.b, m.a ) );
+			// the trodden tracks: the terrain mask's path channel (0.6 m texels, the one that paints the
+			// dirt; the density mask's 4 m texels blur over a 2-3 m track). On the track only short, sparse
+			// grass, sparser and shorter on the worn centre, where there is meadow around; no marram or
+			// bindweed
+			const pathUV = xz.sub( vec2( MASK.centerX - MASK.size / 2, MASK.centerZ - MASK.size / 2 ) ).div( MASK.size );
+			const pathR = pTex.sample( pathUV ).level( 0 ).r;
+			const onPath = smoothstep( 0.2, 0.55, pathR );
+			const tread = smoothstep( 0.7, 1.0, pathR );
+			const pathGrass = mix( float( 0.75 ), float( 0.4 ), tread ).mul( smoothstep( 0.0, 0.04, grassP ) );
+			const density = select( isGrass, mix( grassP, pathGrass, onPath ), select( isOat, m.b, m.a ).mul( onPath.oneMinus() ) );
 			const r = hash12( xz.mul( 1.37 ).add( 0.51 ) );
 			const r2 = hash12( xz.mul( 2.11 ).add( 7.3 ) );
 			const flowerOk = select( kind.greaterThan( 3.5 ), select( r2.lessThan( 0.35 ), 1, 0 ), 1 );
@@ -502,7 +511,8 @@ export class GrassField {
 			// wiry dune tufts
 			const patch = vnoise( xz.mul( 1 / 6.5 ).add( 17.3 ) ).mul( 0.7 ).add( vnoise( xz.mul( 1 / 2.3 ) ).mul( 0.3 ) );
 			const lushH = mix( 0.55, 1.05, patch ).mul( mt.lush.mul( 0.25 ).add( 1 ) ).mul( float( 1 ).sub( mt.dry.mul( 0.4 ) ) );
-			const grassH = mix( lushH, float( 0.55 ), duneF ).mul( r2.mul( 0.35 ).add( 0.83 ) ).mul( density.mul( 0.35 ).add( 0.65 ) );
+			const grassH = mix( lushH, float( 0.55 ), duneF ).mul( r2.mul( 0.35 ).add( 0.83 ) ).mul( density.mul( 0.35 ).add( 0.65 ) )
+				.mul( mix( float( 1 ), mix( 0.4, 0.22, tread ), onPath ) ); // short on the track (the reference)
 			const oatH = r2.mul( 0.55 ).add( 1.0 );
 			const vineS = r2.mul( 0.4 ).add( 0.8 );
 			const hScale = select( isGrass, grassH, select( isOat, oatH, vineS ) );
