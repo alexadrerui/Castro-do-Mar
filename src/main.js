@@ -32,7 +32,7 @@ import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
-import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
+import { bindSky, updateCloudSun, cloudShadowUniforms, clearCloudMap } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
 import { Kuwahara } from './post/kuwahara.js';
@@ -164,7 +164,7 @@ async function main() {
 		app.sky = sky;
 		// the sun's shadows in cascades (world/sunShadows.js), before any material builds
 		app.shadows = createSunShadows( { sun: sky.sun, camera, renderer } );
-		// cloud shadows on the ground follow the sky's cover (world/cloudShadow.js, before the materials)
+		// cloud shadows on the ground: the clouds' shadow map along the sun (world/cloudShadow.js, before the materials)
 		bindSky( sky );
 		updateCloudSun( sky.state.elevation );
 		app.cloudShadow = cloudShadowUniforms;
@@ -422,6 +422,7 @@ async function main() {
 	// volumetric cumulus over the sky's own clouds (post/clouds.js); ?clouds=0 leaves them out
 	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.sunDir } );
 	app.clouds = clouds;
+	if ( ! clouds ) clearCloudMap( renderer ); // no clouds, no cloud shadows
 	// the sky's flat clouds stay as a thin high layer over the cumulus
 	if ( clouds ) sky.sky.cloudDensity.value = 0.3;
 	if ( clouds ) app.onFrame.push( ( dt ) => {
@@ -541,6 +542,8 @@ async function main() {
 	app.renderFrame = () => {
 		const w = app.water;
 		if ( w.mesh.visible && w.reflector.reflector.updateBeforeType !== THREE.NodeUpdateType.NONE ) w.reflection?.captureBefore( { renderer, scene, camera, material: w.material } );
+		// the clouds' shadow map (world/cloudShadow.js), read by the ground and by the clouds' pass
+		if ( clouds ) clouds.renderShadow( renderer );
 		post.render();
 	};
 

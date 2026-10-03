@@ -3,8 +3,8 @@
 // Shota Matsuda, licenses/LICENSE-takram-clouds.md. Its textures are used as they are (public/clouds/:
 // the 128³ shape, the 32³ shape detail and the 512² local weather, one cloud layer per channel).
 // Changes: rewritten in TSL for WebGPU (the original is GLSL for pmndrs' postprocessing); a flat world
-// instead of the globe (the weather tiles over x / z); no Beer shadow map yet (a longer march to the sun
-// instead), no turbulence, no light shafts, no haze; the temporal filter is simpler (below); the
+// instead of the globe (the weather tiles over x / z); the Beer shadow map is a single cascade
+// (world/cloudShadow.js, it shades the ground too), no turbulence, no light shafts, no haze; the temporal filter is simpler (below); the
 // sun and sky light are this project's (sky.js), not precomputed atmosphere irradiance; the coverage
 // comes from the sky's cloudCoverage (the panel's "Nuvens", the rain).
 // The model: per layer, the weather texture says where the clouds are, a semi-circle height function
@@ -26,8 +26,9 @@ import {
 	Fn, If, Loop, Break, float, mix, vec2, vec3, vec4, uniform, texture, texture3D, screenUV, screenCoordinate, getViewPosition,
 	getScreenPosition, interleavedGradientNoise, rtt, dot, exp, max, min, pow, log2, fract, uv, passTexture, convertToTexture
 } from 'three/tsl';
+import { cloudMap, CLOUD_MAP, marchLength, mapLookup, sunUp, mapCentreFor } from '../world/cloudShadow.js';
 
-const MAX_ITER = 192, SUN_STEPS = 4, MAX_DIST = 60000;
+const MAX_ITER = 192, SUN_STEPS = 4, SUN_REACH = 900, MAP_STEPS = 40, MAX_DIST = 60000;
 const N = ( x ) => ( typeof x === 'number' ? float( x ) : x );
 const remap = ( v, a, b ) => v.sub( N( a ) ).div( N( b ).sub( N( a ) ).max( 1e-5 ) ).clamp( 0, 1 );
 
@@ -64,6 +65,7 @@ export class Clouds {
 		this.frame = uniform( 0 );
 		this.windSpeed = uniform( 18 );     // m/s, from the south-west
 		this.evolve = uniform( 3 );         // m/s: the shape noise drifts down through the clouds (they change)
+		this.farShadow = uniform( 1 );      // the shadow map's share in the light toward the sun (0: only the short march)
 		this.sunColor = uniform( new THREE.Color( 1, 0.95, 0.85 ) );
 		this.sunScale = uniform( 12 );
 		this.ambient = uniform( new THREE.Color( 0.55, 0.65, 0.8 ) );
@@ -153,6 +155,12 @@ export class Clouds {
 								od.addAssign( mediaAt( weatherAt( ps, mip ), ps, false ).sum.mul( s ) );
 								at += s * 1.5; s *= 2;
 							}
+							// past those ~0.9 km, the shadow map: the mean extinction from the first cloud
+							// toward the sun down to the end of the short march, at most the column's whole depth
+							const look = mapLookup( p );
+							const bsm = cloudMap.tex.sample( look.st ).level( 0 );
+							const fromFront = marchLength().sub( p.y.sub( cloudMap.base ).div( sunUp() ) ).sub( bsm.x );
+							od.addAssign( bsm.y.mul( fromFront.sub( SUN_REACH ).max( 0 ) ).min( bsm.z ).mul( look.inside ).mul( this.farShadow ) );
 							// multiple scattering as octaves (a: attenuation, b: contribution, c: phase)
 							const ms = float( 0 ).toVar();
 							let a = 1, b = 1, c = 1;
@@ -187,9 +195,59 @@ export class Clouds {
 
 		this.pass = rtt( march(), null, null, { type: THREE.HalfFloatType, resolutionScale } );
 		this.smooth = new CloudHistory( this.pass, camera, resolutionScale, this.frame ).getTextureNode();
+
+		// the Beer shadow map (world/cloudShadow.js): from each texel of the base plane, a march toward
+		// the sun through the layers (cheap media: no detail, the weather's first mip); stores the first
+		// cloud's distance from the march's start (the sunward end), the mean extinction past it, the
+		// total optical depth
+		this.camera = camera;
+		this.mapEvery = 4; // frames between renders (the clouds move ~1 m in that time; a texel is 40 m)
+		this._mapFrame = 0;
+		this._mapCentre = new THREE.Vector2( Infinity, 0 );
+		this._mapSun = new THREE.Vector3();
+		const mapFrag = Fn( () => {
+			const xz = uv().sub( 0.5 ).mul( CLOUD_MAP.span ).add( cloudMap.centre );
+			const L = marchLength();
+			const ds = L.div( MAP_STEPS );
+			const start = vec3( xz.x, cloudMap.base, xz.y ).add( sun.mul( L ) );
+			const od = float( 0 ).toVar(), front = float( - 1 ).toVar(), last = float( 0 ).toVar();
+			Loop( MAP_STEPS, ( { i } ) => {
+				const t = float( i ).add( 0.5 ).mul( ds );
+				const p = start.sub( sun.mul( t ) );
+				const e = mediaAt( weatherAt( p, float( 0 ) ), p, false ).sum;
+				If( e.greaterThan( 1e-4 ), () => {
+					If( front.lessThan( 0 ), () => { front.assign( t.sub( ds.mul( 0.5 ) ) ); } );
+					last.assign( t.add( ds.mul( 0.5 ) ) );
+				} );
+				od.addAssign( e.mul( ds ) );
+			} );
+			const has = front.greaterThanEqual( 0 );
+			return vec4( has.select( front, L ), od.div( last.sub( front ).max( ds ) ).mul( has.select( 1, 0 ) ), od, 1 );
+		} );
+		this._mapMat = new THREE.NodeMaterial();
+		this._mapMat.name = 'cloudsShadowMap';
+		this._mapMat.fragmentNode = mapFrag();
+		this._mapQuad = new THREE.QuadMesh( this._mapMat );
 	}
 
 	update( dt ) { this.time.value += dt; }
+
+	// the shadow map, before the scene pass (app.renderFrame): every few frames, or at once when the
+	// camera's projection moves the map by a texel or the sun turns
+	renderShadow( renderer ) {
+		cloudMap.base.value = this.base.value; cloudMap.top.value = this.top.value;
+		const sun = cloudMap.sun.value;
+		const c = mapCentreFor( this.camera.position.x, this.camera.position.z, sun, this.base.value );
+		const moved = ! c.equals( this._mapCentre ) || sun.angleTo( this._mapSun ) > 0.002;
+		if ( ! moved && ++ this._mapFrame < this.mapEvery ) return;
+		this._mapFrame = 0;
+		this._mapCentre.copy( c ); this._mapSun.copy( sun );
+		cloudMap.centre.value.copy( c );
+		const prev = renderer.getRenderTarget();
+		renderer.setRenderTarget( cloudMap.rt );
+		this._mapQuad.render( renderer );
+		renderer.setRenderTarget( prev );
+	}
 
 	// src: the scene colour (HDR); the clouds laid over it
 	apply( src ) {

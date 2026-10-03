@@ -61,10 +61,10 @@ const measure = async ( mode ) => {
 		const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
 		// the clouds frozen at one moment: they drift with the clock since the load, so the sky of a
 		// cold and a warm load differed by however long each took (view 5 failed at 108 / 123 luma
-		// once the cold load got faster). The sky's 2D clouds, the volumetric ones and their shadow.
+		// once the cold load got faster). The sky's 2D clouds and the volumetric ones (their shadow map
+		// on the ground follows them).
 		a.sky.sky.cloudSpeed.value = 0;
 		if ( a.clouds ) { a.clouds.time.value = 0; a.clouds.update = () => {}; }
-		if ( a.cloudShadow ) a.cloudShadow.speed.value = 0;
 		const ids = list.length ? list : a.views.map( ( _, i ) => i );
 		const res = [];
 		for ( const i of ids ) {
