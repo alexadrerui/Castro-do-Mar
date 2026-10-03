@@ -5,7 +5,7 @@ import {
 import { SURFACE } from './surfaceBake.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { makeSimplex, fbm, mulberry32, smoothstep as ss } from '../core/noise.js';
-import { clearance, editedClearance, sampleMask, inLake } from './vegetation.js';
+import { clearance, editedClearance, sampleMask, inLake, SHADOW_REACH } from './vegetation.js';
 import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, natureAt, texelSeed } from './natureEdits.js';
 import { VILLAGE, WATER_LEVEL, SPINE, MINE } from './layout.js';
@@ -97,7 +97,7 @@ export function createRocks( app, progress ) {
 	// one style per setting: rounded tor blocks on the hills, boulders on the shore, angular
 	// blocks in the talus under the cliff
 	const chunked = ( name, style, seed ) => {
-		const s = new ChunkedInstances( { name, hi: graniteGeometry( style, seed, 2 ), lo: graniteGeometry( style, seed, 1 ), material: mat, materialLo: matLo, tile: 260, lodDistance: 100, shadowDistance: 110, layer: 1, reflect: false } );
+		const s = new ChunkedInstances( { name, hi: graniteGeometry( style, seed, 2 ), lo: graniteGeometry( style, seed, 1 ), material: mat, materialLo: matLo, tile: 260, lodDistance: 100, shadowDistance: SHADOW_REACH, layer: 1, reflect: false } );
 		s.addAttribute( 'aTint', 3 );
 		return s;
 	};

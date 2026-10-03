@@ -208,7 +208,9 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	for ( const c of chunks ) {
 		const mesh = new THREE.Mesh( c.lods[ 0 ], mat );
 		mesh.receiveShadow = true;
-		mesh.castShadow = false;
+		// the hills shade the valleys and the ground behind them (the low sun of the late afternoon);
+		// the shadow pass culls the chunks outside the sun's box
+		mesh.castShadow = true;
 		mesh.layers.enable( 2 );
 		group.add( mesh );
 		c.mesh = mesh;

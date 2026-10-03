@@ -188,6 +188,10 @@ export function clearance( x, z, mask, pad = 0 ) {
 	return free;
 }
 
+// shadowDistance > 0: the tiles cast shadows wherever they reach into the sun's box (core/chunked.js
+// shadowSphere, placed by main.js placeShadow); 0 never
+export const SHADOW_REACH = 1;
+
 export async function createVegetation( app, progress ) {
 	const { hf, mask } = app;
 	const sunDir = app.sky.state.sunDir;
@@ -224,9 +228,9 @@ export async function createVegetation( app, progress ) {
 	app.oakImpostors = oakAtlas;
 	app.pineImpostors = pineAtlas;
 	const species = {
-		oak: new ChunkedInstances( { name: 'oak', hi: oakHi, lo: oakTree( 1, 11 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: 140, impostor: oakImpostor, impostorDistance: 320 } ),
-		pine: new ChunkedInstances( { name: 'pine', hi: pineHi, lo: pineTree( 1, 12 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: 140, impostor: pineImpostor, impostorDistance: 320 } ),
-		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 260, lodDistance: 150, shadowDistance: 140 } ),
+		oak: new ChunkedInstances( { name: 'oak', hi: oakHi, lo: oakTree( 1, 11 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH, impostor: oakImpostor, impostorDistance: 320 } ),
+		pine: new ChunkedInstances( { name: 'pine', hi: pineHi, lo: pineTree( 1, 12 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH, impostor: pineImpostor, impostorDistance: 320 } ),
+		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
 		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } )
 	};

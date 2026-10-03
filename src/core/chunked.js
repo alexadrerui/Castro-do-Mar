@@ -19,6 +19,10 @@ import { impostorQuad } from '../world/impostors.js';
 
 const patched = new WeakSet();
 
+// The sun's shadow box as a sphere (main.js placeShadow, every frame): the tiles that reach into it
+// cast shadows, both LODs. Huge by default (pages without the main loop).
+export const shadowSphere = new THREE.Sphere( new THREE.Vector3(), 1e9 );
+
 // Applies the per-instance matrix before the material's own positionNode (the
 // same order as three.js instancing). The shadow pass copies positionNode, so
 // shadows follow too.
@@ -182,7 +186,12 @@ export class ChunkedInstances extends THREE.Group {
 			const far = dc > this.impostorDistance;
 			if ( t.imp ) t.imp.visible = far && alive;
 			if ( t.lo ) { t.hi.visible = near && alive; t.lo.visible = ! near && ! ( far && t.imp ) && alive; } else t.hi.visible = alive && ! ( far && t.imp );
-			t.hi.castShadow = this.cast && dc < this.shadowDistance;
+			// both LODs cast while the tile reaches into the sun's shadow box (shadowSphere); by the camera
+			// distance to the tile centre and the hi LOD only, whole 260 m tiles of trees dropped their
+			// shadows at once, and the far part of the box had none. shadowDistance 0: never casts.
+			const sh = this.cast && this.shadowDistance > 0 && t.center.distanceTo( shadowSphere.center ) - t.radius < shadowSphere.radius;
+			t.hi.castShadow = sh;
+			if ( t.lo ) t.lo.castShadow = sh;
 		}
 	}
 

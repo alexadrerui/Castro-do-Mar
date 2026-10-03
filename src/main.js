@@ -35,6 +35,7 @@ import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
+import { shadowSphere } from './core/chunked.js';
 import { generateFields } from './world/genFields.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
@@ -550,6 +551,7 @@ async function main() {
 		camera.aspect = w / h; camera.updateProjectionMatrix();
 		for ( const f of app.onFrame ) f( 0 );
 		terrain.update( camera );
+		placeShadow( sky.sun, camera, hf ); // the shadow box on this view too
 		focus.snap(); // the lens settled on this view, also with the loop paused
 		app.hud?.updateFocus( focus );
 		sky.sun.shadow.needsUpdate = true;
@@ -759,11 +761,7 @@ async function main() {
 		for ( const f of app.onFrame ) f( dt );
 		focus.update( dt );
 		hud.updateFocus( focus );
-		// keep the shadow frustum centred ahead of the camera
-		const fwd = camera.getWorldDirection( tmpV ).setY( 0 ).normalize();
-		const c = tmpC.copy( camera.position ).addScaledVector( fwd, 80 );
-		c.y = hf.heightAt( c.x, c.z );
-		snapShadow( sky.sun, c );
+		placeShadow( sky.sun, camera, hf );
 		if ( app.shadowsOn ) sky.sun.shadow.needsUpdate = true;
 		const tf = firstFrame ? performance.now() : 0;
 		app.renderFrame();
@@ -796,13 +794,57 @@ function adaptResolution( dt ) {
 }
 
 // Move the sun + target with the camera, snapped to shadow texels to avoid shimmering.
+// Where the shadows are needed: from the ground under the camera to the ground it looks at (the view
+// ray marched over the heightfield, up to SHADOW_LOOK m; looking at the sky, 150 m ahead). The box is
+// centred between the two and sized in steps (half-widths SHADOW_STEPS) with some hysteresis, so the
+// texel size only changes at a step. A fixed 380 m box 80 m ahead left most of a view from above
+// without shadows, and its edge swept across the screen as the camera moved (shadows popping in and
+// out along a line). chunked.js shadowSphere tells the instanced trees and rocks which tiles cast.
+const SHADOW_STEPS = [ 120, 190, 300, 450 ], SHADOW_LOOK = 700, SHADOW_DIST = 900; // SHADOW_DIST: the light from the box centre
+const _fwd = new THREE.Vector3(), _hit = new THREE.Vector3(), _c = new THREE.Vector3();
+let shadowStep = 1;
+function placeShadow( sun, camera, hf ) {
+	const o = camera.position, d = camera.getWorldDirection( _fwd );
+	let hit = null;
+	for ( let t = 2; t < SHADOW_LOOK; t += Math.max( 2, t * 0.04 ) ) {
+		_hit.copy( o ).addScaledVector( d, t );
+		if ( _hit.y <= hf.heightAt( _hit.x, _hit.z ) ) { hit = _hit; break; }
+	}
+	if ( ! hit ) {
+		const h = _hit.set( d.x, 0, d.z ).normalize();
+		hit = h.multiplyScalar( 150 ).add( o );
+	}
+	_c.set( ( o.x + hit.x ) / 2, 0, ( o.z + hit.z ) / 2 );
+	_c.y = hf.heightAt( _c.x, _c.z );
+	const need = Math.hypot( hit.x - o.x, hit.z - o.z ) / 2 + 50;
+	while ( shadowStep < SHADOW_STEPS.length - 1 && need > SHADOW_STEPS[ shadowStep ] ) shadowStep ++;
+	while ( shadowStep > 0 && need < SHADOW_STEPS[ shadowStep - 1 ] * 0.8 ) shadowStep --;
+	const half = SHADOW_STEPS[ shadowStep ], sc = sun.shadow.camera;
+	if ( sc.right !== half || sc.near !== 50 ) {
+		sc.left = sc.bottom = - half; sc.right = sc.top = half;
+		// along the light: the box and ~350 m of terrain or trees above / below it
+		sc.near = 50; sc.far = SHADOW_DIST + half + 350;
+		sc.updateProjectionMatrix();
+	}
+	snapShadow( sun, _c );
+	shadowSphere.center.copy( sun.target.position );
+	shadowSphere.radius = half * 1.42;
+}
+
+// The shadow box follows the camera in whole texels of the shadow map, measured along the light's own
+// axes: the box's centre is snapped across the light (its right / up axes, as the light camera's
+// lookAt builds them) and kept along it. The old snap rounded world x / z and kept the ground height
+// of the point ahead, so every step moved the map by a fraction of a texel and the shadow edges
+// swam and flickered as the camera moved.
+const _r = new THREE.Vector3(), _u = new THREE.Vector3(), _d = new THREE.Vector3(), _UP = new THREE.Vector3( 0, 1, 0 );
 function snapShadow( sun, center ) {
 	const texel = ( sun.shadow.camera.right - sun.shadow.camera.left ) / sun.shadow.mapSize.x;
-	const snap = texel * 4;
-	const x = Math.round( center.x / snap ) * snap, z = Math.round( center.z / snap ) * snap;
-	const dir = tmpV.copy( sun.position ).sub( sun.target.position ).normalize();
-	sun.target.position.set( x, center.y, z );
-	sun.position.copy( sun.target.position ).addScaledVector( dir, 700 );
+	const dir = _d.copy( sun.position ).sub( sun.target.position ).normalize();
+	_r.crossVectors( _UP, dir ).normalize();
+	_u.crossVectors( dir, _r );
+	const a = Math.round( center.dot( _r ) / texel ) * texel, b = Math.round( center.dot( _u ) / texel ) * texel;
+	sun.target.position.copy( _r ).multiplyScalar( a ).addScaledVector( _u, b ).addScaledVector( dir, center.dot( dir ) );
+	sun.position.copy( sun.target.position ).addScaledVector( dir, SHADOW_DIST );
 	sun.target.updateMatrixWorld();
 }
 
