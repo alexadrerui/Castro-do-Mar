@@ -42,7 +42,9 @@ export class ValleyFog {
 
 	// scenePass (its depth), camera, heightTex (terrain.js), waterLevel, fogColor (uniform: the haze's),
 	// sunDir (vector, followed by reference)
-	constructor( { scenePass, camera, heightTex, waterLevel = 0, fogColor, sunDir } ) {
+	// waterTex (terrain.js): the level of the lakes and rivers over each vertex (-1e4 where dry), for the
+	// mist's extra density over the water (waterBonus)
+	constructor( { scenePass, camera, heightTex, waterTex = null, waterLevel = 0, fogColor, sunDir } ) {
 		this.strength = uniform( 1 );          // 0: off (under the water, ?valley=0)
 		this.density = uniform( 0.0028 );
 		this.height = uniform( 7 );            // m: the e-folding height above the ground
@@ -55,6 +57,7 @@ export class ValleyFog {
 		this.shade = uniform( new THREE.Color( 0x9fb2c8 ) );
 		this.sunColor = uniform( new THREE.Color( 1, 0.95, 0.85 ) );
 		this.time = uniform( 0 );
+		this.waterBonus = uniform( 0 );        // extra density over the sea, lakes and rivers (x (1 + this)); the night's (main.js)
 		this.fogColor = fogColor;
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
@@ -62,7 +65,15 @@ export class ValleyFog {
 		const depthTex = scenePass.getTextureNode( 'depth' );
 		const hd = heightTex.userData;
 		// explicit level: the march runs inside a loop (no implicit derivatives there)
-		const groundAt = ( xz ) => max( texture( heightTex, xz.sub( vec2( hd.x0, hd.z0 ) ).div( hd.cell ).add( 0.5 ).div( hd.n ) ).level( 0 ).r, waterLevel );
+		const gridUV = ( xz ) => xz.sub( vec2( hd.x0, hd.z0 ) ).div( hd.cell ).add( 0.5 ).div( hd.n );
+		const terrainAt = ( xz ) => texture( heightTex, gridUV( xz ) ).level( 0 ).r;
+		// 1 over water: the sea (the relief under its level), a lake or a river (their level above the ground)
+		const wetAt = ( xz, h ) => {
+			const sea = smoothstep( waterLevel - 0.5, waterLevel + 0.5, h ).oneMinus();
+			if ( ! waterTex ) return sea;
+			const lake = smoothstep( - 0.3, 0.1, texture( waterTex, gridUV( xz ) ).level( 0 ).r.sub( h ) );
+			return max( sea, lake );
+		};
 		// from the south-west (the grass's wind), ~1.6 m/s
 		const drift = vec2( 0.7071, - 0.7071 ).mul( 1.6 ).mul( this.time ).mul( this.pocketScale );
 
@@ -81,7 +92,8 @@ export class ValleyFog {
 				const along = float( i ).add( jitter ).mul( step );
 				If( along.greaterThan( this.nearStart ), () => {
 					const p = camPos.add( dir.mul( along ) );
-					const above = p.y.sub( groundAt( p.xz ) ).max( 0 ).toVar();
+					const h = terrainAt( p.xz );
+					const above = p.y.sub( max( h, waterLevel ) ).max( 0 ).toVar();
 					If( above.lessThan( this.ceiling ), () => {
 						// ragged tops: the height folded into the pocket coordinates
 						const cell = p.xz.mul( this.pocketScale ).add( drift ).add( vec2( p.y.mul( 0.004 ), 0 ) );
@@ -89,7 +101,8 @@ export class ValleyFog {
 						const banks = mix( this.pocketStrength.oneMinus(), this.pocketStrength.add( 1 ), smoothstep( - 0.45, 0.45, pocket ) );
 						const clear = smoothstep( this.nearStart, this.nearEnd, along );
 						const ceil = smoothstep( this.ceiling.mul( 0.6 ), this.ceiling, above ).oneMinus();
-						acc.addAssign( exp( above.div( this.height ).negate() ).mul( banks ).mul( clear ).mul( ceil ).mul( step ) );
+						const wet = wetAt( p.xz, h ).mul( this.waterBonus ).add( 1 );
+						acc.addAssign( exp( above.div( this.height ).negate() ).mul( banks ).mul( clear ).mul( ceil ).mul( wet ).mul( step ) );
 					} );
 				} );
 			} );

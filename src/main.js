@@ -358,7 +358,8 @@ async function main() {
 	app.onSunChanged = () => {
 		sky.update( false );
 		updateCloudSun( sky.state.lightElevation );
-		app.valleyFog?.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
+		// the moon's glow in the mist, gentle (stronger, it burnt into white bands at the night's exposure)
+		app.valleyFog?.sunColor.value.copy( sky.sun.color ).multiplyScalar( sky.state.elevation > - 1 ? Math.min( 1, sky.sun.intensity / SUN_MAX ) : sky.sun.intensity / MOON_MAX * 0.25 );
 		app.rivers?.setLight( _sunTint.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) ), app.hazeColor.value );
 		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		clearTimeout( app._envT );
@@ -469,7 +470,7 @@ async function main() {
 	app.mist = mist;
 	// and the mist pooling in the valleys and over the bay, following the ground (post/valleyFog.js, after
 	// Drusniel's valleyFog); ?valley=0 switches it off
-	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.lightDir } );
+	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterTex: terrain.waterTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.lightDir } );
 	app.valleyFog = valley;
 	// volumetric cumulus over the sky's own clouds (post/clouds.js); ?clouds=0 leaves them out
 	// the clouds' light: the scene's (sun, moon), but after the sunset the sun still lights the clouds
@@ -514,6 +515,21 @@ async function main() {
 	weather.lightning = lightning;
 	app.strike = ( x, z ) => lightning.strike( x, z );
 	app.onFrame.push( ( dt ) => lightning.update( dt, renderer ) );
+	// The night mist (radiation fog: calm, clear nights): it gathers with the night in the valleys and
+	// over the water, stays through the dawn and clears by ~8 h; less of it in the rain. One factor,
+	// app.nightFog (0 by day: the day is unchanged), drives the valley mist and the low mist.
+	const VALLEY_DAY = { density: 0.0028, height: 7, ceiling: 30, pocketStrength: 0.75, sunScatter: 0.3, waterBonus: 0 };
+	const VALLEY_NIGHT = { density: 0.008, height: 9, ceiling: 35, pocketStrength: 0.9, sunScatter: 0.5, waterBonus: 0.7 };
+	const MIST_DAY = { density: 0.035, top: WATER_LEVEL + 14 }, MIST_NIGHT = { density: 0.045, top: WATER_LEVEL + 18 };
+	app.nightFog = 0;
+	app.onFrame.push( () => {
+		const h = app.clock?.hour ?? 15.5;
+		const dawn = h > 4 && h < 12 ? 1 - THREE.MathUtils.smoothstep( h, 6.5, 8 ) : 0; // through the sunrise, clear by 8 h
+		const k = Math.max( sky.state.night, dawn ) * ( 1 - 0.8 * Math.min( 1, app.weather?.target ?? 0 ) );
+		app.nightFog = k;
+		if ( valley ) for ( const key in VALLEY_DAY ) valley[ key ].value = THREE.MathUtils.lerp( VALLEY_DAY[ key ], VALLEY_NIGHT[ key ], k );
+		if ( mist ) for ( const key in MIST_DAY ) mist[ key ].value = THREE.MathUtils.lerp( MIST_DAY[ key ], MIST_NIGHT[ key ], k );
+	} );
 	if ( valley ) app.onFrame.push( ( dt ) => {
 		valley.update( dt );
 		valley.strength.value = app.underwater?.on.value > 0.5 ? 0 : 1; // not under the water
