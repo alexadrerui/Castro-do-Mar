@@ -1,7 +1,9 @@
 # @takram/three-atmosphere
 
 Source: https://github.com/takram-design-engineering/three-geospatial (packages/atmosphere, v0.19.1).
-Used here: the star catalog data public/sky/stars.bin (packed from the Yale Bright Star Catalog, 5th revised edition, by apps/data/src/targets/stars.ts) and its reading and shading in src/world/stars.js.
+Used here: the star catalog data public/sky/stars.bin (packed from the Yale Bright Star Catalog, 5th revised edition, by apps/data/src/targets/stars.ts) and its reading and shading in src/world/stars.js; the moon of src/world/sky.js after its MoonNode (packages/atmosphere/src/webgpu/MoonNode.ts).
+
+The moon's colour map public/sky/moon_color.webp is takram's 1k copy (storybook-webgpu/assets/moon/color.webp) of the LROC colour map of the NASA CGI Moon Kit (https://svs.gsfc.nasa.gov/4720/). Credit: NASA. NASA Images and Media Usage Guidelines: https://www.nasa.gov/nasa-brand-center/images-and-media/
 
 ```
 The MIT License (MIT)
