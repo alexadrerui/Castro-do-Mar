@@ -6,6 +6,8 @@ import {
 } from 'three/tsl';
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';
+import srcTexgen from '../core/texgen.js?raw';
+import { cacheGet, cachePut, hashSources } from '../core/cache.js';
 import { cloudShade } from './cloudShadow.js';
 import { rainRipples, rainGlints } from './rainImpacts.js';
 import { wetness } from './weather.js';
@@ -40,7 +42,8 @@ export function meadowTone( nMacro, nLarge, nMed, sunFace ) {
 	return { tone, dry, lush: moss.add( deep.oneMinus().mul( 0.5 ) ) };
 }
 
-export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
+// detailData: the tileable detail texture's pixels (loadDetailData below: from the cache when it can)
+export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailData = null ) {
 
 	// ---------- geometry: full-res normals, then LOD chunks ----------
 	const n = hf.n;
@@ -64,7 +67,7 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData ) {
 	const macroTex = new THREE.DataTexture( macroData, 1024, 1024, THREE.RGBAFormat );
 	macroTex.magFilter = THREE.LinearFilter; macroTex.minFilter = THREE.LinearMipmapLinearFilter;
 	macroTex.generateMipmaps = true; macroTex.needsUpdate = true;
-	const detailTex = createDetailTexture();
+	const detailTex = createDetailTexture( detailData );
 
 	const mat = new THREE.MeshStandardNodeMaterial();
 	mat.name = 'TerrainTSL';
@@ -363,9 +366,10 @@ function buildChunks( hf, normals, ao ) {
 	return chunks;
 }
 
-export function createDetailTexture() {
-	const size = 512;
-	const tex = new THREE.DataTexture( makeDetailTexture( size ), size, size, THREE.RGBAFormat );
+export const DETAIL_SIZE = 512;
+export function createDetailTexture( data = null ) {
+	const size = DETAIL_SIZE;
+	const tex = new THREE.DataTexture( data ?? makeDetailTexture( size ), size, size, THREE.RGBAFormat );
 	tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
 	tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter;
 	tex.generateMipmaps = true; tex.anisotropy = 8; tex.needsUpdate = true;
@@ -417,4 +421,15 @@ export function updateHeightTexture( tex, hf, i0 = 0, j0 = 0, i1 = hf.n - 1, j1 
 	i0 = Math.max( 0, i0 - 1 ); j0 = Math.max( 0, j0 - 1 ); i1 = Math.min( n - 1, i1 + 1 ); j1 = Math.min( n - 1, j1 + 1 );
 	for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) buf[ j * n + i ] = THREE.DataUtils.toHalfFloat( d[ j * n + i ] );
 	tex.needsUpdate = true;
+}
+
+// The detail texture's pixels (fbm and periodic Worley, core/texgen.js, ~150 ms on the main thread):
+// from the IndexedDB cache (key: the hash of texgen.js), else made here and stored for the next load.
+export async function loadDetailData() {
+	const key = 'terraindetail:' + hashSources( srcTexgen ) + ':' + DETAIL_SIZE;
+	const cached = await cacheGet( key );
+	if ( cached?.data ) return cached.data;
+	const data = makeDetailTexture( DETAIL_SIZE );
+	cachePut( key, { data }, 'terraindetail:' );
+	return data;
 }

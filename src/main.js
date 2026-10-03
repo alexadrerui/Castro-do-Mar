@@ -21,7 +21,7 @@ import { BirdBatch } from './world/birds/batch.js';
 import { Flock } from './world/birds/flock.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
-import { createTerrain } from './world/terrain.js';
+import { createTerrain, loadDetailData } from './world/terrain.js';
 import { createSky, SUN_MAX, MOON_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { setWaterLevels } from './world/terrain.js';
@@ -184,7 +184,7 @@ async function main() {
 	} );
 
 	await loader.run( 'terrain', async () => {
-		terrain = createTerrain( hf, mask, ao, sky.state.lightDir, macro );
+		terrain = createTerrain( hf, mask, ao, sky.state.lightDir, macro, await loadDetailData() );
 		scene.add( terrain.mesh );
 		app.terrain = terrain;
 	} );
