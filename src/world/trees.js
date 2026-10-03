@@ -54,6 +54,9 @@ class Builder {
 // bark: occlusion darker at the foot and inside the crown
 const barkAO = ( p, H ) => 0.45 + 0.35 * smooth( 0, H * 0.6, p.y );
 
+// bark: a colour, or fn( p, f, side ) -> colour (f along the tube, side = index around it)
+const barkAt = ( bark, p, f, side ) => ( typeof bark === 'function' ? bark( p, f, side ) : bark );
+
 // Straight tapered tube p0 -> p1; radiusFn( f, angle, centre ) overrides the taper.
 function addBranch( b, p0, p1, r0, r1, radial, rows, bark, H, flexFn, radiusFn = null ) {
 	const dir = new THREE.Vector3().subVectors( p1, p0 );
@@ -71,7 +74,7 @@ function addBranch( b, p0, p1, r0, r1, radial, rows, bark, H, flexFn, radiusFn =
 			const r = radiusFn ? radiusFn( f, a, c ) : r0 + ( r1 - r0 ) * f;
 			const n = new THREE.Vector3().copy( X ).multiplyScalar( Math.cos( a ) ).addScaledVector( Z, Math.sin( a ) );
 			const p = c.clone().addScaledVector( n, r );
-			b.vertex( p, n, 0, 0, bark, 0, flexFn( p ) * 0.5, barkAO( p, H ), 0 );
+			b.vertex( p, n, 0, 0, barkAt( bark, p, f, i % radial ), 0, flexFn( p ) * 0.5, barkAO( p, H ), 0 );
 		}
 	}
 	for ( let j = 0; j < rows; j ++ ) for ( let i = 0; i < radial; i ++ ) {
@@ -99,7 +102,7 @@ function addLimb( b, p0, ctrl, p1, r0, r1, radial, rows, bark, H, flexFn ) {
 			const a = ( i / radial ) * Math.PI * 2;
 			const n = new THREE.Vector3().copy( X ).multiplyScalar( Math.cos( a ) ).addScaledVector( Z, Math.sin( a ) );
 			const p = c.clone().addScaledVector( n, r );
-			b.vertex( p, n, 0, 0, bark, 0, flexFn( p ) * 0.5, barkAO( p, H ), 0 );
+			b.vertex( p, n, 0, 0, barkAt( bark, p, f, i % radial ), 0, flexFn( p ) * 0.5, barkAO( p, H ), 0 );
 		}
 	}
 	for ( let j = 0; j < rows; j ++ ) for ( let i = 0; i < radial; i ++ ) {
@@ -467,6 +470,104 @@ export function pineTree( lod = 0, seed = 12 ) {
 	emitCards( b, cards, crownC );
 	const g = b.build();
 	g.translate( 0, - 0.4, 0 ); // the flared foot sinks into sloping ground
+	g.computeBoundingSphere();
+	return g;
+}
+
+// ---------------------------------------------------------------------------
+// Birch (bidueiro, Betula pubescens / pendula): a slender white bole with dark lenticel dashes and
+// a dark, fissured foot, rising almost to the top; limbs leave it at a steep angle and arch over at
+// the tips, twigs hang from them and carry small clumps of round leaves (leaf atlas tile 2). A
+// narrow, airy oval crown; ~10 m tall at scale 1. Built with the oak's helpers (ours, not
+// Tidewater's: Tidewater has no birch).
+// lod 1: fewer limbs, no twigs, fewer and larger clumps.
+// ---------------------------------------------------------------------------
+const BIRCH_WHITE = new THREE.Color( 0xd8d3c7 ), BIRCH_DASH = new THREE.Color( 0x2f2c29 ), BIRCH_FOOT = new THREE.Color( 0x3b3631 );
+const BIRCH_LIMB = new THREE.Color( 0xa49b8e ), BIRCH_TWIG = new THREE.Color( 0x4a3a32 );
+const hash2 = ( a, b ) => {
+	const h = Math.sin( a * 127.1 + b * 311.7 ) * 43758.5453;
+	return h - Math.floor( h );
+};
+
+export function birchTree( lod = 0, seed = 13 ) {
+	const rand = mulberry32( seed );
+	const b = new Builder();
+	const H = 10.4;
+	const crownC = new THREE.Vector3( 0, 7.0, 0 );
+	const crownR = new THREE.Vector3( 3.0, 3.5, 3.0 );
+	// birches are supple: the crown sways more than the oak's
+	const flex = ( p ) => Math.min( 1, Math.hypot( p.x, p.z ) / 2.4 + Math.max( 0, p.y - 8 ) / 4 ) * smooth( 2.5, 6.5, p.y );
+
+	// bole: two straight sections with a slight bend, white with dark horizontal lenticel dashes
+	// (one vertex row tall, 1-2 columns wide) and a dark rough foot reaching up unevenly
+	const radial = lod ? 6 : 12;
+	const footTop = 0.9 + rand() * 0.7;
+	const bole = ( p, f, side ) => {
+		const foot = 1 - smooth( footTop * 0.55, footTop + 0.5 * hash2( side, 3 ), p.y );
+		// dashes 2-4 columns wide, offset per row so they don't line up
+		const row = Math.round( p.y * ( lod ? 1.8 : 8 ) );
+		const dash = p.y > 0.6 && hash2( row, Math.floor( ( side + hash2( row, 9 ) * radial ) / 3 ) % Math.ceil( radial / 3 ) + seed ) < ( lod ? 0.2 : 0.17 ) ? 0.9 : 0;
+		const c = BIRCH_WHITE.clone().multiplyScalar( 0.93 + 0.1 * hash2( row, side ) ).lerp( BIRCH_DASH, dash );
+		return c.lerp( BIRCH_FOOT, Math.min( 1, foot * ( 0.85 + 0.15 * hash2( row, side + 7 ) ) ) );
+	};
+	const lean = new THREE.Vector3( ( rand() - 0.5 ) * 0.5, 0, ( rand() - 0.5 ) * 0.5 );
+	const mid = new THREE.Vector3( lean.x * 0.5, 4.6, lean.z * 0.5 );
+	const top = new THREE.Vector3( lean.x * 0.3 + ( rand() - 0.5 ) * 0.3, H, lean.z * 0.3 + ( rand() - 0.5 ) * 0.3 );
+	const footR = ( f, a, c ) => {
+		const r = 0.2 - 0.06 * f;
+		return r * ( 1 + 0.35 * Math.exp( - Math.max( c.y + 0.4, 0 ) / 0.35 ) + 0.06 * Math.cos( 3 * a + 1.1 ) * Math.exp( - Math.max( c.y, 0 ) ) );
+	};
+	addBranch( b, new THREE.Vector3( 0, - 0.5, 0 ), mid, 0.2, 0.14, radial, lod ? 9 : 40, bole, H, flex, footR );
+	addBranch( b, mid, top, 0.14, 0.025, radial, lod ? 9 : 46, bole, H, flex );
+	const boleAt = ( y ) => ( y < mid.y ? new THREE.Vector3( 0, - 0.5, 0 ).lerp( mid, ( y + 0.5 ) / ( mid.y + 0.5 ) ) : mid.clone().lerp( top, ( y - mid.y ) / ( H - mid.y ) ) );
+
+	const cards = [];
+	const clump = ( c, rc, n, size ) => {
+		const out = c.clone().sub( crownC ).setY( 0 ).normalize();
+		for ( let j = 0; j < n; j ++ ) {
+			// mostly facing up and out, the clumps hang a little below their twig
+			const dir = new THREE.Vector3( rand() * 2 - 1, rand() * 2 - 1, rand() * 2 - 1 ).normalize().addScaledVector( out, 0.8 ).addScaledVector( _up, 0.7 ).normalize();
+			const center = c.clone().add( new THREE.Vector3( rand() - 0.5, ( rand() - 0.5 ) * 0.7 - 0.15, rand() - 0.5 ).multiplyScalar( rc ) );
+			cards.push( { center, size: size * ( 0.8 + rand() * 0.4 ), normal: dir, yaw: rand() * 6.283, lobeC: c, lobeR: rc, crownC, crownR, flexFn: flex, tile: 2, clumpC: c, clumpR: rc } );
+		}
+	};
+	const cardsPer = lod ? 3 : 4, size = lod ? 1.9 : 1.1, rc = lod ? 0.75 : 0.5;
+
+	// limbs: steep near the top, wider and longer lower down; the tips arch over
+	const N = lod ? 9 : 15;
+	for ( let k = 0; k < N; k ++ ) {
+		const t = ( k + rand() * 0.6 ) / N;
+		const y = 3.4 + t * 6.0;
+		const az = k * 2.39996 + ( rand() - 0.5 ) * 0.6;
+		const tilt = ( 58 - 30 * t + ( rand() - 0.5 ) * 12 ) * Math.PI / 180; // from the vertical
+		const L = ( 1.1 + 2.0 * Math.sin( Math.PI * ( 0.3 + 0.7 * t ) ) ) * ( 0.8 + rand() * 0.4 ); // ovoid: widest a third up the crown
+		const dir = new THREE.Vector3( Math.sin( tilt ) * Math.cos( az ), Math.cos( tilt ), Math.sin( tilt ) * Math.sin( az ) );
+		const start = boleAt( y );
+		const ctrl = start.clone().addScaledVector( dir, L * 0.6 ).add( new THREE.Vector3( 0, L * 0.12, 0 ) );
+		const end = start.clone().addScaledVector( dir, L ).add( new THREE.Vector3( 0, - L * ( 0.12 + 0.2 * ( 1 - t ) ), 0 ) );
+		const r0 = 0.03 + 0.035 * L / 3.1;
+		addLimb( b, start, ctrl, end, r0, 0.012, lod ? 3 : 5, lod ? 3 : 5, BIRCH_LIMB, H, flex );
+		const along = ( s ) => start.clone().multiplyScalar( ( 1 - s ) * ( 1 - s ) ).addScaledVector( ctrl, 2 * ( 1 - s ) * s ).addScaledVector( end, s * s );
+		const nc = lod ? 4 : 6;
+		for ( let j = 0; j < nc; j ++ ) {
+			const s = 0.4 + 0.6 * ( j + rand() * 0.5 ) / nc;
+			const q = along( Math.min( 1, s ) );
+			clump( q, rc, cardsPer, size );
+			if ( lod ) continue;
+			// a twig hanging from the limb, clumps along it (the weeping curtain of the birch)
+			const side = new THREE.Vector3( - dir.z, 0, dir.x ).multiplyScalar( ( rand() - 0.5 ) * 1.2 );
+			const tl = 0.6 + rand() * 0.7 * ( 1 - t * 0.5 );
+			const tip = q.clone().addScaledVector( dir.clone().setY( 0 ).normalize(), tl * 0.45 ).add( side.multiplyScalar( tl * 0.5 ) ).add( new THREE.Vector3( 0, - tl * 0.8, 0 ) );
+			addBranch( b, q, tip, 0.012, 0.005, 3, 1, BIRCH_TWIG, H, flex );
+			clump( q.clone().lerp( tip, 0.55 ), rc * 0.85, 2, size * 0.9 );
+			clump( tip, rc * 0.8, 2, size * 0.85 );
+		}
+	}
+	// the leader: small clumps up the top of the bole
+	for ( let k = 0; k < ( lod ? 2 : 4 ); k ++ ) clump( boleAt( H - 0.3 - k * 0.55 ), rc * 0.9, cardsPer, size * 0.9 );
+	emitCards( b, cards, crownC );
+
+	const g = b.build();
 	g.computeBoundingSphere();
 	return g;
 }

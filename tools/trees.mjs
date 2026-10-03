@@ -57,7 +57,7 @@ const out = await page.evaluate( async ( prefix, species, forceImp, solo ) => {
 		}
 	}
 	const { x, y, z, s } = best;
-	const H = ( { oak: 9, pine: 9, birch: 7, bush: 1.6, fern: 1.1 }[ species ] ?? ( species.startsWith( 'broad' ) ? 9 : 5 ) ) * s; // plant height at scale s
+	const H = ( { oak: 9, pine: 9, birch: 10, bush: 1.6, fern: 1.1 }[ species ] ?? ( species.startsWith( 'broad' ) ? 9 : 5 ) ) * s; // plant height at scale s
 	const k = H / 6.75; // camera distances scaled to the plant (6.75 m: the oak at scale 0.75)
 	await view( [ x + 2, y + 1, z + 1 ], [ x, y + H * 0.5, z ], 'warm' ); // settles the free camera
 	const ground = ( gx, gz ) => a.hf.heightAt( gx, gz );

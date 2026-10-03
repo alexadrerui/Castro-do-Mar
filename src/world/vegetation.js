@@ -5,9 +5,8 @@ import {
 } from 'three/tsl';
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
-import { birchGeometry } from './plants.js';
 import { mineLedgeSpots } from './fort.js';
-import { oakTree, pineTree, shrubBush, bracken, OAK_BARK, PINE_BARK } from './trees.js';
+import { oakTree, pineTree, birchTree, shrubBush, bracken, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
 import { cacheGet, cachePut, hashSources } from '../core/cache.js';
@@ -230,7 +229,9 @@ export async function createVegetation( app, progress ) {
 	const species = {
 		oak: new ChunkedInstances( { name: 'oak', hi: oakHi, lo: oakTree( 1, 11 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH, impostor: oakImpostor, impostorDistance: 320 } ),
 		pine: new ChunkedInstances( { name: 'pine', hi: pineHi, lo: pineTree( 1, 12 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH, impostor: pineImpostor, impostorDistance: 320 } ),
-		birch: new ChunkedInstances( { name: 'birch', hi: birchGeometry( 0, 13 ), lo: birchGeometry( 1, 13 ), material, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
+		// no impostor: the birches are few (~2.5% of the trees) and their lo LOD is cheap far away; one
+		// bake less at the load and 3 pipelines less (the browser's shader cache is at its limit)
+		birch: new ChunkedInstances( { name: 'birch', hi: birchTree( 0, 13 ), lo: birchTree( 1, 13 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
 		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } )
 	};
