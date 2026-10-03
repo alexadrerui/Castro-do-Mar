@@ -189,7 +189,7 @@ export function clearance( x, z, mask, pad = 0 ) {
 }
 
 // shadowDistance > 0: the tiles cast shadows wherever they reach into the sun's box (core/chunked.js
-// shadowSphere, placed by main.js placeShadow); 0 never
+// shadowSphere, placed by world/sunShadows.js); 0 never
 export const SHADOW_REACH = 1;
 
 export async function createVegetation( app, progress ) {

@@ -40,6 +40,7 @@ O painel controla o sol (elevação e azimute), nuvens, chuva, névoa, brilho e 
 **Mundo**
 - Maciço de granito de 2,8 km com costa, crista rochosa, ilhas e cordilheiras distantes nevadas. O terreno é dividido em chunks com LOD, com material triplanar, lodo e faixa úmida nas margens.
 - A vila: casas redondas e longas de pedra e colmo, a casa composta do castro, mercado com barracas e toldos vermelhos, bandeirolas, celeiros e vigias.
+- Toldos, barracas e bandeirolas balançando ao vento.
 - Vielas com cercas de vime e de varas, postes com lanterna, degraus de tronco e pedras nas bordas, além de janelas acesas nas casas longas.
 - O forte em anel, a torre de vigia, o muro e o penhasco da mina, com andaime e duas bocas escavadas.
 
@@ -134,7 +135,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
   - a névoa de vale (`src/post/valleyFog.js`);
   - a chuva com chão molhado (`src/world/weather.js`);
   - as plantas do prado (`src/world/meadowFlora.js`).
-- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz"): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado.
+- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz"): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; e a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`.
 - **[Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX)** (MIT, Copyright (c) 2026 Sahil K, em `licenses/LICENSE-LightningVFX.md`): o raio com ramos, as rachaduras, as faíscas e a onda de choque (`src/world/lightning.js`), portados para TSL e adaptados.
 - **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados. A licença está em `src/world/koi/LICENSE-AndyLePool`.
 - **shader-studio** (void032, MIT): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.

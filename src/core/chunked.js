@@ -19,7 +19,7 @@ import { impostorQuad } from '../world/impostors.js';
 
 const patched = new WeakSet();
 
-// The sun's shadow box as a sphere (main.js placeShadow, every frame): the tiles that reach into it
+// Where the sun casts shadows, as a sphere (world/sunShadows.js, every frame): the tiles that reach into it
 // cast shadows, both LODs. Huge by default (pages without the main loop).
 export const shadowSphere = new THREE.Sphere( new THREE.Vector3(), 1e9 );
 

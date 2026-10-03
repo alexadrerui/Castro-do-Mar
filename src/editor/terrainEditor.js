@@ -498,7 +498,7 @@ export class TerrainEditor {
 			const t = this.texRect;
 			this.texRect = t ? [ Math.min( t[ 0 ], i0 ), Math.min( t[ 1 ], j0 ), Math.max( t[ 2 ], i1 ), Math.max( t[ 3 ], j1 ) ] : [ i0, j0, i1, j1 ];
 			if ( this.texDue && this.texTimer >= HEIGHT_TEX_EVERY ) this._uploadTex();
-			this.app.sky.sun.shadow.needsUpdate = true;
+			this.app.shadows.markDirty();
 		} else if ( this.texDue && this.texTimer >= HEIGHT_TEX_EVERY && ! this.down ) {
 			this._uploadTex();
 		}
