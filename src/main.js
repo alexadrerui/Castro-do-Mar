@@ -22,7 +22,7 @@ import { Flock } from './world/birds/flock.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain } from './world/terrain.js';
-import { createSky, SUN_MAX } from './world/sky.js';
+import { createSky, SUN_MAX, MOON_MAX } from './world/sky.js';
 import { createWater } from './world/water.js';
 import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
@@ -168,7 +168,7 @@ async function main() {
 		app.shadows = createSunShadows( { sun: sky.sun, camera, renderer } );
 		// cloud shadows on the ground: the clouds' shadow map along the sun (world/cloudShadow.js, before the materials)
 		bindSky( sky );
-		updateCloudSun( sky.state.elevation );
+		updateCloudSun( sky.state.lightElevation );
 		app.cloudShadow = cloudShadowUniforms;
 		if ( params.get( 'cloudshadow' ) === '0' ) cloudShadowUniforms.strength.value = 0;
 		// the catalog stars (world/stars.js), turned by the clock, seen with the night; ?stars=0 leaves them out
@@ -180,7 +180,7 @@ async function main() {
 	} );
 
 	await loader.run( 'terrain', async () => {
-		terrain = createTerrain( hf, mask, ao, sky.state.sunDir, macro );
+		terrain = createTerrain( hf, mask, ao, sky.state.lightDir, macro );
 		scene.add( terrain.mesh );
 		app.terrain = terrain;
 	} );
@@ -189,7 +189,7 @@ async function main() {
 	await loader.run( 'water', async () => {
 		// the planar reflection is captured every 100 ms (or when the camera moves 2 m) and reprojected
 		// in between (world/planarReprojection.js); ?reflectms=0 captures every frame
-		const water = createWater( terrain.heightTex, sky.state.sunDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 100 ) } );
+		const water = createWater( terrain.heightTex, sky.state.lightDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 100 ) } );
 		scene.add( water.mesh );
 		app.water = water;
 		app.layers.water = { label: 'Água', object: water.mesh };
@@ -211,8 +211,8 @@ async function main() {
 		scene.add( lakes.group );
 		if ( lakes.list.length || rivers.list.length || params.has( 'edit' ) ) {
 			sky.buildEnv();
-			lakes.attachWater( terrain.heightTex, sky.state.sunDir, scene.environment );
-			rivers.attachWater( terrain.heightTex, sky.state.sunDir, scene.environment );
+			lakes.attachWater( terrain.heightTex, sky.state.lightDir, scene.environment );
+			rivers.attachWater( terrain.heightTex, sky.state.lightDir, scene.environment );
 		}
 	} );
 
@@ -250,14 +250,14 @@ async function main() {
 	// live by its habitat. WebGPU only: the seabed draws indirectly from a storage buffer, which the WebGL
 	// 2 backend does not have (?webgl stopped at "createIndirectStorageAttribute is not a function").
 	const webgpu = renderer.backend.isWebGPUBackend;
-	const seabed = webgpu ? new Seabed( { hf, waterLevel: WATER_LEVEL, sun: sky.sun, sunDir: sky.state.sunDir } ) : null;
+	const seabed = webgpu ? new Seabed( { hf, waterLevel: WATER_LEVEL, sun: sky.sun, sunDir: sky.state.lightDir } ) : null;
 	if ( seabed ) {
 		scene.add( seabed.group );
 		app.seabed = seabed;
 		app.layers.seabed = { label: 'Fundo do mar', object: seabed.group };
 		app.onFrame.push( () => seabed.update( camera ) );
 		// Fish, spawned by habitat in cells around the camera (only near / under the water).
-		const fish = new FishSchools( { hf, seabed, sun: sky.sun, sunDir: sky.state.sunDir, getViewHeight: () => renderer.domElement.height } );
+		const fish = new FishSchools( { hf, seabed, sun: sky.sun, sunDir: sky.state.lightDir, getViewHeight: () => renderer.domElement.height } );
 		scene.add( fish.group );
 		app.fish = fish;
 		app.layers.fish = { label: 'Peixes', object: fish.group };
@@ -339,9 +339,10 @@ async function main() {
 	};
 	const _sunTint = new THREE.Color();
 	app.nightExposure = 1.5; // the exposure at night: x (1 + this)
+	const _nightLit = new THREE.Color(), _nightAmb = new THREE.Color(), _smokeDay = new THREE.Color( 1, 0.95, 0.88 );
 	app.onSunChanged = () => {
 		sky.update( false );
-		updateCloudSun( sky.state.elevation );
+		updateCloudSun( sky.state.lightElevation );
 		app.valleyFog?.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
 		app.rivers?.setLight( _sunTint.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) ), app.hazeColor.value );
 		app.water.uniforms.sunColor.value.copy( sky.sun.color ).multiplyScalar( Math.min( 1, sky.sun.intensity / SUN_MAX ) );
@@ -357,12 +358,19 @@ async function main() {
 		// the far haze (fogNode, past 4-14 km) too: a fixed day colour, it glowed over the distant ranges at night
 		hazeFar.value.setHex( 0x8fa9cc ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) ).lerp( sky.nightHorizon.value, night );
 		renderer.toneMappingExposure = 0.8 * ( 1 + app.nightExposure * night );
+		// things that are not lit by the lights but kept a fixed day colour, white at night: the
+		// shore's foam (water.js) and the chimney smoke (smoke.js, unlit sprites) take the moonlight
+		// and the night sky's grey (day: unchanged)
+		_nightLit.copy( sky.sun.color ).multiplyScalar( sky.sun.intensity / MOON_MAX * 0.18 ).add( _nightAmb.copy( sky.nightHorizon.value ).multiplyScalar( 1.2 ) );
+		app.water.uniforms.foamLight.value.setRGB( 1, 1, 1 ).lerp( _nightLit, night );
+		for ( const l of app.lakes?.list ?? [] ) l.water?.uniforms.foamLight?.value.setRGB( 1, 1, 1 ).lerp( _nightLit, night );
+		app.smoke?.uniforms.tint.value.copy( _smokeDay ).lerp( _nightLit, night );
 		app.underwater?.setDaylight( hazeColor.value );
-		app.underwater?.setSun( sky.state.sunDir, sky.sun.intensity / SUN_MAX );
-		app.underside?.setDaylight( hazeColor.value, sky.state.sunDir, sky.sun, app.underwater?.murk.value );
+		app.underwater?.setSun( sky.state.lightDir, sky.sun.intensity / SUN_MAX );
+		app.underside?.setDaylight( hazeColor.value, sky.state.lightDir, sky.sun, app.underwater?.murk.value );
 		app.snow?.light.value.copy( hazeColor.value );
-		app.seabed?.updateSun( sky.state.sunDir );
-		app.fish?.updateSun( sky.state.sunDir );
+		app.seabed?.updateSun( sky.state.lightDir );
+		app.fish?.updateSun( sky.state.lightDir );
 	};
 	// the time of day (world/clock.js): stopped at the opening; the panel's presets and "passar o tempo"
 	app.clock = new Clock( app );
@@ -436,10 +444,10 @@ async function main() {
 	app.mist = mist;
 	// and the mist pooling in the valleys and over the bay, following the ground (post/valleyFog.js, after
 	// Drusniel's valleyFog); ?valley=0 switches it off
-	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.sunDir } );
+	const valley = params.get( 'valley' ) === '0' ? null : new ValleyFog( { scenePass, camera, heightTex: terrain.heightTex, waterLevel: WATER_LEVEL, fogColor: hazeColor, sunDir: sky.state.lightDir } );
 	app.valleyFog = valley;
 	// volumetric cumulus over the sky's own clouds (post/clouds.js); ?clouds=0 leaves them out
-	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.sunDir } );
+	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: sky.state.lightDir } );
 	app.clouds = clouds;
 	if ( ! clouds ) clearCloudMap( renderer ); // no clouds, no cloud shadows
 	// the cirrus of the volumetric clouds replace the sky's flat clouds

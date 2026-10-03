@@ -199,7 +199,7 @@ export const SHADOW_REACH = 1;
 
 export async function createVegetation( app, progress ) {
 	const { hf, mask } = app;
-	const sunDir = app.sky.state.sunDir;
+	const sunDir = app.sky.state.lightDir; // the sun, the moon at night (sky.js)
 	const group = new THREE.Group();
 	group.name = 'vegetation';
 

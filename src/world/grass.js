@@ -403,7 +403,7 @@ export class GrassField {
 
 		// main camera position: distance LOD (uniform, so any other pass sees the same blades)
 		this.camPos = uniform( new THREE.Vector3() );
-		this.material = this._createMaterial( terrain, app.sky.state.sunDir );
+		this.material = this._createMaterial( terrain, app.sky.state.lightDir );
 		const clumps = clumpParams( 7 );
 		const patches = [ buildPatch( 0, clumps ), buildPatch( 1, clumps ), buildPatch( 2, clumps ) ];
 		this.patchTris = patches.map( ( p ) => p.triangles );

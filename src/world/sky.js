@@ -6,6 +6,8 @@ import { Fn, If, uniform, vec2, vec3, vec4, max, dot, normalize, pow, positionWo
 // sky-derived image based lighting.
 // peak sun intensity (the water and underwater sun terms are normalised by it)
 export const SUN_MAX = 3.9;
+// the full moon's light at its highest (day and night, phase 5), before the night's exposure
+export const MOON_MAX = 0.32;
 
 export function createSky( scene, renderer ) {
 
@@ -70,7 +72,12 @@ export function createSky( scene, renderer ) {
 	const state = {
 		elevation: 21,   // degrees: late-afternoon
 		azimuth: 238,    // degrees, 0 = north(-z), 90 = east(+x)
-		sunDir: new THREE.Vector3()
+		sunDir: new THREE.Vector3(),
+		// the main light (day and night, phase 5): the sun by day, the moon at night; what is lit by the
+		// light follows this (the directional light and its shadows, terrain, plants, water, clouds...),
+		// the sky and the screen-space sun shafts keep sunDir
+		lightDir: new THREE.Vector3(),
+		lightElevation: 21
 	};
 
 	const pmrem = new THREE.PMREMGenerator( renderer );
@@ -92,18 +99,30 @@ export function createSky( scene, renderer ) {
 		envSky.sunPosition.value.copy( state.sunDir );
 		for ( const k of [ 'turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG' ] ) envSky[ k ].value = sky[ k ].value;
 
-		sun.position.copy( sun.target.position ).addScaledVector( state.sunDir, 700 );
 		const e = Math.max( 0, state.elevation );
 		const warm = THREE.MathUtils.smoothstep( e, 0, 25 );
-		sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
-		// the real elevation (e is clamped at 0: below the horizon the sun stayed at 3.4%, warm, lighting from below)
-		sun.intensity = SUN_MAX * THREE.MathUtils.smoothstep( state.elevation, - 1, 8 );
-		state.sunIntensity = sun.intensity; // clear sky: world/weather.js dims it under rain
-		hemi.intensity = 0.08 + 0.09 * THREE.MathUtils.smoothstep( e, - 5, 30 );
 		// the night (day and night, phase 2): 0 with the sun 2 degrees up, 1 at 10 degrees down
 		const n = THREE.MathUtils.smoothstep( - state.elevation, - 2, 10 );
 		state.night = n;
 		night.value = n;
+		// the real elevation (e is clamped at 0: below the horizon the sun stayed at 3.4%, warm, lighting from below)
+		const sunI = SUN_MAX * THREE.MathUtils.smoothstep( state.elevation, - 1, 8 );
+		if ( sunI > 0 ) {
+			state.lightDir.copy( state.sunDir );
+			state.lightElevation = state.elevation;
+			sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
+			sun.intensity = sunI;
+		} else {
+			// the moonlight (phase 5): the same light, from the moon (opposite the sun), cool white, rising
+			// with the night and the moon's height; both are 0 where the light switches (the sun at -1)
+			state.lightDir.copy( moon.dir.value );
+			state.lightElevation = - state.elevation;
+			sun.color.copy( moon.tint.value );
+			sun.intensity = MOON_MAX * THREE.MathUtils.smoothstep( n, 0.15, 1 ) * THREE.MathUtils.smoothstep( - state.elevation, - 1, 12 );
+		}
+		sun.position.copy( sun.target.position ).addScaledVector( state.lightDir, 700 );
+		state.sunIntensity = sun.intensity; // clear sky: world/weather.js dims it under rain
+		hemi.intensity = 0.08 + 0.09 * THREE.MathUtils.smoothstep( e, - 5, 30 );
 		// the sky's light at night: a cool grey
 		hemi.color.copy( _hemiDay ).lerp( _hemiNight, n );
 		hemi.groundColor.copy( _groundDay ).lerp( _groundNight, n );

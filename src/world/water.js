@@ -63,6 +63,7 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		shallow: uniform( new THREE.Color( 0x2f6f74 ) ),
 		waveStrength: uniform( opts.waveStrength ?? 0.4 ),
 		foam: uniform( opts.foam ?? 1 ), // the surf at the shore (a still lake: a thin wet line)
+		foamLight: uniform( new THREE.Color( 1, 1, 1 ) ), // the light on the foam (main.js: dim at night; it glowed white)
 		reflectivity: uniform( 1.0 )
 	};
 
@@ -165,7 +166,7 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		const fn = mx_noise_float( wp.xz.mul( 0.35 ).add( time.mul( 0.08 ) ) ).mul( 0.5 ).add( 0.5 );
 		const band = sin( depth.mul( 9.0 ).sub( time.mul( 1.7 ) ).add( fn.mul( 5.0 ) ) ).mul( 0.5 ).add( 0.5 );
 		const foam = smoothstep( 0.0, 1.1, depth ).oneMinus().mul( smoothstep( 0.55, 0.95, band ).mul( 0.6 ).add( smoothstep( 0.0, 0.35, depth ).oneMinus() ) ).mul( fn.mul( 0.6 ).add( 0.5 ) );
-		col.assign( mix( col, vec3( 0.92, 0.95, 0.95 ), clamp( foam.mul( U.foam ), 0, 0.9 ) ) );
+		col.assign( mix( col, vec3( 0.92, 0.95, 0.95 ).mul( U.foamLight ), clamp( foam.mul( U.foam ), 0, 0.9 ) ) );
 		return col;
 	} )();
 

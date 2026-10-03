@@ -78,7 +78,7 @@ export function clearCloudMap( renderer ) {
 
 // the sun's direction (followed by reference); call before any material using cloudShade() is built
 export function bindSky( sky ) {
-	cloudMap.sun.value = sky.state.sunDir;
+	cloudMap.sun.value = sky.state.lightDir; // the sun, the moon at night (sky.js)
 }
 
 // the sun's height (degrees): full shadows from 12 degrees up
