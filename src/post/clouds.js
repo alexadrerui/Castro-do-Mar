@@ -83,6 +83,7 @@ export class Clouds {
 		};
 		this.base = uniform( 750 ); this.top = uniform( 2200 ); // the span of the cumulus layers (the main march)
 		this.cirrus = uniform( 1 );                            // the cirrus layer's strength (0: off)
+		this.fairDensity = 0.2;                                // the cumulus' density (1/m) in fair weather (overcast())
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
 		this.camPos = camPos;
@@ -320,6 +321,17 @@ export class Clouds {
 	}
 
 	update( dt ) { this.time.value += dt; }
+
+	// The cumulus thin out as the cover closes (the rain's 0.95, the panel past 60%): at the high cover
+	// the weather fills the layer, the shape stops carving it (remap( 1, 1 - shape, 1 ) is 1) and at
+	// 0.2/m a few tens of metres turn opaque. The rain sky was a flat grey plate cut out with crisp,
+	// polygon-like edges and bright thin rims. At 0.06/m the deck is soft, its edges translucent.
+	overcast() {
+		const c = this.coverage.value;
+		const k = THREE.MathUtils.smoothstep( c, 0.6, 0.95 );
+		const ds = this.layers.densityScale.value;
+		ds.x = ds.y = THREE.MathUtils.lerp( this.fairDensity, 0.06, k );
+	}
 
 	// the shadow map, before the scene pass (app.renderFrame): every few frames, or at once when the
 	// camera's projection moves the map by a texel or the sun turns

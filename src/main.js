@@ -428,6 +428,7 @@ async function main() {
 	if ( clouds ) app.onFrame.push( ( dt ) => {
 		clouds.update( dt );
 		clouds.coverage.value = sky.sky.cloudCoverage.value; // the panel's "Nuvens" and the rain
+		clouds.overcast(); // thinner, softer cumulus under a closed sky
 		clouds.sunColor.value.copy( sky.sun.color ).multiplyScalar( sky.sun.intensity / SUN_MAX );
 		// the sky's light from above, with the lightning's flashes (sky.gain)
 		clouds.ambient.value.copy( hazeColor.value ).multiplyScalar( sky.gain.value / 0.4 );
