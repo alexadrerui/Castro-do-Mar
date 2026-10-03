@@ -27,7 +27,8 @@ import { createWater } from './world/water.js';
 import { setWaterLevels } from './world/terrain.js';
 import { Lakes } from './world/lakeWater.js';
 import { Weather } from './world/weather.js';
-import { Clock } from './world/clock.js';
+import { Clock, PRESETS } from './world/clock.js';
+import { Stars, loadStars } from './world/stars.js';
 import { Lightning } from './world/lightning.js';
 import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
@@ -170,6 +171,12 @@ async function main() {
 		updateCloudSun( sky.state.elevation );
 		app.cloudShadow = cloudShadowUniforms;
 		if ( params.get( 'cloudshadow' ) === '0' ) cloudShadowUniforms.strength.value = 0;
+		// the catalog stars (world/stars.js), turned by the clock, seen with the night; ?stars=0 leaves them out
+		if ( params.get( 'stars' ) !== '0' ) {
+			app.stars = new Stars( await loadStars(), sky.night );
+			app.stars.setHour( PRESETS.tarde );
+			scene.add( app.stars );
+		}
 	} );
 
 	await loader.run( 'terrain', async () => {

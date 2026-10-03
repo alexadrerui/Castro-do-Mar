@@ -7,8 +7,12 @@
 // real minute), set( hour ), presets.
 import * as THREE from 'three/webgpu';
 
-const LAT = THREE.MathUtils.degToRad( 42.5 );
+export const LAT_DEG = 42.5;
+const LAT = THREE.MathUtils.degToRad( LAT_DEG );
 const DECL = THREE.MathUtils.degToRad( - 7.1 );
+// the sun's right ascension on that day (on the ecliptic at declination -7.1: longitude 198.1 degrees),
+// for the stars' sidereal time (world/stars.js)
+export const SUN_RA_DEG = 196.6;
 
 export const PRESETS = { manha: 9, tarde: 15 + 32 / 60, noite: 23 };
 
@@ -61,6 +65,7 @@ export class Clock {
 			this._envAt = elevation;
 		}
 		if ( jump ) this._envAt = elevation;
+		this.app.stars?.setHour( this.hour );
 		for ( const f of this.listeners ) f( this.hour );
 	}
 
