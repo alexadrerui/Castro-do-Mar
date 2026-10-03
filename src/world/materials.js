@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, uv, positionWorld, normalWorld, float, vec2, vec3, color, mix, smoothstep, floor, fract, sin,
-	hash, texture, fwidth, length, clamp, abs, max
+	hash, texture, fwidth, length, clamp, abs, max, uniform
 } from 'three/tsl';
 import { proceduralBump } from './terrain.js';
 import { SURFACE } from './surfaceBake.js';
@@ -20,6 +20,13 @@ import { wetness } from './weather.js';
 const footprint = ( st ) => length( fwidth( st ) );
 const aa = ( st, lo, hi ) => smoothstep( lo, hi, footprint( st ) );
 
+// The variants of one material (stone, dark stone and the fort's; thatch and green thatch; timber and
+// posts; red and undyed cloth) take their numbers as uniforms, not literals: then they compile to the
+// same shader code and three builds one pipeline for all of them (it keys the programs by their code).
+// A cold first visit compiled each variant on its own, ~0.15-0.2 s apiece.
+const U = ( v ) => uniform( v );
+const UC = ( hex ) => uniform( new THREE.Color( hex ) );
+
 // Mean tone of a procedural material, for its cheap stand-in in the water reflection and the
 // shadow pass (core/proxies.js): the mix of two sRGB colours, darkened by k.
 const proxyTone = ( mat, a, b, k = 1 ) => {
@@ -35,27 +42,28 @@ const worldPatch = ( T ) => texture( T.world, vec2( positionWorld.x.add( positio
 // fade: the pixel footprint, in rows, over which the stone cells fade to the average tone
 export function stoneMaterial( T, { rowH = 0.3, len = 0.55, tintA = 0x746d61, tintB = 0xb0a692, moss = 0.6, fade = [ 0.02, 0.12 ], gapColor = 0x2b2721, bump = 1.6 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
+	const P = { rowH: U( rowH ), len: U( len ), tintA: UC( tintA ), tintB: UC( tintB ), moss: U( moss ), fade0: U( fade[ 0 ] ), fade1: U( fade[ 1 ] ), gap: UC( gapColor ), bump: U( bump ) };
 	const st = uv();
 	// the stone cells, in cell space (len x rowH metres per cell)
-	const s = texture( T.stone, st.div( vec2( len, rowH ) ).div( SURFACE.stoneCells ) );
-	const edge = s.r.mul( rowH );
+	const s = texture( T.stone, st.div( vec2( P.len, P.rowH ) ).div( SURFACE.stoneCells ) );
+	const edge = s.r.mul( P.rowH );
 	const stoneMask = smoothstep( 0.008, 0.04, edge );
 	const cid = s.g, n = s.b;
-	let col = mix( color( tintA ), color( tintB ), cid.mul( 0.7 ).add( n.mul( 0.3 ) ) );
+	let col = mix( P.tintA, P.tintB, cid.mul( 0.7 ).add( n.mul( 0.3 ) ) );
 	col = mix( col, col.mul( vec3( 1.06, 1.0, 0.9 ) ), hash( cid.mul( 91.0 ) ).step( 0.7 ) );
-	const gap = color( gapColor );
+	const gap = P.gap;
 	// lichen and moss: patchy, stronger low on the wall and on top faces
 	const mn = worldPatch( T ).r;
-	const mossM = smoothstep( 0.55, 0.8, mn.add( normalWorld.y.clamp( 0, 1 ).mul( 0.35 ) ).add( smoothstep( 0.0, 1.2, st.y ).oneMinus().mul( 0.15 ) ) ).mul( moss );
+	const mossM = smoothstep( 0.55, 0.8, mn.add( normalWorld.y.clamp( 0, 1 ).mul( 0.35 ) ).add( smoothstep( 0.0, 1.2, st.y ).oneMinus().mul( 0.15 ) ) ).mul( P.moss );
 	col = mix( col, mix( color( 0x4d5a2a ), color( 0x7c7e48 ), n ), mossM.mul( 0.65 ) );
-	const far = aa( st, rowH * fade[ 0 ], rowH * fade[ 1 ] );
-	const avg = mix( color( tintA ), color( tintB ), 0.5 ).mul( 0.72 );
+	const far = aa( st, P.rowH.mul( P.fade0 ), P.rowH.mul( P.fade1 ) );
+	const avg = mix( P.tintA, P.tintB, 0.5 ).mul( 0.72 );
 	const farCol = mix( avg, mix( color( 0x4d5a2a ), color( 0x7c7e48 ), 0.5 ), mossM.mul( 0.6 ) );
 	mat.colorNode = mix( mix( gap, col, mix( stoneMask, 1.0, far ) ), farCol, far );
 	mat.roughnessNode = float( 0.92 );
 	// pillowed stone faces
 	const bumpH = smoothstep( 0.0, 0.07, edge ).mul( 0.8 ).add( n.mul( 0.25 ) );
-	mat.normalNode = proceduralBump( bumpH, far.oneMinus().mul( bump ) );
+	mat.normalNode = proceduralBump( bumpH, far.oneMinus().mul( P.bump ) );
 	return proxyTone( mat, tintA, tintB, 0.8 );
 }
 
@@ -99,6 +107,9 @@ export function slabMaterial( T, { rowH = 0.2, tintA = 0x3f4045, tintB = 0xa4a6b
 // relief of `tufts` x 2.5 cm (a height in metres, a gentle slope)
 export function thatchMaterial( T, { base = 0x6a604c, light = 0x8e8266, mossy = 0.2, courses = 1, tufts = 0 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
+	// courses / tufts are weights in uniforms too, so the castro thatch (0 / 1) shares the shader of
+	// the village thatch (1 / 0); the relief follows the tufts path when tufts > 0 (sel)
+	const P = { base: UC( base ), light: UC( light ), mossy: U( mossy ), courses: U( courses ), tufts: U( tufts ), sel: U( tufts ? 1 : 0 ) };
 	const st = uv(); // x around/along, y down-slope distance
 	const s = texture( T.thatch, st.div( vec2( SURFACE.thatch[ 0 ], SURFACE.thatch[ 1 ] ) ) );
 	const course = s.b;
@@ -107,15 +118,15 @@ export function thatchMaterial( T, { base = 0x6a604c, light = 0x8e8266, mossy = 
 	const strands2 = mix( s.g, 0.5, f2 );
 	const patch = worldPatch( T ).g;
 	// the straw: a gentle tone variation (full contrast read as black stripes)
-	let col = mix( color( base ), color( light ), strands.mul( 0.6 ).add( strands2.mul( 0.4 ) ).sub( 0.5 ).mul( 0.55 ).add( 0.5 ) );
+	let col = mix( P.base, P.light, strands.mul( 0.6 ).add( strands2.mul( 0.4 ) ).sub( 0.5 ).mul( 0.55 ).add( 0.5 ) );
 	// a faint shadow line at the bottom of every layer
-	if ( courses ) col = col.mul( mix( smoothstep( 0.0, 0.2, course ).mul( 0.05 * courses ).add( 1 - 0.05 * courses ), 1 - 0.03 * courses, fc ) );
+	col = col.mul( mix( smoothstep( 0.0, 0.2, course ).mul( P.courses.mul( 0.05 ) ).add( P.courses.mul( - 0.05 ).add( 1 ) ), P.courses.mul( - 0.03 ).add( 1 ), fc ) );
 	// bundles: darker hollows between the tufts
-	const tuft = tufts ? texture( T.thatch, st.div( vec2( SURFACE.thatch[ 0 ] * 4, SURFACE.thatch[ 1 ] ) ) ).r : null;
-	if ( tufts ) col = col.mul( smoothstep( 0.25, 0.75, tuft ).mul( 0.35 * tufts ).add( 1 - 0.3 * tufts ) );
+	const tuft = texture( T.thatch, st.div( vec2( SURFACE.thatch[ 0 ] * 4, SURFACE.thatch[ 1 ] ) ) ).r;
+	col = col.mul( smoothstep( 0.25, 0.75, tuft ).mul( P.tufts.mul( 0.35 ) ).add( P.tufts.mul( - 0.3 ).add( 1 ) ) );
 	// weathering: grey sun-bleached vs. dark damp
 	col = mix( col, col.mul( vec3( 0.8, 0.82, 0.85 ) ).add( 0.03 ), smoothstep( 0.4, 0.7, patch ).mul( 0.5 ) );
-	const mossM = smoothstep( 0.58, 0.78, patch.add( strands.mul( 0.15 ) ) ).mul( mossy );
+	const mossM = smoothstep( 0.58, 0.78, patch.add( strands.mul( 0.15 ) ) ).mul( P.mossy );
 	col = mix( col, mix( color( 0x4a5626 ), color( 0x6f7a36 ), strands ), mossM.mul( 0.75 ) );
 	// thick, shadowed eave lip
 	col = col.mul( mix( 0.45, 1.0, smoothstep( 0.0, 0.6, st.y ) ) );
@@ -123,33 +134,29 @@ export function thatchMaterial( T, { base = 0x6a604c, light = 0x8e8266, mossy = 
 	mat.roughnessNode = float( 0.97 );
 	// soft relief: the layers, and the straw barely (its fast variation as a height bent the normal
 	// into dark streaks down the roof); the straw itself lives in the colour
-	if ( tufts ) {
-		// metres: straw 4 mm, tufts up to 2.5 cm (a gentle slope; the castro roofs)
-		const bm = strands.mul( 0.004 ).add( smoothstep( 0.2, 0.8, tuft ).mul( 0.025 * tufts ) );
-		mat.normalNode = proceduralBump( bm, aa( st, 0.02, 0.1 ).oneMinus() );
-	} else {
-		const bh = strands.mul( 0.05 ).add( smoothstep( 0.0, 0.3, course ).mul( 0.12 * courses ) );
-		mat.normalNode = proceduralBump( bh, f1.oneMinus() );
-	}
+	// with tufts, metres: straw 4 mm, tufts up to 2.5 cm (a gentle slope; the castro roofs)
+	const bm = strands.mul( 0.004 ).add( smoothstep( 0.2, 0.8, tuft ).mul( P.tufts.mul( 0.025 ) ) );
+	const bh = strands.mul( 0.05 ).add( smoothstep( 0.0, 0.3, course ).mul( P.courses.mul( 0.12 ) ) );
+	mat.normalNode = proceduralBump( mix( bh, bm, P.sel ), mix( f1.oneMinus(), aa( st, 0.02, 0.1 ).oneMinus(), P.sel ) );
 	return proxyTone( mat, base, light, 0.85 );
 }
 
 // Planks / timber. Grain runs along uv.y (posts) — plank seams across uv.x.
 export function woodMaterial( T, { a = 0x4a3526, b = 0x755638, plank = 0.24, seams = true } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
+	const P = { a: UC( a ), b: UC( b ), plank: U( plank ), seams: U( seams ? 1 : 0 ) };
 	const st = uv();
-	const pid = floor( st.x.div( plank ) );
-	const fg = aa( st, 0.01, 0.04 ), fs = aa( st, plank * 0.15, plank * 0.6 );
+	const pid = floor( st.x.div( P.plank ) );
+	const fg = aa( st, 0.01, 0.04 ), fs = aa( st, P.plank.mul( 0.15 ), P.plank.mul( 0.6 ) );
 	// every plank its own stretch of the grain
 	const s = texture( T.wood, st.add( vec2( hash( pid ).mul( 0.73 ), hash( pid.add( 7 ) ).mul( 8 ) ) ).div( vec2( SURFACE.wood[ 0 ], SURFACE.wood[ 1 ] ) ) );
 	const grain = mix( s.r, 0.5, fg );
 	const knots = smoothstep( 0.75, 0.9, s.g );
-	let col = mix( color( a ), color( b ), grain.mul( 0.7 ).add( hash( pid ).mul( 0.3 ) ) );
+	let col = mix( P.a, P.b, grain.mul( 0.7 ).add( hash( pid ).mul( 0.3 ) ) );
 	col = col.mul( knots.mul( - 0.35 ).add( 1.0 ) );
-	if ( seams ) {
-		const fx = fract( st.x.div( plank ) );
-		col = col.mul( mix( smoothstep( 0.0, 0.06, fx ).mul( smoothstep( 0.94, 1.0, fx ).oneMinus() ).mul( 0.5 ).add( 0.5 ), 0.85, fs ) );
-	}
+	// plank seams, weighted by P.seams (0 on the posts)
+	const fx = fract( st.x.div( P.plank ) );
+	col = col.mul( mix( float( 1 ), mix( smoothstep( 0.0, 0.06, fx ).mul( smoothstep( 0.94, 1.0, fx ).oneMinus() ).mul( 0.5 ).add( 0.5 ), 0.85, fs ), P.seams ) );
 	// weathered grey on up-facing parts
 	col = mix( col, col.mul( 0.8 ).add( 0.05 ), normalWorld.y.clamp( 0, 1 ).mul( 0.5 ) );
 	mat.colorNode = col;
@@ -162,9 +169,10 @@ export function woodMaterial( T, { a = 0x4a3526, b = 0x755638, plank = 0.24, sea
 export function clothMaterial( T, { a = 0x8c2419, b = 0xb13a28 } = {} ) {
 	const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
 	const st = uv();
+	const P = { a: UC( a ), b: UC( b ) };
 	const weave = mix( sin( st.x.mul( 260.0 ) ).mul( sin( st.y.mul( 260.0 ) ) ).mul( 0.5 ).add( 0.5 ), 0.5, aa( st, 0.002, 0.008 ) );
 	const fade = worldPatch( T ).b;
-	let col = mix( color( a ), color( b ), fade );
+	let col = mix( P.a, P.b, fade );
 	col = col.mul( weave.mul( 0.08 ).add( 0.94 ) );
 	// sun-faded, dusty edges
 	col = mix( col, col.mul( 0.8 ).add( vec3( 0.06, 0.05, 0.04 ) ), smoothstep( 0.6, 0.9, fade ).mul( 0.4 ) );
