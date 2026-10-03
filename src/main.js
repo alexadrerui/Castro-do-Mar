@@ -282,7 +282,17 @@ async function main() {
 	}
 	// Gulls soaring high over the bay (animated in the vertex shader).
 	const gulls = new Gulls( { hf, waterLevel: WATER_LEVEL, count: 14 } );
-	scene.add( gulls.mesh );
+	// the birds go to roost as night falls (the sun 2 degrees under the horizon) and come back at dawn:
+	// a group of their own, so the panel's layer buttons still switch each one (app.birdsAwake)
+	const birdGroup = new THREE.Group();
+	birdGroup.name = 'birds';
+	scene.add( birdGroup );
+	app.birdsAwake = true;
+	app.onFrame.push( () => {
+		app.birdsAwake = sky.state.elevation > - 2;
+		birdGroup.visible = app.birdsAwake;
+	} );
+	birdGroup.add( gulls.mesh );
 	app.gulls = gulls;
 	app.layers.gulls = { label: 'Gaivotas', object: gulls.mesh };
 	app.onFrame.push( ( dt ) => gulls.update( dt ) );
@@ -294,13 +304,14 @@ async function main() {
 		// the scene pending until its 12 s timeout
 		birds.commit();
 		birds.mesh.layers.enable( 2 ); // seen in the water reflection
-		scene.add( birds.mesh );
+		birdGroup.add( birds.mesh );
 		const flock = new Flock( app );
 		app.flock = flock;
 		app.layers.birds = { label: 'Aves pousadas', object: birds.mesh };
 		// the camera is the "viewer" that flushes them
 		const viewer = { x: 0, y: 0, z: 0, speed: 0 };
 		app.onFrame.push( ( dt ) => {
+			if ( ! app.birdsAwake ) return; // roosting: no simulation
 			const p = camera.position;
 			if ( dt > 0 ) viewer.speed = Math.hypot( p.x - viewer.x, p.y - viewer.y, p.z - viewer.z ) / dt;
 			viewer.x = p.x; viewer.y = p.y; viewer.z = p.z;
