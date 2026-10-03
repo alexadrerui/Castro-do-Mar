@@ -35,6 +35,7 @@ import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
+import { generateFields } from './world/genFields.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
 import { loadTerrainEdits, hashEdits } from './world/terrainEdits.js';
@@ -47,6 +48,7 @@ import srcHeight from './world/heightfield.js?raw';
 import srcLayout from './world/layout.js?raw';
 import srcNoise from './core/noise.js?raw';
 import srcWorker from './world/gen.worker.js?raw';
+import srcGenFields from './world/genFields.js?raw';
 import srcHorizon from './world/horizon.js?raw';
 
 const params = new URLSearchParams( location.search );
@@ -133,7 +135,7 @@ async function main() {
 	// the generator reads only the houses of the edited layout (pads, trampled ground): moving a stall
 	// or a prop does not regenerate the fields
 	const houses = BUILDINGS.map( ( b ) => [ b.x, b.z, b.r, b.w, b.l, b.scale ] );
-	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker, JSON.stringify( houses ) ) + ':' + hashEdits( terrainEdits );
+	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker, srcGenFields, JSON.stringify( houses ) ) + ':' + hashEdits( terrainEdits );
 	app.clearCache = cacheClear;
 	const cached = await cacheGet( genKey );
 	let mask, ao, macro;
@@ -143,17 +145,10 @@ async function main() {
 		( { mask, ao, macro } = cached );
 		hf.data = cached.height;
 	} else {
-		const worker = new Worker( new URL( './world/gen.worker.js', import.meta.url ), { type: 'module' } );
-		const job = ( cmd, p ) => new Promise( ( resolve, reject ) => {
-			worker.onmessage = ( e ) => e.data.type === 'progress' ? p( e.data.p ) : resolve( e.data.data );
-			worker.onerror = reject;
-			worker.postMessage( { cmd, edits: cmd === 'height' ? terrainEdits : null, world: worldEdits } );
-		} );
-		await loader.run( 'height', async ( p ) => { hf.data = await job( 'height', p ); } );
-		mask = await loader.run( 'mask', ( p ) => job( 'mask', p ) );
-		ao = await loader.run( 'ao', ( p ) => job( 'ao', p ) );
-		macro = await loader.run( 'macro', ( p ) => job( 'macro', p ) );
-		worker.terminate();
+		// in bands of rows over a pool of workers (world/genFields.js)
+		const fields = await generateFields( { loader, edits: terrainEdits, world: worldEdits } );
+		hf.data = fields.height;
+		( { mask, ao, macro } = fields );
 		// store in the background (structured clone copies the arrays)
 		cachePut( genKey, { height: hf.data, mask, ao, macro }, 'fields:' ).then( () => console.info( 'fields: cached', genKey ) );
 	}

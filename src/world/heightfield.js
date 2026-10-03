@@ -337,13 +337,14 @@ export function heightAnalytic( x, z ) {
 // Grid build (chunked so the loading screen can report progress).
 // ---------------------------------------------------------------------------
 // Sky-visibility AO from the heightfield: horizon angles in 8 directions.
-export function bakeAO( hf, onProgress ) {
+// rows j0..j1 only (the generator pool in world/genFields.js splits it between workers)
+export function bakeAO( hf, onProgress, j0 = 0, j1 = hf.n ) {
 	const { n } = hf;
-	const out = new Float32Array( n * n );
+	const out = new Float32Array( ( j1 - j0 ) * n );
 	const dist = [ 3, 6, 10, 16, 26, 42, 70 ];
 	const dirs = [];
 	for ( let k = 0; k < 8; k ++ ) dirs.push( [ Math.cos( k * Math.PI / 4 ), Math.sin( k * Math.PI / 4 ) ] );
-	for ( let j = 0; j < n; j ++ ) {
+	for ( let j = j0; j < j1; j ++ ) {
 		const z = hf.z0 + j * hf.cell;
 		for ( let i = 0; i < n; i ++ ) {
 			const x = hf.x0 + i * hf.cell;
@@ -357,31 +358,34 @@ export function bakeAO( hf, onProgress ) {
 				}
 				occ += maxT / Math.sqrt( 1 + maxT * maxT ); // sin(elevation)
 			}
-			out[ j * n + i ] = Math.max( 0, 1 - occ / 8 * 1.6 );
+			out[ ( j - j0 ) * n + i ] = Math.max( 0, 1 - occ / 8 * 1.6 );
 		}
-		if ( j % 40 === 0 ) onProgress?.( j / n );
+		if ( j % 40 === 0 ) onProgress?.( ( j - j0 ) / ( j1 - j0 ) );
 	}
 	return out;
 }
 
 // Macro noise texture over the whole terrain (RGBA8):
 //  R: very large patches  G: large  B: medium  A: granite outcrop field
-export function buildMacro( onProgress, res = 1024 ) {
-	const data = new Uint8Array( res * res * 4 );
+export const MACRO_RES = 1024;
+// rows j0..j1 only (see bakeAO)
+export function buildMacro( onProgress, j0 = 0, j1 = MACRO_RES ) {
+	const res = MACRO_RES;
+	const data = new Uint8Array( ( j1 - j0 ) * res * 4 );
 	const x0 = TERRAIN.centerX - TERRAIN.size / 2, z0 = TERRAIN.centerZ - TERRAIN.size / 2;
 	const px = TERRAIN.size / res;
 	const q = ( v ) => Math.max( 0, Math.min( 255, ( v * 0.5 + 0.5 ) * 255 ) );
-	for ( let j = 0; j < res; j ++ ) {
+	for ( let j = j0; j < j1; j ++ ) {
 		const z = z0 + ( j + 0.5 ) * px;
 		for ( let i = 0; i < res; i ++ ) {
 			const x = x0 + ( i + 0.5 ) * px;
-			const k = ( j * res + i ) * 4;
+			const k = ( ( j - j0 ) * res + i ) * 4;
 			data[ k ] = q( fbm( nA, x * 0.0035, z * 0.0035, 3 ) * 1.6 );
 			data[ k + 1 ] = q( fbm( nB, x * 0.018, z * 0.018, 3 ) * 1.6 );
 			data[ k + 2 ] = q( fbm( nC, x * 0.11, z * 0.11, 2 ) * 1.6 );
 			data[ k + 3 ] = q( fbm( nD, x * 0.028, z * 0.028, 3 ) * 1.6 );
 		}
-		if ( j % 64 === 0 ) onProgress?.( j / res );
+		if ( j % 64 === 0 ) onProgress?.( ( j - j0 ) / ( j1 - j0 ) );
 	}
 	return data;
 }
@@ -398,16 +402,17 @@ export class HeightField {
 		this.data = new Float32Array( this.n * this.n );
 	}
 
-	async build( onProgress, inWorker = false ) {
+	// rows j0..j1 (the generator pool splits the field between workers)
+	async build( onProgress, inWorker = false, j0 = 0, j1 = this.n ) {
 		const { n, data } = this;
 		const rows = 40;
-		for ( let j = 0; j < n; j ++ ) {
+		for ( let j = j0; j < j1; j ++ ) {
 			const z = this.z0 + j * this.cell;
 			for ( let i = 0; i < n; i ++ ) {
 				data[ j * n + i ] = heightAnalytic( this.x0 + i * this.cell, z );
 			}
 			if ( j % rows === 0 ) {
-				onProgress?.( j / n );
+				onProgress?.( ( j - j0 ) / ( j1 - j0 ) );
 				if ( ! inWorker ) await new Promise( ( r ) => setTimeout( r, 0 ) );
 			}
 		}
@@ -443,18 +448,19 @@ export class HeightField {
 // ---------------------------------------------------------------------------
 // Splat mask: R path, G trampled village ground, B field, A crop id.
 // ---------------------------------------------------------------------------
-export function buildMask( onProgress ) {
+// rows j0..j1 only (see bakeAO)
+export function buildMask( onProgress, j0 = 0, j1 = MASK.res ) {
 	const { res, size, centerX, centerZ } = MASK;
-	const data = new Uint8Array( res * res * 4 );
+	const data = new Uint8Array( ( j1 - j0 ) * res * 4 );
 	const x0 = centerX - size / 2, z0 = centerZ - size / 2;
 	const px = size / res;
 
-	for ( let j = 0; j < res; j ++ ) {
-		if ( j % 64 === 0 ) onProgress?.( j / res );
+	for ( let j = j0; j < j1; j ++ ) {
+		if ( j % 64 === 0 ) onProgress?.( ( j - j0 ) / ( j1 - j0 ) );
 		const z = z0 + ( j + 0.5 ) * px;
 		for ( let i = 0; i < res; i ++ ) {
 			const x = x0 + ( i + 0.5 ) * px;
-			const k = ( j * res + i ) * 4;
+			const k = ( ( j - j0 ) * res + i ) * 4;
 
 			// village trampled earth, irregular
 			const vx = ( x - VILLAGE.x ) / 1.35, vz = z - VILLAGE.z;

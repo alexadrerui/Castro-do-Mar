@@ -21,6 +21,7 @@ export class Loader {
 		this.steps = steps; // [{ id, label, weight }]
 		this.total = steps.reduce( ( s, x ) => s + x.weight, 0 );
 		this.done = 0;
+		this.partial = new Map(); // progress of the steps running now (several at once: world/genFields.js)
 		this.items = new Map();
 		for ( const s of steps ) {
 			const li = document.createElement( 'li' );
@@ -44,15 +45,22 @@ export class Loader {
 		// time spent outside the steps (module import, code between steps)
 		const gap = Math.round( t0 - ( this.lastEnd ?? 0 ) );
 		if ( gap > 50 ) ( this.times = this.times || {} )[ '(antes de ' + id + ')' ] = gap;
-		const result = await fn( ( p ) => this._set( this.done + it.s.weight * Math.min( 1, p ) ) );
+		const result = await fn( ( p ) => { this.partial.set( id, it.s.weight * Math.min( 1, p ) ); this._update(); } );
+		this.partial.delete( id );
 		( this.times = this.times || {} )[ id ] = Math.round( performance.now() - t0 );
 		this.lastEnd = performance.now();
 		this.done += it.s.weight;
-		this._set( this.done );
+		this._update();
 		it.li.classList.remove( 'active' );
 		it.li.classList.add( 'ok' );
 		await frame();
 		return result;
+	}
+
+	_update() {
+		let v = this.done;
+		for ( const x of this.partial.values() ) v += x;
+		this._set( v );
 	}
 
 	_set( v ) {

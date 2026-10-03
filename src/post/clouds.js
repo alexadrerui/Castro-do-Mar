@@ -126,12 +126,19 @@ export class Clouds {
 		this.ambient = uniform( new THREE.Color( 0.55, 0.65, 0.8 ) );
 		this.ambientScale = uniform( 1.1 );
 		this.time = uniform( 0 );
+		// the cumulus drift and change shape: a wind at the cloud level (m/s; 8 was too slow to see a few
+		// km away), the shape noise walked through its third axis (tiles per second: they grow and fade
+		// over minutes; a rigid stamp before) and the erosion of the edges
+		this.windSpeed = uniform( 18 );
+		this.evolve = uniform( 0.0012 );
+		this.detailEvolve = uniform( 0.006 );
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
 		this.camPos = camPos;
 		const depthTex = scenePass.getTextureNode( 'depth' );
-		// the wind from the south-west, ~8 m/s at the cloud level
-		const wind = vec3( 0.7071, 0, - 0.7071 ).mul( this.time.mul( 8 ) );
+		// the wind from the south-west
+		const wind = vec3( 0.7071, 0, - 0.7071 ).mul( this.time.mul( this.windSpeed ) );
+		const morph = vec3( 0, this.time.mul( this.evolve ), 0 );
 
 		const remap = ( v, a, b ) => v.sub( a ).div( b.sub( a ).max( 1e-4 ) ).clamp( 0, 1 );
 		// density at p (0..1) and the height fraction in the layer
@@ -143,13 +150,13 @@ export class Clouds {
 			const cov = remap( m.r.mul( 0.75 ).add( m.g.mul( 0.25 ) ), this.coverage.oneMinus().mul( 0.95 ), this.coverage.oneMinus().mul( 0.95 ).add( 0.25 ) );
 			// the cumulus profile: a flat base, a dome narrowing upwards (more so where the cover is thin)
 			const grad = smoothstep( 0, 0.08, h ).mul( smoothstep( cov.mul( 0.7 ).add( 0.25 ), 0.15, h ) );
-			const shape = texture3D( noise, q.mul( this.shapeScale ) ).level( 0 ).r;
+			const shape = texture3D( noise, q.mul( this.shapeScale ).add( morph ) ).level( 0 ).r;
 			let d = remap( shape.mul( grad ), cov.oneMinus(), float( 1 ) ).mul( cov );
 			// an overcast sky (the rain) closes into one sheet, thinner toward the top
 			d = max( d, smoothstep( 0.75, 0.95, this.coverage ).mul( shape.mul( 0.5 ).add( 0.3 ) ).mul( smoothstep( 0, 0.1, h ) ).mul( smoothstep( 0.9, 0.3, h ) ) );
 			if ( ! cheap ) {
 				// erosion by the Worley fbm, wispier at the base, billowing at the top
-				const det = texture3D( noise, q.mul( this.detailScale ).add( vec3( 0, this.time.mul( 0.002 ), 0 ) ) ).level( 0 ).g;
+				const det = texture3D( noise, q.mul( this.detailScale ).add( vec3( 0, this.time.mul( this.detailEvolve ), 0 ) ) ).level( 0 ).g;
 				d = remap( d, mix( det.oneMinus(), det, h.mul( 3 ).clamp( 0, 1 ) ).mul( this.erosion ), float( 1 ) );
 			}
 			return d;

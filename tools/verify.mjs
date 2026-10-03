@@ -59,6 +59,12 @@ const measure = async ( mode ) => {
 		// the focus (depth of field) stays as the user gets it: the white sky of a cold load only
 		// showed through its output
 		const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
+		// the clouds frozen at one moment: they drift with the clock since the load, so the sky of a
+		// cold and a warm load differed by however long each took (view 5 failed at 108 / 123 luma
+		// once the cold load got faster). The sky's 2D clouds, the volumetric ones and their shadow.
+		a.sky.sky.cloudSpeed.value = 0;
+		if ( a.clouds ) { a.clouds.time.value = 0; a.clouds.update = () => {}; }
+		if ( a.cloudShadow ) a.cloudShadow.speed.value = 0;
 		const ids = list.length ? list : a.views.map( ( _, i ) => i );
 		const res = [];
 		for ( const i of ids ) {
