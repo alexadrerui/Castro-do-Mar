@@ -9,6 +9,7 @@ import { SURFACE } from './surfaceBake.js';
 import { cloudShade } from './cloudShadow.js';
 import { wetness } from './weather.js';
 import { rainSplat, rainSplatter } from './rainImpacts.js';
+import { wind, windAmount, gustSoft } from './wind.js';
 
 // All building materials read metric UVs written by core/builder.js.
 // Colours are tuned against the references: warm grey granite, grey-olive
@@ -178,7 +179,7 @@ export function woodMaterial( T, { a = 0x4a3526, b = 0x755638, plank = 0.24, sea
 // its frame billows. The wind blows from the south-west, as for the grass and the birds; stronger in
 // the rain (world/weather.js).
 export const clothWind = {
-	dir: uniform( new THREE.Vector2( 0.62, - 0.78 ).normalize() ), // where it blows to (+x -z)
+	dir: wind.dir,              // where it blows to: the world's wind (world/wind.js)
 	strength: uniform( 0.5 ),   // radians of swing at the top of a gust
 	speed: uniform( 1.3 ),      // gust phase, radians per second
 	freq: uniform( 0.05 ),      // gust phase, radians per metre along the wind (~125 m gusts)
@@ -193,12 +194,14 @@ const clothSway = Fn( () => {
 	const hang = sw.x, nrm = vec2( sw.y, sw.z ), billow = sw.w;
 	const wpos = modelWorldMatrix.mul( vec4( positionLocal, 1 ) ).xyz;
 	const phase = dot( wpos.xz, W.dir ).mul( W.freq ).add( time.mul( W.speed ) ).sub( hang.mul( W.lag ) );
-	const gust = sin( phase ).mul( 0.5 ).add( 0.5 );
+	// the world's gust (world/wind.js) passing over the cloth, a little later at the tip than at the edge,
+	// with the travelling ripple of the original on top
+	const gust = gustSoft( wpos.xz.sub( W.dir.mul( hang.mul( 0.6 ) ) ) ).mul( 0.7 ).add( sin( phase ).mul( 0.15 ).add( 0.15 ) );
 	// how square the edge stands to the wind, and which side is downwind
 	const side = dot( nrm, W.dir );
 	const down = nrm.mul( side.greaterThanEqual( 0 ).select( 1, - 1 ) );
 	const flutter = sin( time.mul( W.turbSpeed ).add( wpos.x.mul( 2.1 ) ).add( wpos.z.mul( 1.7 ) ).add( hang.mul( 9 ) ) ).mul( W.turb );
-	const a = gust.mul( 0.85 ).add( 0.15 ).mul( W.strength ).add( flutter ).mul( abs( side ).mul( 0.7 ).add( 0.3 ) );
+	const a = gust.mul( 0.85 ).add( 0.15 ).mul( W.strength ).add( flutter ).mul( abs( side ).mul( 0.7 ).add( 0.3 ) ).mul( windAmount );
 	// the hanging vector ( 0, -hang, 0 ) turned by a about the edge: out downwind and up
 	const swing = vec3( down.x.mul( hang ).mul( sin( a ) ), hang.mul( cos( a ).oneMinus() ), down.y.mul( hang ).mul( sin( a ) ) );
 	const lift = billow.mul( W.billow ).mul( sin( phase.mul( 1.7 ).add( wpos.x.mul( 0.8 ) ) ).mul( 0.7 ).add( gust.mul( 0.6 ) ).sub( 0.3 ) );

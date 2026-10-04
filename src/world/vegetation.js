@@ -19,6 +19,7 @@ import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
 import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, PATHS, HAMLETS, footprintR } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
+import { wind, windAmount, gustSoft } from './wind.js';
 
 const nV = makeSimplex( 606 );
 
@@ -69,16 +70,24 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false, 
 	const baseCol = attribute( 'color', 'vec3' );
 	const tint = attribute( 'aTint', 'vec3' );
 
-	// wind: gusts travel across the world, phase per instance
+	// wind: the world's (world/wind.js). The gust travelling across the map, read at the plant's anchor
+	// (core/chunked.js iM3), leans it downwind as it passes, so a gust crosses the meadow and the wood
+	// together; a smaller sway on its own phase rides on top, and the leaves flutter harder in a gust.
+	// U.wind is this material's own amount (0 holds the plants still: tools/flicker.mjs), times the
+	// shared calm (night) and storm (rain).
 	const phase = hash( instanceIndex ).mul( 6.283 );
 	mat.positionNode = Fn( () => {
 		const p = positionLocal.toVar();
-		const gust = sin( time.mul( 0.6 ).add( phase ) ).mul( 0.5 ).add( 0.5 );
-		const w = sway.mul( U.wind ).mul( gust.mul( 0.6 ).add( 0.4 ) );
-		p.x.addAssign( sin( time.mul( 1.7 ).add( phase ).add( p.y.mul( 0.4 ) ) ).mul( 0.12 ).mul( w ) );
-		p.z.addAssign( sin( time.mul( 1.3 ).add( phase.mul( 1.3 ) ).add( p.x.mul( 0.5 ) ) ).mul( 0.09 ).mul( w ) );
+		const gust = gustSoft( attribute( 'iM3', 'vec4' ).xz );
+		const w = sway.mul( U.wind ).mul( windAmount );
+		const push = gust.mul( 0.75 ).add( 0.15 ).mul( 0.16 ).mul( w );
+		p.x.addAssign( wind.dir.x.mul( push ) );
+		p.z.addAssign( wind.dir.y.mul( push ) );
+		const stir = w.mul( gust.add( 0.5 ) );
+		p.x.addAssign( sin( time.mul( 1.7 ).add( phase ).add( p.y.mul( 0.4 ) ) ).mul( 0.07 ).mul( stir ) );
+		p.z.addAssign( sin( time.mul( 1.3 ).add( phase.mul( 1.3 ) ).add( p.x.mul( 0.5 ) ) ).mul( 0.05 ).mul( stir ) );
 		// leaf flutter
-		p.addAssign( vec3( sin( time.mul( 7.0 ).add( p.y.mul( 3.0 ) ).add( phase ) ) ).mul( 0.02 ).mul( leaf ).mul( w ) );
+		p.addAssign( vec3( sin( time.mul( 7.0 ).add( p.y.mul( 3.0 ) ).add( phase ) ) ).mul( 0.02 ).mul( leaf ).mul( w ).mul( gust.mul( 0.8 ).add( 0.6 ) ) );
 		// the instance's anchor (core/chunked.js iM3)
 		if ( groundShift ) p.y.addAssign( groundShift( attribute( 'iM3', 'vec4' ).xz ) );
 		return p;

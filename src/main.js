@@ -36,6 +36,7 @@ import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { Settings } from './core/settings.js';
 import { Ambience } from './audio/ambience.js';
+import { wind } from './world/wind.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms, clearCloudMap } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
@@ -390,9 +391,8 @@ async function main() {
 		// the wind calms at night (to 30%): the leaves and blades swaying over the moonlit sky and clouds
 		// opened and closed bright gaps in the dark crowns at every frame (they flickered); without wind
 		// the flicker fell from 1.3% to 0.06% of the pixels (tools/flicker.mjs, a wood at 23:00)
-		const calm = 1 - 0.7 * night;
-		for ( const m of [ app.foliageMaterial, app.canopyMaterial, app.fernMaterial ] ) if ( m?.userData.foliage ) m.userData.foliage.wind.value = calm;
-		if ( app.grass?.wind ) app.grass.wind.value = 0.35 * calm;
+		// (the world's one wind, world/wind.js: grass, plants and cloth together)
+		wind.calm.value = 1 - 0.7 * night;
 		app.underwater?.setDaylight( hazeColor.value );
 		app.underwater?.setSun( sky.state.lightDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.lightDir, sky.sun, app.underwater?.murk.value );

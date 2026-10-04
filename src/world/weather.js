@@ -13,11 +13,12 @@
 import * as THREE from 'three/webgpu';
 import { rainFall, rainClock, rainImpacts, rainSplatter } from './rainImpacts.js';
 import { clothWind } from './materials.js';
+import { wind } from './wind.js';
 import { cameraPosition, cross, float, fract, hash, instanceIndex, mix, positionGeometry, smoothstep, time, uniform, uv, varying, vec3 } from 'three/tsl';
 
 export const wetness = uniform( 0 );
 
-const WIND = { x: 0.7071, z: - 0.7071, strength: 2.5 }; // from the south-west
+const WIND_SPEED = 2.5; // m/s the drops drift with the world's wind (world/wind.js), more in a storm
 // Two layers, after Cortiz's RainCurtain (as above): the mass of the weather far around, and a few
 // fat drops near the lens for the parallax that makes rain read as volume rather than as a texture.
 const LAYERS = {
@@ -65,8 +66,8 @@ export class Rain {
 		const spd = P.speed.mul( mix( 0.75, 1.3, r( 71.91 ) ) );
 		const lenK = mix( 0.7, 1.3, r( 331.71 ) );
 		const wid = P.width.mul( mix( 0.6, 1.4, r( 441.31 ) ) );
-		const windE = mix( 0.8, 1.2, r( 121.43 ) ).mul( WIND.strength );
-		const vDrop = vec3( windE.mul( WIND.x ), spd.negate(), windE.mul( WIND.z ) );
+		const windE = mix( 0.8, 1.2, r( 121.43 ) ).mul( WIND_SPEED ).mul( wind.storm );
+		const vDrop = vec3( windE.mul( wind.dir.x ), spd.negate(), windE.mul( wind.dir.y ) );
 		const wrap = ( seed, travel, lo, span ) => fract( seed.mul( span ).add( travel ).sub( lo ).div( span ) ).mul( span ).add( lo );
 		const side2 = P.half.mul( 2 );
 		const x = wrap( r( 17.13 ), time.mul( vDrop.x ), cameraPosition.x.sub( P.half ), side2 );
@@ -146,8 +147,8 @@ export class Weather {
 		// the drops landing (world/rainImpacts.js): rings on the water and the puddles, glints
 		rainFall.value = this.level;
 		rainClock.value += dt;
-		// and the wind in the cloth picks up (world/materials.js clothWind)
-		clothWind.strength.value = 0.5 * ( 1 + 0.6 * this.level );
+		// and the wind picks up: grass, plants, cloth and the drops (world/wind.js), the cloth flutters more
+		wind.storm.value = 1 + 0.6 * this.level;
 		clothWind.turb.value = 0.12 * ( 1 + 1.0 * this.level );
 		const w = wetness.value;
 		wetness.value = this.level > w ? Math.min( this.level, w + dt / 40 ) : Math.max( this.level, w - dt / 120 );

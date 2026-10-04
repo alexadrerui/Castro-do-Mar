@@ -19,6 +19,7 @@ import { clearance, editedClearance, inLake } from './vegetation.js';
 import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE, MASK } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
+import { wind, windAmount, gustAt } from './wind.js';
 
 // The world is divided into CELL x CELL metre cells. Every visible cell near the camera draws one
 // instance of a "patch": a fixed blue-noise set of clump slots. In the vertex shader each slot is
@@ -445,22 +446,20 @@ export class GrassField {
 		const camPos = this.camPos;
 		const sun = uniform( sunDir );
 
-		// wind from the south-west (off the Atlantic): travelling gusts, ~35 m and ~15 m cells
-		const windDir = new THREE.Vector2( 0.62, - 0.78 );
-		const windDir3 = vec3( windDir.x, 0, windDir.y ), windPerp3 = vec3( - windDir.y, 0, windDir.x );
-		// a uniform: main.js calms it at night (the blades flickered against the moonlit gaps)
+		// the world's wind (world/wind.js): the south-west direction and the travelling gusts every plant and
+		// cloth reads, so a gust crosses the meadow and the trees together; this.wind is the grass's own
+		// amount, times the shared calm (night) and storm (rain)
+		const windDir3 = vec3( wind.dir.x, 0, wind.dir.y ), windPerp3 = vec3( wind.dir.y.negate(), 0, wind.dir.x );
 		this.wind = uniform( 0.35 );
-		const windStrength = this.wind;
-		const gustAt = ( xz ) => {
-			const p = xz.sub( vec2( windDir.x, windDir.y ).mul( time.mul( 5.5 ) ) );
-			const nz = vnoise( p.div( 35 ) ).mul( 0.62 ).add( vnoise( p.div( 15 ).add( 0.37 ) ).mul( 0.38 ) );
-			return smoothstep( 0.46, 0.6, nz );
-		};
+		this.shadowRing = uniform( 0.3 );   // m: the ring the clump reads the sun's shadow on (0: one point)
+		this.shadowHeight = uniform( 0.4 ); // of the blade's height: where the ring sits
+		const windStrength = this.wind.mul( windAmount );
 
 		const vG = varyingProperty( 'vec4', 'vGrass' ); // hf, kind, dune fraction, rand
 		const vTone = varyingProperty( 'vec4', 'vGrassTone' ); // meadow tone, dryness
 		const vG2 = varyingProperty( 'vec4', 'vGrass2' ); // density, leaf / flower centre flag, across, dry blade
 		const vGust = varyingProperty( 'float', 'vGrassGust' ); // current gust bend (wind sheen)
+		const vShadowP = varyingProperty( 'vec3', 'vGrassShadowP' ); // where the clump reads the sun's shadow
 
 		// low specular (as the foliage): the Fresnel of the bright sky washed the blades out
 		const mat = new THREE.MeshPhysicalNodeMaterial( { side: THREE.DoubleSide, specularIntensity: 0.2 } );
@@ -571,7 +570,21 @@ export class GrassField {
 			vTone.assign( vec4( mt.tone, mt.dry ) );
 			vG2.assign( vec4( density, select( kind.lessThan( 2.5 ), float( 0 ), blade.w ), across, dryBlade ) );
 			vGust.assign( saturate( g.mul( w ).mul( 0.6 ) ).mul( stiff ) );
+			vShadowP.assign( base.add( vec3( 0, scale.mul( this.shadowHeight ), 0 ) ) );
 			return pos;
+		} )();
+
+		// The sun's shadow on the grass, after Cortiz's grass field (Stylized Premium Scenes, MIT,
+		// licenses/LICENSE-Cortiz.md; shaders/grassBlade.ts GRASS_SHADOW_VERTEX): read per fragment at the
+		// blade's own position, a shadow edge cut a hard line across the meadow and, sweeping over it,
+		// flipped blades from lit to dark (they flickered). There the shadow is read at a ring of points
+		// around the blade (0.3 m, a third of the way up) and averaged: a wide penumbra, so an edge fades
+		// across a blade. three's shadow node is built once per material (one read per fragment), so here
+		// each fragment reads ONE point of that ring, picked by where it sits on the blade (across it and
+		// up it) and turned by the blade's own random: a blade straddling the edge darkens part by part.
+		mat.receivedShadowPositionNode = Fn( () => {
+			const a = vG.w.mul( 6.2832 ).add( vG2.z.mul( 0.5 ).add( 0.5 ).mul( 3.1416 ) ).add( vG.x.mul( 3.1416 ) );
+			return vShadowP.add( vec3( cos( a ), 0, sin( a ) ).mul( this.shadowRing ) );
 		} )();
 
 		const straw = C( 0x9e8a55 ), soil = C( 0x3a2e1e );
