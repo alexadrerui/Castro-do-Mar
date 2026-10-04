@@ -49,7 +49,7 @@ import { loadTerrainEdits, hashEdits } from './world/terrainEdits.js';
 import { loadWorldEdits, applyWorldEdits } from './world/worldEdits.js';
 import { loadNatureEdits } from './world/natureEdits.js';
 import { loadSurfaces } from './world/surfaces.js';
-import { BUILDINGS } from './world/layout.js';
+import { BUILDINGS, PATHS, MASK } from './world/layout.js';
 // the generated fields depend only on this code: its hash is the cache key
 import srcHeight from './world/heightfield.js?raw';
 import srcLayout from './world/layout.js?raw';
@@ -146,7 +146,9 @@ async function main() {
 	// the generator reads only the houses of the edited layout (pads, trampled ground): moving a stall
 	// or a prop does not regenerate the fields
 	const houses = BUILDINGS.map( ( b ) => [ b.x, b.z, b.r, b.w, b.l, b.scale ] );
-	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker, srcGenFields, JSON.stringify( houses ) ) + ':' + hashEdits( terrainEdits );
+	// and the paths (the "Caminhos" tab edits them: the ruts and the dirt of the mask follow)
+	const paths = PATHS.map( ( p ) => [ p.w, p.pts ] );
+	const genKey = 'fields:' + hashSources( srcHeight, srcLayout, srcNoise, srcWorker, srcGenFields, JSON.stringify( houses ), JSON.stringify( paths ) ) + ':' + hashEdits( terrainEdits );
 	app.clearCache = cacheClear;
 	const cached = await cacheGet( genKey );
 	let mask, ao, macro;
@@ -165,6 +167,8 @@ async function main() {
 	}
 	app.hf = hf;
 	app.mask = mask;
+	app.paths = PATHS; // the paths as edited (world/worldEdits.js), for the console and the QA
+	app.maskInfo = { x0: MASK.centerX - MASK.size / 2, z0: MASK.centerZ - MASK.size / 2, size: MASK.size };
 	app.macro = macro; // baked macro noise (CPU copy), for the grass density mask
 
 	let sky;
@@ -858,6 +862,9 @@ async function main() {
 		// and the painted nature (tab "Natureza"), then the tabs over the three panels
 		const { NatureEditor } = await import( './editor/natureEditor.js' );
 		app.natureEditor = new NatureEditor( app, app.editor );
+		// and the paths (tab "Caminhos"): the village's tracks and new ones, in the world edits
+		const { PathEditor } = await import( './editor/pathEditor.js' );
+		app.pathEditor = new PathEditor( app, app.editor );
 		const { createEditorTabs } = await import( './editor/tabs.js' );
 		createEditorTabs( app );
 	}

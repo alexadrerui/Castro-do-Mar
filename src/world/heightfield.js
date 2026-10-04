@@ -49,16 +49,24 @@ function catmull( pts, sub = 6 ) {
 	out.push( pts[ pts.length - 1 ] );
 	return out;
 }
-const PATH_SEGS = [];
-for ( const p of PATHS ) {
-	const c = catmull( p.pts );
-	for ( let i = 1; i < c.length; i ++ ) {
-		const a = c[ i - 1 ], b = c[ i ];
-		PATH_SEGS.push( { ax: a[ 0 ], az: a[ 1 ], bx: b[ 0 ], bz: b[ 1 ], w: p.w,
-			minx: Math.min( a[ 0 ], b[ 0 ] ) - 12, maxx: Math.max( a[ 0 ], b[ 0 ] ) + 12,
-			minz: Math.min( a[ 1 ], b[ 1 ] ) - 12, maxz: Math.max( a[ 1 ], b[ 1 ] ) + 12 } );
+// built on first use, not when the module loads: the world edits (worldEdits.js applyWorldEdits)
+// change PATHS after this module is imported (the paths of the editor's "Caminhos" tab)
+let PATH_SEGS = null;
+function buildPathSegs() {
+	PATH_SEGS = [];
+	for ( const p of PATHS ) {
+		if ( ! p.pts || p.pts.length < 2 ) continue;
+		const c = catmull( p.pts );
+		for ( let i = 1; i < c.length; i ++ ) {
+			const a = c[ i - 1 ], b = c[ i ];
+			PATH_SEGS.push( { ax: a[ 0 ], az: a[ 1 ], bx: b[ 0 ], bz: b[ 1 ], w: p.w,
+				minx: Math.min( a[ 0 ], b[ 0 ] ) - 12, maxx: Math.max( a[ 0 ], b[ 0 ] ) + 12,
+				minz: Math.min( a[ 1 ], b[ 1 ] ) - 12, maxz: Math.max( a[ 1 ], b[ 1 ] ) + 12 } );
+		}
 	}
 }
+// the curve a path's points make (the same everywhere: relief, mask, vegetation, the editor)
+export function pathCurve( pts ) { return catmull( pts ); }
 
 // Distance from p to segment ab (2D).
 function segDist( px, pz, ax, az, bx, bz ) {
@@ -72,6 +80,7 @@ function segDist( px, pz, ax, az, bx, bz ) {
 
 function pathDistance( x, z ) {
 	let best = 1e9, bw = 2;
+	if ( ! PATH_SEGS ) buildPathSegs();
 	for ( const s of PATH_SEGS ) {
 		if ( x < s.minx || x > s.maxx || z < s.minz || z > s.maxz ) continue;
 		const d = segDist( x, z, s.ax, s.az, s.bx, s.bz );

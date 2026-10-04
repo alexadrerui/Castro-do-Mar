@@ -182,7 +182,10 @@ export class ObjectEditor {
 	}
 
 	_restore( st ) {
+		// the objects' snapshot back; the paths, lakes and rivers are edited by the other tabs and stay
+		const keep = { paths: this.edits.paths, lakes: this.edits.lakes, rivers: this.edits.rivers };
 		this.edits = JSON.parse( st.json );
+		Object.assign( this.edits, keep );
 		const g = st.id && this.groups.get( st.id );
 		if ( g && st.tf ) { g.position.copy( st.tf.p ); g.rotation.copy( st.tf.r ); g.scale.copy( st.tf.s ); g.visible = st.tf.v; }
 		if ( this.selected && ! this.selected.visible ) this.select( null );

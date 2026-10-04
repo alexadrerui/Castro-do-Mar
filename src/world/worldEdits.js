@@ -17,12 +17,17 @@
 // water level of every 1.5 m sample (saved: the channel was carved into the relief edits for them).
 // Ids: b<i> = BUILDINGS[ i ], s<i> = STALLS[ i ], p<i> = PROPS[ i ] (indices of the original lists),
 // a<n> = an added object. yaw is a turn added to the object's own rotation, scale is uniform.
-import { BUILDINGS, STALLS, PROPS } from './layout.js';
+// paths: the editor's "Caminhos" tab (editor/pathEditor.js): { changed: { c<i>: { o: [ x, z ] (the
+// original's first point, a guard as ox / oz above), pts, w, type } or { o, removed: true } },
+// added: [ { id: 'n<k>', pts, w, type } ] }. c<i> = PATHS[ i ]. type: 'trilha' (a dirt track; streets
+// and pavements later). Applied to PATHS before anything reads them, so the relief's ruts, the mask's
+// dirt, the vegetation's clearance, the grass on the track and the lanes' fences follow.
+import { BUILDINGS, STALLS, PROPS, PATHS } from './layout.js';
 import { shipped } from './editFiles.js';
 
 export const WORLD_EDITS_URL = ( import.meta.env?.BASE_URL ?? '/' ) + 'world-edits.json';
 
-export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [], rivers: [] } );
+export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [], rivers: [], paths: { changed: {}, added: [] } } );
 
 // the edits, or null when there are none
 export async function loadWorldEdits() {
@@ -35,8 +40,9 @@ export async function loadWorldEdits() {
 			if ( ! e || typeof e !== 'object' ) return null;
 			const lakes = Array.isArray( e.lakes ) ? e.lakes.filter( ( l ) => Number.isFinite( l?.x ) && Number.isFinite( l?.z ) ) : [];
 			const rivers = Array.isArray( e.rivers ) ? e.rivers.filter( ( r ) => Array.isArray( r?.points ) && r.points.length >= 2 ) : [];
-			const out = { objects: e.objects || {}, added: Array.isArray( e.added ) ? e.added : [], lakes, rivers };
-			return Object.keys( out.objects ).length || out.added.length || lakes.length || rivers.length ? out : null;
+			const paths = { changed: e.paths?.changed || {}, added: Array.isArray( e.paths?.added ) ? e.paths.added.filter( ( p ) => Array.isArray( p?.pts ) && p.pts.length >= 2 ) : [] };
+			const out = { objects: e.objects || {}, added: Array.isArray( e.added ) ? e.added : [], lakes, rivers, paths };
+			return Object.keys( out.objects ).length || out.added.length || lakes.length || rivers.length || Object.keys( paths.changed ).length || paths.added.length ? out : null;
 		} catch ( err ) { /* try the next */ }
 	}
 	return null;
@@ -62,7 +68,9 @@ export function applyWorldEdits( edits ) {
 	BUILDINGS.forEach( ( b, i ) => { b._id = 'b' + i; } );
 	STALLS.forEach( ( s, i ) => { s._id = 's' + i; } );
 	PROPS.forEach( ( p, i ) => { p._id = 'p' + i; } );
+	PATHS.forEach( ( p, i ) => { p._id = 'c' + i; p.type ??= 'trilha'; } );
 	if ( ! edits ) return;
+	applyPathEdits( edits.paths );
 	const mod = edits.objects || {};
 	// an edit names its object by the index in the original list; the original position it was made
 	// on (ox, oz) guards against a layout.js list edited since (the edit would go to another object)
@@ -97,5 +105,30 @@ export function applyWorldEdits( edits ) {
 			Object.assign( s, { _id: a.id, yaw: a.yaw, scale: a.scale, seed: a.seed, red: a.red !== false, added: true, edited: true } );
 			STALLS.push( s );
 		}
+	}
+}
+
+// The paths of the "Caminhos" tab: an original changed (points, width, type) or removed, guarded by its
+// first point; the added ones at the end.
+function applyPathEdits( pe ) {
+	if ( ! pe ) return;
+	const ok = ( p ) => Array.isArray( p ) && p.length >= 2 && p.every( ( q ) => Number.isFinite( q[ 0 ] ) && Number.isFinite( q[ 1 ] ) );
+	for ( const p of PATHS ) {
+		const m = pe.changed?.[ p._id ];
+		if ( ! m ) continue;
+		if ( Array.isArray( m.o ) && Math.hypot( p.pts[ 0 ][ 0 ] - m.o[ 0 ], p.pts[ 0 ][ 1 ] - m.o[ 1 ] ) > 0.5 ) {
+			console.warn( `world edits: path ${ p._id } does not start at ( ${ m.o } ) any more (layout.js changed?); edit ignored` );
+			continue;
+		}
+		if ( m.removed ) { p.removed = true; continue; }
+		if ( ok( m.pts ) ) p.pts = m.pts.map( ( q ) => [ q[ 0 ], q[ 1 ] ] );
+		if ( Number.isFinite( m.w ) && m.w > 0 ) p.w = m.w;
+		if ( m.type ) p.type = m.type;
+		p.edited = true;
+	}
+	for ( let i = PATHS.length - 1; i >= 0; i -- ) if ( PATHS[ i ].removed ) PATHS.splice( i, 1 );
+	for ( const a of pe.added || [] ) {
+		if ( ! ok( a.pts ) ) continue;
+		PATHS.push( { _id: a.id, pts: a.pts.map( ( q ) => [ q[ 0 ], q[ 1 ] ] ), w: Number.isFinite( a.w ) && a.w > 0 ? a.w : 2.4, type: a.type || 'trilha', added: true, edited: true } );
 	}
 }
