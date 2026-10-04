@@ -27,6 +27,7 @@ import { makeSimplex, fbm } from '../core/noise.js';
 import { WATER_LEVEL } from '../world/layout.js';
 import { EDITS_N } from '../world/terrainEdits.js';
 import { RiverCourse, sampleCurve } from '../world/riverCourse.js';
+import { RiverEdit } from './riverEdit.js';
 
 const TOOLS = [
 	{ id: 'raise', label: 'Elevar', hint: 'Levanta o relevo (Shift: baixa)' },
@@ -38,7 +39,7 @@ const TOOLS = [
 	{ id: 'dig', label: 'Cavar', hint: 'Cava até a profundidade abaixo do nível da água, com margem em rampa até o relevo de antes' },
 	{ id: 'fill', label: 'Aterrar', hint: 'Aterra até a altura acima do nível da água, com margem em rampa até o fundo de antes' },
 	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' },
-	{ id: 'river', label: 'Rio', hint: 'Clique os pontos do curso, da nascente à foz (Backspace tira o último); Enter conclui: o nível desce com o terreno, o leito é escavado (Ctrl+Z desfaz) e a água corre. Esc cancela. Shift+clique: remove o rio' },
+	{ id: 'river', label: 'Rio', hint: 'Clique os pontos do curso, da nascente à foz (Backspace tira o último); Enter conclui: o nível desce com o terreno, o leito é escavado (Ctrl+Z desfaz) e a água corre. Esc cancela. Shift+clique: remove o rio. "Selecionar rio" edita um rio pronto' },
 	{ id: 'lake', label: 'Encher', hint: 'Clique numa depressão: a água sobe até a borda mais baixa, menos 20 cm (lago com nível próprio, carpas e lótus ao salvar). Shift+clique: remove o lago' }
 ];
 const UNDO_MAX = 40;
@@ -87,6 +88,8 @@ export class TerrainEditor {
 		this._buildCursor();
 		this._buildPanel();
 		this._bind();
+		// the river tool's floating boxes and the editing of a laid river (editor/riverEdit.js)
+		this.riverEdit = new RiverEdit( this );
 		app.freecam.leftLook = false;
 		app.onFrame.push( ( dt ) => this.update( dt ) );
 		this._status();
@@ -355,7 +358,12 @@ export class TerrainEditor {
 			if ( after.length === before.length && after.every( ( v, q ) => Math.abs( v - before[ q ] ) < 0.02 ) ) break;
 		}
 		this._markDirty( i0, j0, i1, j1 );
+		const undoBefore = this.undo.length;
 		this._end(); // the lakes refill on the carved relief (_waterFollows)
+		// the carve saved with the river (cells and how much each changed), so that editing or removing
+		// it later can put the relief back (editor/riverEdit.js)
+		const step = this.undo.length > undoBefore ? this.undo.at( - 1 ) : null;
+		if ( step ) record.carve = { k: Array.from( step.keys ), d: Array.from( step.after, ( v, q ) => + ( v - step.before[ q ] ).toFixed( 3 ) ) };
 		course.relevel( rivers.lakeAt() );
 		record.levels = course.levels();
 		rivers.add( record );
@@ -398,11 +406,18 @@ export class TerrainEditor {
 	// ------------------------------------------------------------------ strokes, undo
 
 	_begin() {
-		if ( ! this.hit ) return false;
-		this.stroke = { touched: new Map(), flattenTo: this.hit.y, noise: null, last: this.hit.clone() };
+		// a click on a laid river's handles or gizmo needs no ground under the pointer
+		if ( ! this.hit && ! ( this.tool === 'river' && this.riverEdit?.editing ) ) return false;
+		this.stroke = { touched: new Map(), flattenTo: this.hit?.y ?? 0, noise: null, last: this.hit?.clone() ?? new THREE.Vector3() };
 		if ( this.tool === 'generate' ) { this._stamp( this.hit.x, this.hit.z ); this._end(); return false; }
 		if ( this.tool === 'lake' ) { this.stroke = null; this._pour( this.hit ); return false; }
-		if ( this.tool === 'river' ) { this.stroke = null; this._riverClick( this.hit ); return false; }
+		if ( this.tool === 'river' ) {
+			this.stroke = null;
+			// selecting or editing a laid river (editor/riverEdit.js) takes the click
+			if ( ( this.riverEdit.selecting || this.riverEdit.editing ) && this.riverEdit.click( this.hit, this.lastEvent ) ) return false;
+			this._riverClick( this.hit );
+			return false;
+		}
 		return true;
 	}
 
@@ -572,6 +587,7 @@ export class TerrainEditor {
 			if ( ! this.active || e.button !== 0 || e.altKey ) return;
 			this.pointer.x = e.clientX; this.pointer.y = e.clientY; this.pointer.inside = true;
 			this.invert = e.shiftKey;
+			this.lastEvent = e;
 			this.hit = this._pick();
 			if ( this._begin() ) { this.down = true; dom.setPointerCapture?.( e.pointerId ); }
 		} );
@@ -589,7 +605,12 @@ export class TerrainEditor {
 			if ( e.key === 'Shift' ) this.invert = true;
 			if ( ! this.active ) return;
 			if ( e.code === 'KeyT' && ! e.ctrlKey && ! e.metaKey ) this.toggleOverhead();
-			if ( this.tool === 'river' && this.river.points.length ) {
+			// editing a laid river: Enter applies, Esc cancels; selecting: Esc gives up
+			if ( this.tool === 'river' && this.riverEdit.editing ) {
+				if ( e.code === 'Enter' ) { e.preventDefault(); this.riverEdit.apply(); }
+				if ( e.code === 'Escape' ) { e.preventDefault(); this.riverEdit.cancel(); }
+			} else if ( this.tool === 'river' && this.riverEdit.selecting && e.code === 'Escape' ) { e.preventDefault(); this.riverEdit.cancel(); }
+			else if ( this.tool === 'river' && this.river.points.length ) {
 				if ( e.code === 'Enter' ) { e.preventDefault(); this._riverFinish(); }
 				if ( e.code === 'Escape' ) { e.preventDefault(); this._riverCancel(); }
 				if ( e.code === 'Backspace' ) { e.preventDefault(); this.river.points.pop(); this._riverPreview(); }
@@ -722,6 +743,7 @@ export class TerrainEditor {
 				<legend>Rio</legend>
 				<label>Largura <input data-k="rwidth" type="range" min="2" max="24" step="0.5"><output></output></label>
 				<div class="row"><button data-act="riverDone">Concluir (Enter)</button><button data-act="riverCancel">Cancelar (Esc)</button></div>
+				<div class="row"><button data-act="riverSelect" title="Clique depois num rio pronto: arraste os pontos, mude a largura, aplique">Selecionar rio</button></div>
 			</fieldset>
 			<fieldset class="gen">
 				<legend>Procedural (Gerar e Ruído)</legend>
@@ -769,6 +791,7 @@ export class TerrainEditor {
 
 		// tools
 		const setTool = ( id ) => {
+			if ( id !== 'river' ) this.riverEdit?.cancel();
 			this.tool = id;
 			for ( const b of el.querySelectorAll( '[data-tool]' ) ) b.classList.toggle( 'on', b.dataset.tool === id );
 			this.ui.hint.textContent = TOOLS.find( ( t ) => t.id === id ).hint;
@@ -807,6 +830,7 @@ export class TerrainEditor {
 			dice: () => { this.gen.seed = 1 + Math.floor( Math.random() * 99998 ); seed.value = this.gen.seed; },
 			undo: () => this.undoStep(), redo: () => this.redoStep(),
 			riverDone: () => this._riverFinish(), riverCancel: () => this._riverCancel(),
+			riverSelect: () => { setTool( 'river' ); this.riverEdit.startSelect(); },
 			save: () => this.save(), export: () => this.exportFile(), import: () => file.click(),
 			// two clicks within 3 s (no browser dialog)
 			clear: ( b ) => {
