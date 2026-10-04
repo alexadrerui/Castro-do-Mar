@@ -169,7 +169,11 @@ const laneSegs = () => {
 	return segs;
 };
 // free ground beside lane pi: near the village and off everything else (extra: [ x, z, r ] to avoid)
+// the rivers and lakes of the terrain editor (set by createBuildings): no fence, lamp, step or stone in
+// their water (a lane running beside or into a river; the bridges carry a path over one, world/bridges.js)
+let inWater = () => false;
 function laneFree( x, z, pi, segs, extra = [], near = LANE_NEAR ) {
+	if ( inWater( x, z ) ) return false;
 	// near the village, or inside a hamlet (layout.js HAMLETS)
 	if ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) > near && ! HAMLETS.some( ( h ) => Math.hypot( x - h.x, z - h.z ) < h.r ) ) return false;
 	for ( const b of BUILDINGS ) if ( Math.hypot( x - b.x, z - b.z ) < footprintR( b, 0.7 ) + ( b.awning ? 4.2 : 1.5 ) ) return false;
@@ -582,6 +586,7 @@ export function objectGroup( mats, kind, entry, hf, stallRnd = null, stallIndex 
 // separate: every object its own group (the object editor, ?edit); otherwise all merged by material
 export function createBuildings( app, mats, progress, { separate = false } = {} ) {
 	const { hf } = app;
+	inWater = ( x, z ) => !! ( app.rivers?.at( x, z, 1.5 ) || app.lakes?.at?.( x, z ) );
 	const B = new GeoBuilder();
 	const rnd = mulberry32( 1890 );
 	const smoke = [];

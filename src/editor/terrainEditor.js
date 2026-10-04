@@ -369,6 +369,7 @@ export class TerrainEditor {
 		record.levels = course.levels();
 		rivers.add( record );
 		this.app.refreshWaterLevels?.();
+		this.app.rebuildBridges?.(); // a path across the new river gets its bridge (world/bridges.js)
 		( obj.edits.rivers ??= [] ).push( record );
 		obj.changed = true;
 		const S = course.samples;

@@ -7,6 +7,8 @@ import { createBuildings } from './buildings.js';
 import { createFort } from './fort.js';
 import { addProxies } from '../core/proxies.js';
 import { createSmoke } from './smoke.js';
+import { Bridges } from './bridges.js';
+import { PATHS } from './layout.js';
 import { buildPickBVH } from '../controls/focus.js';
 import { loadDetailTexture } from './granite/detail.js';
 import { createMeadowFlora } from './meadowFlora.js';
@@ -58,6 +60,12 @@ export async function populate( app, progress ) {
 	app.scene.add( smoke.mesh );
 	app.smoke = smoke;
 	app.hearths = bld.userData.smoke; // the hearths (Vector3s), for the fire's crackle (audio/ambience.js)
+	// wooden bridges where a path crosses a river (world/bridges.js); rebuilt by the editor as either changes
+	const bridges = new Bridges( app );
+	app.bridges = bridges;
+	app.rebuildBridges = () => bridges.rebuild( app.pathEditor?.list ?? PATHS, app.rivers?.list ?? [] );
+	app.rebuildBridges();
+	if ( bridges.count ) console.info( 'bridges', bridges.count );
 	app.layers.smoke = { label: 'Fumaça', object: smoke.mesh };
 	progress( 1 );
 }

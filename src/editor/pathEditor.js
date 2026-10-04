@@ -210,7 +210,8 @@ export class PathEditor {
 		return L;
 	}
 
-	_dirty() { this.changed = true; this.app.objectEditor.changed = true; this._status(); }
+	// a change to the paths: unsaved, and the bridges over the rivers follow (world/bridges.js)
+	_dirty() { this.changed = true; this.app.objectEditor.changed = true; this._status(); this.app.rebuildBridges?.(); }
 
 	// ------------------------------------------------------------------ editing a path
 

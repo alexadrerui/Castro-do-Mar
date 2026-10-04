@@ -403,6 +403,7 @@ export class RiverEdit {
 		this.cancel();
 		this._takeOut( river );
 		this.app.refreshWaterLevels?.();
+		this.app.rebuildBridges?.();
 		this.ed._toast( 'Rio removido e o relevo sob ele refeito (Ctrl+Z desfaz o relevo). Salve para aplicar.' );
 	}
 
