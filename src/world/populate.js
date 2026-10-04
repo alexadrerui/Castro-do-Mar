@@ -35,6 +35,8 @@ export async function populate( app, progress ) {
 	const rocks = createRocks( app, ( p ) => progress( 0.5 + p * 0.3 ) );
 	app.scene.add( rocks );
 	app.layers.rocks = { label: 'Pedras', object: rocks };
+	// the grass pressed down around them (grass.js trample texture)
+	console.info( 'grass trampled by', grass.setRocks( rocks ), 'rocks' );
 	console.info( 'rocks', rocks.userData.counts );
 	// the house surfaces, baked (world/surfaceBake.js; started by main.js at the start of the load)
 	const surf = surfaceTextures( await app.surfaces );

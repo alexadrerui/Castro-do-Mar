@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, float, vec2, vec3, vec4, attribute, texture, varyingProperty, normalLocal, normalViewGeometry,
-	positionViewDirection, uniform, time, dot, fract,
+	positionViewDirection, uniform, time, dot, fract, positionWorld, cameraPosition, output,
 	sin, cos, floor, mix, smoothstep, min, max, length, normalize, select, saturate, pow, abs,
 } from 'three/tsl';
 import { mulberry32, smoothstep as ss } from '../core/noise.js';
@@ -20,6 +20,7 @@ import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE, MASK } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
 import { wind, windAmount, gustAt } from './wind.js';
+import { SUN_MAX, MOON_MAX } from './sky.js';
 
 // The world is divided into CELL x CELL metre cells. Every visible cell near the camera draws one
 // instance of a "patch": a fixed blue-noise set of clump slots. In the vertex shader each slot is
@@ -55,6 +56,9 @@ const VINES = 16; // bindweed slots per cell
 const DENSITY_TEXEL = 4; // m per texel of the density mask
 
 const KIND = { GRASS: 0, OAT_STALK: 1, OAT_HEAD: 2, CREEPER: 3, FLOWER: 4 };
+// the trample texture: TRAMPLE.size m square around the camera, res texels (0.25 m), recentred when
+// the camera has moved TRAMPLE.step m (the grass that a rock flattens is within ~40 m anyway)
+const TRAMPLE = { size: 96, res: 384, step: 12 };
 
 // ---- TSL helpers (Tidewater VegNodes.js)
 const UP = vec3( 0, 1, 0 );
@@ -404,6 +408,27 @@ export class GrassField {
 
 		// main camera position: distance LOD (uniform, so any other pass sees the same blades)
 		this.camPos = uniform( new THREE.Vector3() );
+		this.app = app;
+		// Grass pressed down around the rocks (after Cortiz's grass field, grassBlade.ts "rock trampling":
+		// flattened and splayed outward, as if the rock had been dropped on it). There a uniform array of
+		// 24 spheres is looped per vertex; with ~35 000 granite rocks here, a texture around the camera
+		// instead (TRAMPLE.size m, filled on the CPU from the rocks near it, setRocks / _updateTrample):
+		// R how hard a rock presses (0..1), G B the way out from its centre. One read per vertex.
+		const tr = TRAMPLE.res;
+		this.trampleData = new Uint8Array( tr * tr * 4 );
+		this.trampleTex = new THREE.DataTexture( this.trampleData, tr, tr, THREE.RGBAFormat, THREE.UnsignedByteType );
+		this.trampleTex.minFilter = this.trampleTex.magFilter = THREE.LinearFilter;
+		this.trampleTex.generateMipmaps = false;
+		this.trampleTex.needsUpdate = true;
+		this.trampleOrigin = uniform( new THREE.Vector2( 1e9, 1e9 ) ); // the window's corner (none yet: nothing pressed)
+		this.trampleCenter = new THREE.Vector2( NaN, NaN );
+		this.trample = { flatten: uniform( 0.85 ), bend: uniform( 0.7 ), falloff: 1.3, radiusMul: 0.9 }; // falloff (m): the apron of pressed grass around a rock (0.35 there: their blades are ~0.2 m, ours up to 1 m)
+		// Backlight (Cortiz's grass field, bladeMaterial.ts translucency): the sun through the blades,
+		// brightest looking towards it, at the thin tips and on the blades edge-on to it, killed by the
+		// sun's shadow and the clouds'. sunColor follows the sun (the moon at night) in update().
+		this.sunColor = uniform( new THREE.Color( 1, 1, 1 ) );
+		this.trans = { strength: uniform( 0.45 ), power: uniform( 4 ), tip: uniform( 0.85 ),
+			color: uniform( new THREE.Color( 0xc1e54d ) ), dry: uniform( new THREE.Color( 0xe8c25a ) ) };
 		this.material = this._createMaterial( terrain, app.sky.state.lightDir );
 		const clumps = clumpParams( 7 );
 		const patches = [ buildPatch( 0, clumps ), buildPatch( 1, clumps ), buildPatch( 2, clumps ) ];
@@ -460,6 +485,7 @@ export class GrassField {
 		const vG2 = varyingProperty( 'vec4', 'vGrass2' ); // density, leaf / flower centre flag, across, dry blade
 		const vGust = varyingProperty( 'float', 'vGrassGust' ); // current gust bend (wind sheen)
 		const vShadowP = varyingProperty( 'vec3', 'vGrassShadowP' ); // where the clump reads the sun's shadow
+		const vBladeN = varyingProperty( 'vec3', 'vGrassBladeN' ); // the blade's own facing, for the backlight
 
 		// low specular (as the foliage): the Fresnel of the bright sky washed the blades out
 		const mat = new THREE.MeshPhysicalNodeMaterial( { side: THREE.DoubleSide, specularIntensity: 0.2 } );
@@ -540,7 +566,16 @@ export class GrassField {
 			const rot = ( v ) => vec3( v.x.mul( cy ).sub( v.z.mul( sy ) ), v.y, v.x.mul( sy ).add( v.z.mul( cy ) ) );
 
 			const base = vec3( xz.x, ground.sub( 0.03 ), xz.y );
-			const o = rot( vec3( P.x.mul( spread ), P.y, P.z.mul( spread ) ) ).mul( scale );
+			const o0 = rot( vec3( P.x.mul( spread ), P.y, P.z.mul( spread ) ) ).mul( scale );
+			// pressed down around the rocks and splayed away from them (the trample texture)
+			const tuv = xz.sub( this.trampleOrigin ).div( TRAMPLE.size );
+			const tIn = select( tuv.x.greaterThan( 0 ).and( tuv.x.lessThan( 1 ) ).and( tuv.y.greaterThan( 0 ) ).and( tuv.y.lessThan( 1 ) ), float( 1 ), float( 0 ) );
+			const tt = texture( this.trampleTex, tuv ).level( 0 );
+			const press = tt.r.mul( tIn );
+			const away = tt.gb.mul( 2 ).sub( 1 );
+			const o = vec3( o0.x, o0.y.mul( press.mul( this.trample.flatten ).oneMinus() ), o0.z )
+				.add( vec3( away.x, 0, away.y ).mul( press.mul( this.trample.bend ).mul( hf_.mul( hf_ ) ).mul( scale ) ) );
+			vBladeN.assign( normalize( rot( N ).add( vec3( 1e-5, 0, 0 ) ) ) );
 
 			// wind: travelling gusts bend blades downwind (length preserving), plus flutter
 			const w = windStrength;
@@ -587,8 +622,13 @@ export class GrassField {
 			return vShadowP.add( vec3( cos( a ), 0, sin( a ) ).mul( this.shadowRing ) );
 		} )();
 
+		// the sun's shadow on this fragment, captured from the light (three multiplies it into the light;
+		// the backlight below needs it too: no glow in the shade). Declared and set to 1 in the colour, the
+		// first thing built, so it is not left unset where no shadow cascade reaches.
+		const sunShadow = float( 1 ).toVar( 'grassSunShadow' );
 		const straw = C( 0x9e8a55 ), soil = C( 0x3a2e1e );
 		mat.colorNode = Fn( () => {
+			sunShadow.assign( 1 );
 			const hf_ = vG.x, kind = vG.y, duneF = vG.z, rnd = vG.w;
 			const across = vG2.z, dryBlade = vG2.w;
 			// self-shadowing of the sward: dark at the base of the clump
@@ -624,6 +664,27 @@ export class GrassField {
 						select( kind.lessThan( 3.5 ), vine, flower ) ) ) );
 			return c.mul( select( kind.lessThan( 2.5 ), ao, float( 1 ) ) ).mul( cloudShade() );
 		} )();
+		mat.receivedShadowNode = Fn( ( [ shadow ] ) => {
+			sunShadow.mulAssign( shadow );
+			return shadow;
+		} );
+		const T = this.trans;
+		const backlight = Fn( () => {
+			const L = normalize( sun ), V = normalize( cameraPosition.sub( positionWorld ) );
+			const back = pow( max( dot( V, L.negate() ), 0 ), T.power );
+			const thin = mix( float( 1 ), vG.x, T.tip );
+			const edge = abs( dot( normalize( vBladeN ), L ) ).oneMinus();
+			// meadow grass and marram glow; leaves and flowers of the creepers do not
+			const glows = select( vG.y.lessThan( 2.5 ), float( 1 ), float( 0 ) );
+			// golden where it is dry (the dunes, the dry patches, the dead blades)
+			const tint = mix( T.color, T.dry, saturate( vTone.w.add( vG.z ).add( vG2.w ) ) );
+			return tint.mul( this.sunColor ).mul( T.strength ).mul( back ).mul( thin ).mul( edge ).mul( glows )
+				.mul( sunShadow ).mul( cloudShade() ).mul( smoothstep( 0.0, 0.25, vG.x ) );
+		} );
+		// added to the lit, fogged colour at the very end: as an emissive it was computed before the lights
+		// (three adds the emissive into the light sum but builds it first) and read the shadow still at 1.
+		// The grass ends at ~88 m, where the fog it skips is negligible.
+		mat.outputNode = vec4( output.rgb.add( backlight() ), output.a );
 		mat.roughnessNode = select( vG.y.greaterThan( 2.5 ).and( vG.y.lessThan( 3.5 ) ), float( 0.45 ), float( 0.8 ) );
 		mat.metalnessNode = float( 0 );
 		// the same soft normal on both faces (no DoubleSide flip), tilted to the viewer
@@ -631,10 +692,75 @@ export class GrassField {
 		return mat;
 	}
 
+	// The rocks that press the grass down (world/rocks.js group): their footprint radius from each
+	// instance's matrix and its geometry's horizontal extent, in 32 m buckets for the window's lookup.
+	setRocks( group ) {
+		const xs = [], zs = [], rs = [], seen = new Set();
+		group.traverse( ( o ) => {
+			const ins = o.userData?.instances;
+			if ( ! ins || seen.has( ins.matrices ) || o.parent?.name?.startsWith( 'gravel' ) ) return;
+			seen.add( ins.matrices );
+			const src = ins.src;
+			if ( ! src.boundingBox ) src.computeBoundingBox();
+			const bb = src.boundingBox, ext = Math.max( - bb.min.x, bb.max.x, - bb.min.z, bb.max.z );
+			const m = ins.matrices;
+			for ( let k = 0; k < ins.count; k ++ ) {
+				const o16 = k * 16, sx = Math.hypot( m[ o16 ], m[ o16 + 1 ], m[ o16 + 2 ] ), sz = Math.hypot( m[ o16 + 8 ], m[ o16 + 9 ], m[ o16 + 10 ] );
+				const r = ext * Math.max( sx, sz ) * this.trample.radiusMul;
+				if ( r < 0.3 ) continue;
+				xs.push( m[ o16 + 12 ] ); zs.push( m[ o16 + 14 ] ); rs.push( r );
+			}
+		} );
+		const B = 32, grid = new Map();
+		for ( let i = 0; i < xs.length; i ++ ) {
+			const key = Math.floor( xs[ i ] / B ) + ',' + Math.floor( zs[ i ] / B );
+			let l = grid.get( key );
+			if ( ! l ) grid.set( key, l = [] );
+			l.push( i );
+		}
+		this.rocks = { xs, zs, rs, grid, B };
+		this.trampleCenter.set( NaN, NaN );
+		return xs.length;
+	}
+
+	_updateTrample( cx, cz ) {
+		const { size, res } = TRAMPLE, texel = size / res, d = this.trampleData;
+		cx = Math.round( cx / texel ) * texel; cz = Math.round( cz / texel ) * texel;
+		this.trampleCenter.set( cx, cz );
+		const x0 = cx - size / 2, z0 = cz - size / 2;
+		d.fill( 0 );
+		const { xs, zs, rs, grid, B } = this.rocks, F = this.trample.falloff;
+		let n = 0;
+		for ( let bj = Math.floor( z0 / B ) - 1; bj <= Math.floor( ( z0 + size ) / B ) + 1; bj ++ ) for ( let bi = Math.floor( x0 / B ) - 1; bi <= Math.floor( ( x0 + size ) / B ) + 1; bi ++ ) {
+			for ( const k of grid.get( bi + ',' + bj ) ?? [] ) {
+				const rx = xs[ k ], rz = zs[ k ], R = rs[ k ] + F;
+				const i0 = Math.max( 0, Math.floor( ( rx - R - x0 ) / texel ) ), i1 = Math.min( res - 1, Math.ceil( ( rx + R - x0 ) / texel ) );
+				const j0 = Math.max( 0, Math.floor( ( rz - R - z0 ) / texel ) ), j1 = Math.min( res - 1, Math.ceil( ( rz + R - z0 ) / texel ) );
+				if ( i0 > i1 || j0 > j1 ) continue;
+				n ++;
+				for ( let j = j0; j <= j1; j ++ ) for ( let i = i0; i <= i1; i ++ ) {
+					const px = x0 + ( i + 0.5 ) * texel - rx, pz = z0 + ( j + 0.5 ) * texel - rz, dist = Math.hypot( px, pz );
+					const infl = 1 - ss( rs[ k ], R, dist );
+					const o = ( j * res + i ) * 4;
+					if ( infl * 255 <= d[ o ] ) continue;
+					const l = dist > 1e-4 ? dist : 1;
+					d[ o ] = infl * 255; d[ o + 1 ] = ( px / l * 0.5 + 0.5 ) * 255; d[ o + 2 ] = ( pz / l * 0.5 + 0.5 ) * 255; d[ o + 3 ] = 255;
+				}
+			}
+		}
+		this.trampleOrigin.value.set( x0, z0 );
+		this.trampleTex.needsUpdate = true;
+		this.trampleRocks = n;
+	}
+
 	// Recompute the visible cells (cheap; skipped when the camera did not change).
 	update( camera ) {
 		const e = camera.matrixWorld.elements;
 		this.camPos.value.set( e[ 12 ], e[ 13 ], e[ 14 ] );
+		// the backlight's light: the sun (dimmed by the rain) or the moon, as the valley fog takes it
+		const sky = this.app.sky, sunI = sky.state.elevation > - 1 ? Math.min( 1, sky.sun.intensity / SUN_MAX ) : sky.sun.intensity / MOON_MAX * 0.3;
+		this.sunColor.value.copy( sky.sun.color ).multiplyScalar( sunI );
+		if ( this.rocks && ! ( Math.hypot( e[ 12 ] - this.trampleCenter.x, e[ 14 ] - this.trampleCenter.y ) <= TRAMPLE.step ) ) this._updateTrample( e[ 12 ], e[ 14 ] );
 		const L = this._last;
 		const pe = camera.projectionMatrix.elements;
 		if ( Math.abs( e[ 12 ] - L[ 0 ] ) < 0.05 && Math.abs( e[ 13 ] - L[ 1 ] ) < 0.05 && Math.abs( e[ 14 ] - L[ 2 ] ) < 0.05 &&

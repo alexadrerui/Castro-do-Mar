@@ -19,8 +19,9 @@ function captureEndpoint() {
 				req.on( 'end', () => {
 					const dir = path.resolve( 'shots' );
 					fs.mkdirSync( dir, { recursive: true } );
-					fs.writeFileSync( path.join( dir, name + '.png' ), Buffer.concat( chunks ) );
-					res.end( 'ok' );
+					// a file held by another program (an image viewer) must not take the dev server down
+					try { fs.writeFileSync( path.join( dir, name + '.png' ), Buffer.concat( chunks ) ); res.end( 'ok' ); }
+					catch ( e ) { console.warn( 'capture not written:', e.code, name ); res.statusCode = 500; res.end( e.code ); }
 				} );
 			} );
 		}
