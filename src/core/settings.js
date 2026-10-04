@@ -71,9 +71,11 @@ export class Settings {
 		this._save();
 	}
 
+	// the ambience (audio/ambience.js) carries the thunder too: its master volume is the one
 	applyAudio() {
-		const l = this.app.lightning;
-		if ( l ) { l.sound = ! this.muted; l.volume = this.volume; }
+		const amb = this.app.ambience, l = this.app.lightning;
+		amb?.setAudio( this.muted, this.volume );
+		if ( l ) { l.sound = ! this.muted; l.volume = amb ? 1 : this.volume; }
 		document.documentElement.classList.toggle( 'is-audio-muted', this.muted );
 		for ( const f of this.listeners.audio ) f( this.muted, this.volume );
 	}

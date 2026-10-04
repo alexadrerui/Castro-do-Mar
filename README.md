@@ -67,6 +67,9 @@ No topo do painel ficam as **Opções**: qualidade (Baixa, Média, Alta), áudio
 - Gaivotas que planam sobre a baía, gaivotas que pousam nos telhados, no muro e nas pedras (e decolam quando a câmera chega perto) e charrões que pairam e mergulham.
 - Fumaça nas chaminés.
 
+**Som**
+- Som ambiente sintetizado na hora (sem arquivos de áudio): mar quebrando na costa, vento que cresce nos cumes e na tempestade, folhas, chuva, rios e cachoeiras, fogueiras das casas, gaivotas e pássaros de dia (com coro ao amanhecer), grilos e coruja à noite, e tudo abafado embaixo d'água. Começa no primeiro clique; volume e mudo (M) nas Opções.
+
 **Câmera e imagem**
 - Voo livre e mergulho.
 - Profundidade de campo com foco automático (raycast com BVH) ou pelo clique.

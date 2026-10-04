@@ -35,6 +35,7 @@ import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { Settings } from './core/settings.js';
+import { Ambience } from './audio/ambience.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms, clearCloudMap } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
@@ -840,6 +841,9 @@ async function main() {
 
 	const hud = new HUD( app );
 	app.hud = hud;
+	// ambient sound (audio/ambience.js), synthesised; starts on the first click or key
+	app.ambience = new Ambience( app );
+	app.onFrame.push( ( dt ) => app.ambience.update( dt ) );
 	// the player's options (core/settings.js): quality preset, audio, renderer, editor
 	app.settings = new Settings( app );
 	hud.bindOptions( app.settings );

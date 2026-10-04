@@ -55,6 +55,7 @@ export async function populate( app, progress ) {
 	const smoke = createSmoke( bld.userData.smoke );
 	app.scene.add( smoke.mesh );
 	app.smoke = smoke;
+	app.hearths = bld.userData.smoke; // the hearths (Vector3s), for the fire's crackle (audio/ambience.js)
 	app.layers.smoke = { label: 'Fumaça', object: smoke.mesh };
 	progress( 1 );
 }

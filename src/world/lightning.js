@@ -326,6 +326,7 @@ export class Lightning {
 		this.nextStrike = 4;
 		this.sound = true;
 		this.volume = 1; // the panel's volume (core/settings.js)
+		this.output = null; // () => { ctx, destination }: the ambience's bus (audio/ambience.js), else its own context
 		this.shake = 0; this.shakeDecay = 7.5;
 		this.flashing = false;
 		this.count = 0;
@@ -392,8 +393,9 @@ export class Lightning {
 	_thunder( dist, gain = 1 ) {
 		if ( ! this.sound || this.volume <= 0 || typeof AudioContext === 'undefined' ) return;
 		try {
-			const ctx = this.audio || ( this.audio = new AudioContext() );
-			if ( ctx.state === 'suspended' ) ctx.resume();
+			const out = this.output?.();
+			const ctx = out?.ctx ?? ( this.audio || ( this.audio = new AudioContext() ) );
+			if ( ! out && ctx.state === 'suspended' ) ctx.resume();
 			const dur = 3 + Math.min( 5, dist / 600 ), sr = ctx.sampleRate;
 			const buf = ctx.createBuffer( 1, Math.floor( dur * sr ), sr ), d = buf.getChannelData( 0 );
 			// brown noise under an envelope: a crack when close, then rolling rumbles
@@ -411,7 +413,7 @@ export class Lightning {
 			const src = ctx.createBufferSource(); src.buffer = buf;
 			const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900 / ( 1 + dist / 700 ) + 120;
 			const g = ctx.createGain(); g.gain.value = 0.9 * gain * this.volume / ( 1 + dist / 500 );
-			src.connect( lp ).connect( g ).connect( ctx.destination );
+			src.connect( lp ).connect( g ).connect( out?.destination ?? ctx.destination );
 			src.start( ctx.currentTime + dist / 343 );
 		} catch ( err ) { /* no audio */ }
 	}
