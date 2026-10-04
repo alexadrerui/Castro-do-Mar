@@ -28,6 +28,24 @@ function showFailure( msg ) {
 	document.body.appendChild( el );
 }
 
+function saveView( app, reason ) {
+	const c = app.camera, d = c.getWorldDirection( c.position.clone() );
+	store.set( KEY, {
+		t: Date.now(), reason,
+		pos: c.position.toArray(),
+		target: c.position.clone().addScaledVector( d, 20 ).toArray(),
+		sun: { elevation: app.sky.state.elevation, azimuth: app.sky.state.azimuth, hour: app.clock?.hour },
+		clouds: app.sky.sky.cloudCoverage.value
+	} );
+}
+
+// Opens the page again at another address (the panel's "Opções": the editor, the other renderer)
+// keeping the view, which restoreAfterRecovery puts back after the load.
+export function reloadKeepingView( app, url, message ) {
+	if ( app.ready ) saveView( app, message );
+	location.href = url;
+}
+
 // app: renderer, camera, sky, plus the editors and the panel state when present
 export function installRecovery( app ) {
 	const { renderer } = app;
@@ -53,23 +71,15 @@ export function installRecovery( app ) {
 		}
 		store.set( LAST, Date.now() );
 		// the view (only once the world is up: a loss during the load just reloads)
-		if ( app.ready ) {
-			const c = app.camera, d = c.getWorldDirection( c.position.clone() );
-			store.set( KEY, {
-				t: Date.now(),
-				pos: c.position.toArray(),
-				target: c.position.clone().addScaledVector( d, 20 ).toArray(),
-				sun: { elevation: app.sky.state.elevation, azimuth: app.sky.state.azimuth, hour: app.clock?.hour },
-				clouds: app.sky.sky.cloudCoverage.value
-			} );
-		}
+		if ( app.ready ) saveView( app, 'gpu' );
 		console.warn( 'GPU device lost: reloading to recover', info );
 		app.hud?.toast?.( 'A GPU foi reiniciada: recarregando…' );
 		setTimeout( () => location.reload(), 500 );
 	};
 }
 
-// after a recovery reload: the saved view back (camera, sun, clouds); returns true if restored
+// after a recovery (or reloadKeepingView) reload: the saved view back (camera, sun, clouds); returns
+// true if restored
 export function restoreAfterRecovery( app ) {
 	const s = store.get( KEY );
 	store.del( KEY );
@@ -87,6 +97,6 @@ export function restoreAfterRecovery( app ) {
 		else { app.sky.state.elevation = s.sun.elevation; app.sky.state.azimuth = s.sun.azimuth; app.onSunChanged(); }
 	}
 	if ( Number.isFinite( s.clouds ) ) slide( 'r-cloud', s.clouds, () => { app.sky.sky.cloudCoverage.value = s.clouds; } );
-	app.hud?.toast?.( 'Vista recuperada depois da reinicialização da GPU.' );
+	app.hud?.toast?.( s.reason && s.reason !== 'gpu' ? s.reason : 'Vista recuperada depois da reinicialização da GPU.' );
 	return true;
 }

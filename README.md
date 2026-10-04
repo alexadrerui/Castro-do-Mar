@@ -31,9 +31,10 @@ A primeira visita leva ~15 s: o navegador compila os shaders e o relevo é gerad
 | L | raio |
 | H | painel |
 | P | foto (salva em `shots/`) |
+| M | liga e desliga o som |
 | U | esconde a HUD |
 
-O painel controla o sol (elevação e azimute), nuvens, chuva, névoa, brilho e as camadas (água, horizonte, vegetação, grama, flores, pedras, casas, aves, peixes...).
+No topo do painel ficam as **Opções**: qualidade (Baixa, Média, Alta), áudio e volume, o renderizador em uso (WebGPU ou WebGL 2, com troca) e o botão que abre o editor na mesma vista. Qualidade e som ficam guardados no navegador. O painel controla o sol (elevação e azimute), nuvens, chuva, névoa, brilho e as camadas (água, horizonte, vegetação, grama, flores, pedras, casas, aves, peixes...).
 
 ## O que tem
 
@@ -138,6 +139,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
   - as plantas do prado (`src/world/meadowFlora.js`).
 - **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz", em `licenses/LICENSE-Cortiz.md`): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`; e o modo pintura a óleo (`src/post/kuwahara.js`, Kuwahara anisotrópico, que ele adapta de Maxime Heckel).
 - **[three-geospatial / @takram/three-clouds](https://github.com/takram-design-engineering/three-geospatial/tree/main/packages/clouds)** (MIT, Copyright (c) 2024 Shota Matsuda, em `licenses/LICENSE-takram-clouds.md`): o modelo das nuvens volumétricas (camadas pelo mapa de clima, forma e detalhe, espalhamento múltiplo, integração por passo, filtro temporal), portado para TSL em `src/post/clouds.js`, e as texturas de forma, detalhe e clima (`public/clouds/`).
+- **[Folio 2025](https://github.com/brunosimon/folio-2025)** (MIT, Copyright (c) 2025 Bruno Simon, em `licenses/LICENSE-folio-2025.md`): a organização das opções do painel (qualidade, áudio, renderizador), em `src/core/settings.js`.
 - **[Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX)** (MIT, Copyright (c) 2026 Sahil K, em `licenses/LICENSE-LightningVFX.md`): o raio com ramos, as rachaduras, as faíscas e a onda de choque (`src/world/lightning.js`), portados para TSL e adaptados.
 - **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados. A licença está em `src/world/koi/LICENSE-AndyLePool`.
 - **[shader-studio](https://github.com/void032/shader-studio)** (MIT, Copyright (c) 2025 Vineet Kumar "void032", em `licenses/LICENSE-shader-studio.md`): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.

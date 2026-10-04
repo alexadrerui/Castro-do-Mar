@@ -73,6 +73,30 @@
 		<aside class="side panel" id="side">
 			<button class="side-toggle" id="side-toggle" title="Painel (H)">☰</button>
 			<div class="side-body">
+				<h3>Opções</h3>
+				<div class="options">
+					<div class="opt-row">
+						<span>Qualidade</span>
+						<div class="seg" id="o-quality" title="Ajusta resolução, sombras, reflexo, foco e brilho de uma vez">
+							<button data-q="baixa">Baixa</button><button data-q="media">Média</button><button data-q="alta">Alta</button>
+						</div>
+					</div>
+					<div class="opt-row">
+						<span>Áudio</span>
+						<button class="opt-btn" id="b-audio" title="Liga e desliga o som (M)">🔊 Ligado</button>
+					</div>
+					<label>Volume <output id="o-volume"></output><input type="range" id="r-volume" min="0" max="1" step="0.05" /></label>
+					<div class="opt-row">
+						<span>Renderizador</span>
+						<button class="opt-btn" id="b-renderer"><i class="dot"></i><span id="o-renderer">WebGPU</span></button>
+					</div>
+					<p class="opt-tip" id="t-renderer"></p>
+					<div class="opt-row">
+						<span>Editor</span>
+						<button class="opt-btn gold" id="b-editor" title="Relevo, objetos e natureza (recarrega mantendo a vista)">Abrir editor</button>
+					</div>
+				</div>
+
 				<h3>Vistas</h3>
 				<div class="grid-btn" id="views"></div>
 
@@ -93,7 +117,7 @@
 				<h3>Camadas</h3>
 				<div class="toggles" id="layers"></div>
 
-				<h3>Qualidade</h3>
+				<h3>Imagem</h3>
 				<label>Resolução <output id="o-res"></output><input type="range" id="r-res" min="0.5" max="2" step="0.05" /></label>
 				<label class="chk"><input type="checkbox" id="c-shadows" /> Sombras</label>
 				<label class="chk"><input type="checkbox" id="c-refl" checked /> Reflexo na água</label>
@@ -115,6 +139,7 @@
 				<span><kbd>Clique</kbd> focar ponto</span>
 				<span><kbd>H</kbd> painel</span>
 				<span><kbd>P</kbd> foto</span>
+				<span><kbd>M</kbd> som</span>
 			</div>
 			<div class="coords panel">
 				<span>X <b id="c-x">0</b></span>

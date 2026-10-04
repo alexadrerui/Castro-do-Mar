@@ -1,5 +1,7 @@
 // Heads-up display: compass, stats, view presets, sun/sky/quality controls.
 import { Clock, PRESETS } from '../world/clock.js';
+import { QUALITY } from '../core/settings.js';
+import { reloadKeepingView } from '../core/recovery.js';
 
 const $ = ( id ) => document.getElementById( id );
 
@@ -67,6 +69,7 @@ export class HUD {
 			if ( e.code === 'KeyU' ) document.body.classList.toggle( 'clean' );
 			if ( e.code === 'KeyB' ) this.setFocus( ! app.focus.enabled );
 			if ( e.code === 'KeyL' && ! e.ctrlKey ) app.strike?.();
+			if ( e.code === 'KeyM' && app.settings ) { app.settings.toggleMute(); this.toast( app.settings.muted ? 'Som desligado' : 'Som ligado' ); }
 			const n = parseInt( e.key, 10 );
 			if ( n >= 1 && n <= app.views.length ) app.goView( n - 1 );
 		} );
@@ -74,6 +77,81 @@ export class HUD {
 	}
 
 	show() { this.root.hidden = false; }
+
+	// The panel's "Opções" (core/settings.js): quality presets, audio, renderer, editor.
+	bindOptions( settings ) {
+		const app = this.app;
+		// quality: the preset buttons, and the image controls below showing what a preset set; touching
+		// one of those by hand leaves the preset dimmed (custom)
+		const seg = $( 'o-quality' );
+		const showQuality = ( level ) => {
+			for ( const b of seg.querySelectorAll( 'button' ) ) b.classList.toggle( 'on', b.dataset.q === level );
+			seg.classList.remove( 'custom' );
+		};
+		for ( const b of seg.querySelectorAll( 'button' ) ) b.onclick = () => {
+			settings.setQuality( b.dataset.q );
+			this.toast( 'Qualidade ' + QUALITY[ b.dataset.q ].label.toLowerCase() );
+		};
+		settings.on( 'quality', ( level, q ) => {
+			showQuality( level );
+			$( 'r-res' ).value = app.pixelRatio; $( 'o-res' ).textContent = app.pixelRatio.toFixed( 2 ) + '×';
+			$( 'c-shadows' ).checked = q.shadows; $( 'c-refl' ).checked = q.reflections;
+			$( 'c-focus' ).checked = q.focus; $( 'c-bloom' ).checked = q.bloom;
+		} );
+		showQuality( settings.quality );
+		for ( const id of [ 'r-res', 'c-shadows', 'c-refl', 'c-focus', 'c-bloom' ] ) $( id ).addEventListener( 'input', () => seg.classList.add( 'custom' ) );
+
+		// audio: mute (M) and volume, kept in localStorage
+		const audio = $( 'b-audio' );
+		const showAudio = ( muted, volume ) => {
+			audio.textContent = muted ? '🔇 Mudo' : '🔊 Ligado'; audio.classList.toggle( 'warn', muted );
+			$( 'r-volume' ).value = volume; $( 'o-volume' ).textContent = Math.round( volume * 100 ) + '%';
+		};
+		audio.onclick = () => settings.toggleMute();
+		settings.on( 'audio', showAudio );
+		this._range( 'r-volume', 'o-volume', settings.volume, ( v ) => settings.setAudio( v === 0, v ), ( v ) => Math.round( v * 100 ) + '%' );
+		showAudio( settings.muted, settings.volume );
+
+		// renderer: the one in use; the other is a reload away (keeping the view)
+		const params = new URLSearchParams( location.search );
+		const rb = $( 'b-renderer' ), tip = $( 't-renderer' );
+		const webgl = ! app.renderer.backend.isWebGPUBackend;
+		$( 'o-renderer' ).textContent = app.backendName;
+		rb.classList.toggle( 'danger', webgl );
+		if ( ! webgl ) {
+			rb.title = 'Trocar para WebGL 2 (recarrega mantendo a vista)';
+		} else if ( params.has( 'webgl' ) ) {
+			rb.title = 'Voltar ao WebGPU (recarrega mantendo a vista)';
+			tip.innerHTML = 'WebGL 2 escolhido. É mais lento, e o mergulho fica sem fundo do mar, peixes e aves pousadas.';
+		} else {
+			rb.disabled = true;
+			tip.innerHTML = 'Este navegador <strong>não tem WebGPU</strong>: o WebGL 2 é mais lento, e o mergulho fica sem fundo do mar, peixes e aves pousadas.';
+		}
+		rb.onclick = () => {
+			const url = new URL( location.href );
+			if ( webgl ) url.searchParams.delete( 'webgl' ); else url.searchParams.set( 'webgl', '' );
+			url.searchParams.set( 'auto', '' );
+			reloadKeepingView( app, url.href.replace( /=(?=&|$)/g, '' ), 'Renderizador: ' + ( webgl ? 'WebGPU' : 'WebGL 2' ) );
+		};
+
+		// editor: open it (or leave it) on the same view; unsaved edits ask a second click
+		const eb = $( 'b-editor' ), inEditor = params.has( 'edit' );
+		eb.textContent = inEditor ? 'Sair do editor' : 'Abrir editor';
+		let armed = false;
+		eb.onclick = () => {
+			const unsaved = inEditor && [ app.editor, app.objectEditor, app.natureEditor ].some( ( e ) => e?.changed );
+			if ( unsaved && ! armed ) {
+				armed = true;
+				eb.textContent = 'Descartar edições?';
+				setTimeout( () => { armed = false; eb.textContent = 'Sair do editor'; }, 3000 );
+				return;
+			}
+			const url = new URL( location.href );
+			if ( inEditor ) url.searchParams.delete( 'edit' ); else url.searchParams.set( 'edit', '' );
+			url.searchParams.set( 'auto', '' );
+			reloadKeepingView( app, url.href.replace( /=(?=&|$)/g, '' ), inEditor ? 'Fora do editor' : 'Editor aberto: relevo, objetos e natureza' );
+		};
+	}
 
 	setFocus( on ) {
 		this.app.setFocus( on );

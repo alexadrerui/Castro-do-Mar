@@ -34,6 +34,7 @@ import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
+import { Settings } from './core/settings.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms, clearCloudMap } from './world/cloudShadow.js';
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
@@ -839,6 +840,9 @@ async function main() {
 
 	const hud = new HUD( app );
 	app.hud = hud;
+	// the player's options (core/settings.js): quality preset, audio, renderer, editor
+	app.settings = new Settings( app );
+	hud.bindOptions( app.settings );
 	// terrain editor (?edit): sculpt the relief, save it into public/terrain-edits.bin
 	if ( params.has( 'edit' ) ) {
 		const { TerrainEditor } = await import( './editor/terrainEditor.js' );

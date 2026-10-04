@@ -325,6 +325,7 @@ export class Lightning {
 		this.storm = 0;     // 0..1: strikes now and then (world/weather.js)
 		this.nextStrike = 4;
 		this.sound = true;
+		this.volume = 1; // the panel's volume (core/settings.js)
 		this.shake = 0; this.shakeDecay = 7.5;
 		this.flashing = false;
 		this.count = 0;
@@ -389,7 +390,7 @@ export class Lightning {
 	}
 
 	_thunder( dist, gain = 1 ) {
-		if ( ! this.sound || typeof AudioContext === 'undefined' ) return;
+		if ( ! this.sound || this.volume <= 0 || typeof AudioContext === 'undefined' ) return;
 		try {
 			const ctx = this.audio || ( this.audio = new AudioContext() );
 			if ( ctx.state === 'suspended' ) ctx.resume();
@@ -409,7 +410,7 @@ export class Lightning {
 			}
 			const src = ctx.createBufferSource(); src.buffer = buf;
 			const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900 / ( 1 + dist / 700 ) + 120;
-			const g = ctx.createGain(); g.gain.value = 0.9 * gain / ( 1 + dist / 500 );
+			const g = ctx.createGain(); g.gain.value = 0.9 * gain * this.volume / ( 1 + dist / 500 );
 			src.connect( lp ).connect( g ).connect( ctx.destination );
 			src.start( ctx.currentTime + dist / 343 );
 		} catch ( err ) { /* no audio */ }

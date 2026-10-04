@@ -118,3 +118,21 @@ body.clean #hud { display: none; }
 .focus-reticle.off i { border-color: rgba(239,230,210,.35); }
 .focus-reticle.locked i { border-width: 2px; }
 .grid-btn button.on { border-color: var(--gold); background: rgba(201,164,92,.18); }
+
+/* panel options (core/settings.js): label left, control right, after Folio 2025's options table */
+.options { display: grid; gap: 4px; }
+.opt-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; color: var(--ink-dim); }
+.seg { display: inline-flex; border: 1px solid rgba(201,164,92,.3); border-radius: 6px; overflow: hidden; }
+.seg button { font: 500 11px Inter, sans-serif; padding: 5px 8px; border: 0; border-left: 1px solid rgba(201,164,92,.2); background: rgba(0,0,0,.25); color: var(--ink-dim); cursor: pointer; }
+.seg button:first-child { border-left: 0; }
+.seg button:hover { color: var(--ink); }
+.seg button.on { background: rgba(201,164,92,.28); color: var(--gold-2); }
+.seg.custom button.on { background: rgba(201,164,92,.1); }
+.opt-btn { display: inline-flex; align-items: center; gap: 6px; font: 500 11.5px Inter, sans-serif; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(201,164,92,.3); background: rgba(0,0,0,.25); color: var(--ink); cursor: pointer; }
+.opt-btn:hover { border-color: var(--gold); }
+.opt-btn.gold { background: linear-gradient(#b48c45, #7d5f2a); color: #1a140a; border-color: #e6c987; font-weight: 600; }
+.opt-btn.warn { border-color: #d9a441; color: #f0c36a; }
+.opt-btn .dot { width: 7px; height: 7px; border-radius: 50%; background: #7fc46a; box-shadow: 0 0 6px #7fc46a; }
+.opt-btn.danger .dot { background: #e0704e; box-shadow: 0 0 6px #e0704e; }
+.opt-tip { margin: 0 0 4px; font-size: 11px; line-height: 1.4; color: var(--ink-dim); }
+.opt-tip:empty { display: none; }
