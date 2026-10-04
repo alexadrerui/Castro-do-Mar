@@ -200,7 +200,7 @@ export class Ambience {
 			wind: loop( B.pink, [ [ 'bandpass', 420, 0.6 ] ] ),
 			whistle: loop( B.white, [ [ 'bandpass', 1200, 9 ] ] ),
 			leaves: loop( B.pink, [ [ 'highpass', 1800 ], [ 'lowpass', 7000 ] ] ),
-			rain: loop( B.white, [ [ 'highpass', 900 ], [ 'lowpass', 7500 ] ] ),
+			rain: loop( B.pink, [ [ 'highpass', 700 ], [ 'lowpass', 4500 ] ] ), // a soft hiss, not a white one
 			rainLow: loop( B.pink, [ [ 'lowpass', 500 ] ] ),
 			river: loop( B.pink, [ [ 'bandpass', 900, 0.5 ] ] ),
 			riverHiss: loop( B.white, [ [ 'highpass', 2500 ], [ 'lowpass', 9000 ] ] ),
@@ -270,7 +270,7 @@ export class Ambience {
 		// exposed: high over the ground below, or high over the sea (a summit has its ground right underfoot)
 		const exposed = Math.max( sstep( 8, 180, alt ), sstep( 40, 300, p.y - WATER_LEVEL ) );
 		lv.exposed = exposed;
-		const wind = ( 0.1 + 0.5 * exposed + 0.45 * sstep( 0.4, 1, rain ) ) * ( 0.45 + 0.55 * g.v ) * calm * ( 1 - 0.5 * forest );
+		const wind = ( 0.1 + 0.5 * exposed + 0.25 * sstep( 0.4, 1, rain ) ) * ( 0.45 + 0.55 * g.v ) * calm * ( 1 - 0.5 * forest );
 		lv.wind = wind;
 		set( L.wind.g, wind * 0.9, 0.6 ); L.wind.f[ 0 ].frequency.setTargetAtTime( 260 + 520 * g.v, t, 0.8 );
 		set( L.whistle.g, wind * 0.12 * exposed * g.v, 0.8 ); L.whistle.f[ 0 ].frequency.setTargetAtTime( 900 + 900 * g.v, t, 1.2 );
@@ -279,7 +279,7 @@ export class Ambience {
 
 		// --- the rain
 		lv.rain = rain;
-		set( L.rain.g, Math.pow( rain, 0.7 ) * 0.35, 0.8 ); set( L.rainLow.g, rain * 0.25, 0.8 );
+		set( L.rain.g, Math.pow( rain, 0.8 ) * 0.3, 0.8 ); set( L.rainLow.g, rain * 0.08, 0.8 );
 
 		// --- rivers and falls: the nearest sample (every 3rd) and the nearest fall
 		let river = 0, riverPan = 0, falls = 0, fallsPan = 0;
