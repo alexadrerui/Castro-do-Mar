@@ -16,6 +16,7 @@
 // - the birds: a 64 m grid of the trees (vegetation instances) counted at the load;
 // - the fire: the hearths of the houses (buildings.js smoke sources); rivers: their samples and falls.
 import { WATER_LEVEL } from '../world/layout.js';
+import { wind as worldWind } from '../world/wind.js'; // the panel's wind strength
 
 const TICK = 1 / 12;
 // the rain recording's level at full rain (it is ~-27 dB RMS): about the synthesised one's -29 dB
@@ -272,7 +273,7 @@ export class Ambience {
 		// exposed: high over the ground below, or high over the sea (a summit has its ground right underfoot)
 		const exposed = Math.max( sstep( 8, 180, alt ), sstep( 40, 300, p.y - WATER_LEVEL ) );
 		lv.exposed = exposed;
-		const wind = ( 0.1 + 0.5 * exposed + 0.25 * sstep( 0.4, 1, rain ) ) * ( 0.45 + 0.55 * g.v ) * calm * ( 1 - 0.5 * forest );
+		const wind = Math.min( 2, worldWind.strength.value ) * ( 0.1 + 0.5 * exposed + 0.25 * sstep( 0.4, 1, rain ) ) * ( 0.45 + 0.55 * g.v ) * calm * ( 1 - 0.5 * forest );
 		lv.wind = wind;
 		set( L.wind.g, wind * 0.9, 0.6 ); L.wind.f[ 0 ].frequency.setTargetAtTime( 260 + 520 * g.v, t, 0.8 );
 		set( L.whistle.g, wind * 0.12 * exposed * g.v, 0.8 ); L.whistle.f[ 0 ].frequency.setTargetAtTime( 900 + 900 * g.v, t, 1.2 );

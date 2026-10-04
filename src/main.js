@@ -842,6 +842,7 @@ async function main() {
 	const hud = new HUD( app );
 	app.hud = hud;
 	// ambient sound (audio/ambience.js), synthesised; starts on the first click or key
+	app.wind = wind; // the world's one wind (world/wind.js), for the console and the QA
 	app.ambience = new Ambience( app );
 	app.onFrame.push( ( dt ) => app.ambience.update( dt ) );
 	// the player's options (core/settings.js): quality preset, audio, renderer, editor

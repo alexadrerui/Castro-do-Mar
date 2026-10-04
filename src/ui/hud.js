@@ -2,6 +2,7 @@
 import { Clock, PRESETS } from '../world/clock.js';
 import { QUALITY } from '../core/settings.js';
 import { reloadKeepingView } from '../core/recovery.js';
+import { wind, WIND_DEFAULTS, setWindFrom, windFrom } from '../world/wind.js';
 
 const $ = ( id ) => document.getElementById( id );
 
@@ -61,6 +62,8 @@ export class HUD {
 		$( 'c-paint' ).checked = !! app.paint && new URLSearchParams( location.search ).get( 'paint' ) === '1';
 		$( 'c-paint' ).onchange = ( e ) => { app.setPaint( e.target.checked ); this.toast( e.target.checked ? 'Pintura a óleo ligada' : 'Pintura a óleo desligada' ); };
 
+		this._bindWind();
+
 		$( 'side-toggle' ).onclick = () => $( 'side' ).classList.toggle( 'collapsed' );
 		window.addEventListener( 'keydown', ( e ) => {
 			if ( e.target.closest && e.target.closest( 'input' ) ) return;
@@ -77,6 +80,41 @@ export class HUD {
 	}
 
 	show() { this.root.hidden = false; }
+
+	// The wind (world/wind.js): its settings open under the "Ajustes do vento" button; the breakdown
+	// "Campo de vento" shows the gust field over the ground (world/windField.js, built on first use).
+	_bindWind() {
+		const app = this.app;
+		const panel = $( 'wind-panel' ), open = $( 'b-wind' );
+		open.onclick = () => { panel.hidden = ! panel.hidden; open.classList.toggle( 'on', ! panel.hidden ); };
+		const compass = ( d ) => [ 'N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO' ][ Math.round( d / 45 ) % 8 ];
+		const ranges = {
+			strength: [ 'r-wstrength', 'o-wstrength', ( v ) => { wind.strength.value = v; }, ( v ) => v.toFixed( 2 ) + '×' ],
+			speed: [ 'r-wspeed', 'o-wspeed', ( v ) => { wind.speed.value = v; }, ( v ) => v.toFixed( 1 ) + ' m/s' ],
+			freq: [ 'r-wfreq', 'o-wfreq', ( v ) => { wind.freq.value = v; }, ( v ) => v.toFixed( 2 ) + '×' ],
+			from: [ 'r-wdir', 'o-wdir', ( v ) => setWindFrom( v ), ( v ) => Math.round( v ) + '° ' + compass( v ) ],
+			turb: [ 'r-wturb', 'o-wturb', ( v ) => { wind.turb.value = v; }, ( v ) => v.toFixed( 2 ) + '×' ]
+		};
+		const now = { strength: wind.strength.value, speed: wind.speed.value, freq: wind.freq.value, from: windFrom(), turb: wind.turb.value };
+		for ( const [ k, [ id, out, apply, fmt ] ] of Object.entries( ranges ) ) this._range( id, out, now[ k ], apply, fmt );
+		$( 'b-wreset' ).onclick = () => {
+			for ( const [ k, [ id ] ] of Object.entries( ranges ) ) { const r = $( id ); r.value = WIND_DEFAULTS[ k ]; r.dispatchEvent( new Event( 'input' ) ); }
+			this.toast( 'Vento restaurado' );
+		};
+		// the breakdown: the gust field over the ground
+		const box = $( 'c-windfield' ), btn = $( 'b-windfield' );
+		const setField = async ( on ) => {
+			if ( on && ! app.windField ) {
+				const { createWindField } = await import( '../world/windField.js' );
+				app.windField = createWindField( app );
+			}
+			if ( app.windField ) app.windField.visible = on;
+			box.checked = on; btn.classList.toggle( 'on', on );
+		};
+		app.setWindField = setField;
+		box.onchange = () => setField( box.checked );
+		btn.onclick = () => { setField( ! app.windField?.visible ); this.toast( app.windField?.visible ? 'Campo de vento' : 'Campo de vento desligado' ); };
+	}
 
 	// The panel's "Opções" (core/settings.js): quality presets, audio, renderer, editor.
 	bindOptions( settings ) {

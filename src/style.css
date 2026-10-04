@@ -136,3 +136,7 @@ body.clean #hud { display: none; }
 .opt-btn.danger .dot { background: #e0704e; box-shadow: 0 0 6px #e0704e; }
 .opt-tip { margin: 0 0 4px; font-size: 11px; line-height: 1.4; color: var(--ink-dim); }
 .opt-tip:empty { display: none; }
+
+/* the wind's settings (hud.js bindWind): a block that opens under its button */
+.subpanel { margin: 6px 0 4px; padding: 6px 8px 8px; border: 1px solid rgba(201,164,92,.25); border-radius: 8px; background: rgba(0,0,0,.18); }
+.subpanel[hidden] { display: none; }

@@ -547,7 +547,7 @@ export class GrassField {
 			const g = gustAt( xz );
 			const ph = r.mul( 6.2832 );
 			const bendAmt = w.mul( g.mul( 0.55 ).add( 0.22 ) ).add( sin( time.mul( 1.9 ).add( ph ).add( xz.x.mul( 0.2 ) ) ).mul( w ).mul( 0.1 ) );
-			const flut = sin( time.mul( 7.3 ).add( ph.mul( 3 ) ).add( bRnd.mul( 20 ) ) ).mul( w.mul( 0.06 ).add( 0.015 ) );
+			const flut = sin( time.mul( 7.3 ).add( ph.mul( 3 ) ).add( bRnd.mul( 20 ) ) ).mul( w.mul( 0.06 ).add( 0.015 ) ).mul( wind.turb );
 			const stiff = select( isGrass, float( 1 ), select( isOat, float( 0.8 ), float( 0.08 ) ) );
 			const hf2 = hf_.mul( hf_ );
 			const disp = windDir3.mul( bendAmt.mul( hf2 ).mul( stiff ) ).add( windPerp3.mul( flut.mul( hf2 ).mul( stiff ) ) ).mul( length( o ).add( 1e-4 ) );

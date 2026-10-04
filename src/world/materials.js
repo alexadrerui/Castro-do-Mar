@@ -200,7 +200,7 @@ const clothSway = Fn( () => {
 	// how square the edge stands to the wind, and which side is downwind
 	const side = dot( nrm, W.dir );
 	const down = nrm.mul( side.greaterThanEqual( 0 ).select( 1, - 1 ) );
-	const flutter = sin( time.mul( W.turbSpeed ).add( wpos.x.mul( 2.1 ) ).add( wpos.z.mul( 1.7 ) ).add( hang.mul( 9 ) ) ).mul( W.turb );
+	const flutter = sin( time.mul( W.turbSpeed ).add( wpos.x.mul( 2.1 ) ).add( wpos.z.mul( 1.7 ) ).add( hang.mul( 9 ) ) ).mul( W.turb ).mul( wind.turb );
 	const a = gust.mul( 0.85 ).add( 0.15 ).mul( W.strength ).add( flutter ).mul( abs( side ).mul( 0.7 ).add( 0.3 ) ).mul( windAmount );
 	// the hanging vector ( 0, -hang, 0 ) turned by a about the edge: out downwind and up
 	const swing = vec3( down.x.mul( hang ).mul( sin( a ) ), hang.mul( cos( a ).oneMinus() ), down.y.mul( hang ).mul( sin( a ) ) );

@@ -114,6 +114,21 @@
 				<div class="grid-btn"><button id="b-strike" title="Raio (L); acima de 60% de chuva há tempestade">Raio <kbd>L</kbd></button></div>
 				<label>Névoa <output id="o-fog"></output><input type="range" id="r-fog" min="0" max="3" step="0.05" /></label>
 
+				<h3>Vento</h3>
+				<div class="grid-btn">
+					<button id="b-wind" title="Força, velocidade, frequência, direção e turbulência do vento">⚙ Ajustes do vento</button>
+					<button id="b-windfield" title="Mostra o campo de rajadas sobre o chão (breakdown)">Campo de vento</button>
+				</div>
+				<div class="subpanel" id="wind-panel" hidden>
+					<label>Força <output id="o-wstrength"></output><input type="range" id="r-wstrength" min="0" max="3" step="0.05" /></label>
+					<label>Velocidade <output id="o-wspeed"></output><input type="range" id="r-wspeed" min="0" max="20" step="0.5" /></label>
+					<label>Frequência <output id="o-wfreq"></output><input type="range" id="r-wfreq" min="0.25" max="4" step="0.05" /></label>
+					<label>Direção <output id="o-wdir"></output><input type="range" id="r-wdir" min="0" max="359" step="1" /></label>
+					<label>Turbulência <output id="o-wturb"></output><input type="range" id="r-wturb" min="0" max="3" step="0.05" /></label>
+					<label class="chk"><input type="checkbox" id="c-windfield" /> Breakdown: campo de vento</label>
+					<div class="grid-btn"><button id="b-wreset" title="Volta aos valores padrão">Restaurar</button></div>
+				</div>
+
 				<h3>Camadas</h3>
 				<div class="toggles" id="layers"></div>
 
