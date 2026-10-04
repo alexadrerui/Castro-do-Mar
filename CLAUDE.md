@@ -380,7 +380,7 @@ Próximos passos:
 
 ## Publicação (GitHub Pages)
 - `.github/workflows/deploy.yml`: a cada push no `main`, o GitHub Actions roda `npm ci` e `npm run build -- --base=/<repo>/` e publica o `dist` em https://alexadrerui.github.io/Castro-do-Mar/ (no repositório: Settings → Pages → Source: GitHub Actions).
-- O site é estático. As edições (`public/terrain-edits.bin`, `world-edits.json`, `nature-edits.bin`) entram no site se estiverem versionadas. Os endpoints do servidor de desenvolvimento (`/__terrain-edits` etc.) só são consultados em `import.meta.env.DEV`. No `?edit` do site publicado, "Salvar e aplicar" baixa os arquivos.
+- O site é estático. As edições (`public/terrain-edits.bin`, `world-edits.json`, `nature-edits.bin`) entram no site se estiverem versionadas. Os endpoints do servidor de desenvolvimento (`/__terrain-edits` etc.) só são consultados em `import.meta.env.DEV`. O build registra quais desses arquivos existem em `public/` (`__EDIT_FILES__`, plugin `editFilesDefine` do `vite.config.js`; `src/world/editFiles.js` `shipped`), e o site publicado só pede esses (antes, um 404 por arquivo ausente). No `?edit` do site publicado, "Salvar e aplicar" vai direto para o download dos arquivos editados, com o aviso de colocá-los em `public/` e publicar.
 - Conferir um build localmente: `MSYS_NO_PATHCONV=1 npx vite build --base=/Castro-do-Mar/` (sem a variável, o Git Bash converte `/Castro-do-Mar/` num caminho do Windows), `npx vite preview` com a mesma base e `node tools/livecheck.mjs <url> <png>` (espera o `ready`, lista respostas 4xx/5xx e erros, salva uma captura). Também serve para o site publicado.
 
 ## Git

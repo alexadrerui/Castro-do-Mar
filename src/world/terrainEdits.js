@@ -4,6 +4,7 @@
 // project as public/terrain-edits.bin (raw little-endian float32); the dev server writes it
 // (vite.config.js, POST /__terrain-edits). No file: no edits.
 import { TERRAIN } from './layout.js';
+import { shipped } from './editFiles.js';
 
 export const EDITS_URL = ( import.meta.env?.BASE_URL ?? '/' ) + 'terrain-edits.bin'; // honours Vite's base (a site in a sub-path)
 export const EDITS_N = TERRAIN.segments + 1;
@@ -12,7 +13,7 @@ export const EDITS_N = TERRAIN.segments + 1;
 // the dev server reads the file itself (GET /__terrain-edits); a built site serves EDITS_URL.
 export async function loadTerrainEdits() {
 	// the dev server's endpoint only in development (a built site has just the file)
-	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__terrain-edits' ] : [] ), EDITS_URL ] ) {
+	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__terrain-edits' ] : [] ), ...( shipped( 'terrain-edits.bin' ) ? [ EDITS_URL ] : [] ) ] ) {
 		try {
 			const res = await fetch( url, { cache: 'no-store' } );
 			// a missing file can come back as the index page (SPA fallback): binary only

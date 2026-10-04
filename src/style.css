@@ -96,7 +96,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1210; col
 kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin-right: 2px; font: 600 10.5px Inter, sans-serif; color: var(--ink); background: rgba(255,255,255,.08); border: 1px solid rgba(201,164,92,.35); border-bottom-width: 2px; border-radius: 4px; text-align: center; }
 .coords { display: flex; gap: 12px; padding: 9px 14px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
 .coords b { color: var(--ink); }
-.toast { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); padding: 8px 16px; border-radius: 20px; background: var(--panel); border: 1px solid var(--panel-edge); color: var(--gold-2); opacity: 0; transition: opacity .3s; pointer-events: none; }
+.toast { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); padding: 8px 16px; border-radius: 20px; background: var(--panel); border: 1px solid var(--panel-edge); color: var(--gold-2); opacity: 0; transition: opacity .3s; pointer-events: none; max-width: min(560px, calc(100vw - 32px)); text-align: center; line-height: 1.4; }
 .toast.show { opacity: 1; }
 body.clean #hud { display: none; }
 

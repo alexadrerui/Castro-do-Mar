@@ -18,6 +18,7 @@
 // Ids: b<i> = BUILDINGS[ i ], s<i> = STALLS[ i ], p<i> = PROPS[ i ] (indices of the original lists),
 // a<n> = an added object. yaw is a turn added to the object's own rotation, scale is uniform.
 import { BUILDINGS, STALLS, PROPS } from './layout.js';
+import { shipped } from './editFiles.js';
 
 export const WORLD_EDITS_URL = ( import.meta.env?.BASE_URL ?? '/' ) + 'world-edits.json';
 
@@ -26,7 +27,7 @@ export const emptyWorldEdits = () => ( { objects: {}, added: [], lakes: [], rive
 // the edits, or null when there are none
 export async function loadWorldEdits() {
 	// the dev server's endpoint only in development (a built site has just the file)
-	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__world-edits' ] : [] ), WORLD_EDITS_URL ] ) {
+	for ( const url of [ ...( import.meta.env?.DEV ? [ '/__world-edits' ] : [] ), ...( shipped( 'world-edits.json' ) ? [ WORLD_EDITS_URL ] : [] ) ] ) {
 		try {
 			const res = await fetch( url, { cache: 'no-store' } );
 			if ( ! res.ok || ! /json/.test( res.headers.get( 'content-type' ) || '' ) ) continue;

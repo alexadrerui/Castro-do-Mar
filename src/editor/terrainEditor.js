@@ -642,7 +642,21 @@ export class TerrainEditor {
 
 	// ------------------------------------------------------------------ save / load
 
+	// every edited file downloaded: terrain-edits.bin, world-edits.json, nature-edits.bin
+	_download() {
+		if ( this.changed ) this.exportFile();
+		if ( this.app.objectEditor?.changed ) this.app.objectEditor.exportFile();
+		if ( this.app.natureEditor?.changed ) this.app.natureEditor.exportFile();
+	}
+
 	async save() {
+		// a built site (GitHub Pages) has no server to write to: the files go to the downloads, to be
+		// put into the project's public/ and published with it
+		if ( ! import.meta.env.DEV ) {
+			this._download();
+			this._toast( 'Site publicado: os arquivos editados foram baixados. Coloque-os na pasta public/ do projeto e publique para que entrem no site.', 9000 );
+			return;
+		}
 		this._saving = true;
 		try {
 			// the village objects too (editor/objectEditor.js)
@@ -661,11 +675,8 @@ export class TerrainEditor {
 			setTimeout( () => location.reload(), 400 );
 		} catch ( e ) {
 			this._saving = false;
-			// every edited file is downloaded instead: terrain-edits.bin, world-edits.json, nature-edits.bin
 			this._toast( 'Não foi possível gravar no servidor de desenvolvimento: baixando os arquivos editados (coloque-os em public/).' );
-			if ( this.changed ) this.exportFile();
-			if ( this.app.objectEditor?.changed ) this.app.objectEditor.exportFile();
-			if ( this.app.natureEditor?.changed ) this.app.natureEditor.exportFile();
+			this._download();
 		}
 	}
 
@@ -825,8 +836,8 @@ export class TerrainEditor {
 		this.ui.info.style.whiteSpace = 'pre';
 	}
 
-	_toast( msg ) {
-		if ( this.app.hud?.toast ) return this.app.hud.toast( msg );
+	_toast( msg, ms ) {
+		if ( this.app.hud?.toast ) return this.app.hud.toast( msg, ms );
 		console.info( msg );
 	}
 

@@ -175,10 +175,10 @@ export class HUD {
 		if ( ( this._ft = ( this._ft || 0 ) + 1 ) % 6 === 0 ) $( 'focus-dist' ).textContent = a > 0.05 ? f.focusDistance.value.toFixed( 1 ) + ' m' : '';
 	}
 
-	toast( msg ) {
+	toast( msg, ms = 1800 ) {
 		const t = $( 'toast' );
 		t.textContent = msg; t.classList.add( 'show' );
-		clearTimeout( this._tt ); this._tt = setTimeout( () => t.classList.remove( 'show' ), 1800 );
+		clearTimeout( this._tt ); this._tt = setTimeout( () => t.classList.remove( 'show' ), ms );
 	}
 
 	_range( id, outId, value, onInput, fmt ) {

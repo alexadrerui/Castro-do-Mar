@@ -146,8 +146,21 @@ function natureEditsEndpoint() {
 	};
 }
 
+// Which edit files public/ holds, for a build (src/world/editFiles.js): the published page asks only
+// for those. In development the endpoints above answer instead (null).
+const EDIT_FILES = [ 'terrain-edits.bin', 'world-edits.json', 'nature-edits.bin' ];
+function editFilesDefine() {
+	return {
+		name: 'edit-files-define',
+		config( _, { command } ) {
+			const list = command === 'build' ? EDIT_FILES.filter( ( f ) => fs.existsSync( path.resolve( 'public', f ) ) ) : null;
+			return { define: { __EDIT_FILES__: JSON.stringify( list ) } };
+		}
+	};
+}
+
 export default defineConfig( {
-	plugins: [ captureEndpoint(), terrainEditsEndpoint(), worldEditsEndpoint(), natureEditsEndpoint() ],
+	plugins: [ editFilesDefine(), captureEndpoint(), terrainEditsEndpoint(), worldEditsEndpoint(), natureEditsEndpoint() ],
 	// single three.js instance: addons and three-bvh-csg import "three"
 	resolve: { alias: [ { find: /^three$/, replacement: 'three/webgpu' } ] },
 	// the editor reloads by itself after saving the edits: no reload from the file watcher
