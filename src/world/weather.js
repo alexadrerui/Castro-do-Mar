@@ -1,4 +1,7 @@
-// Rain and wet ground. The rain is camera-facing streaks placed on the GPU in a box around the camera,
+// Rain and wet ground. The rain streaks follow Cortiz's RainCurtain (Stylized Premium Scenes,
+// https://github.com/CortizLabs/stylized-premium-patreon, src/components/rain/RainCurtain.tsx and
+// shaders/rainStreak.ts, MIT License, Copyright (c) 2026 Christian Ortiz, licenses/LICENSE-Cortiz.md);
+// first they were camera-facing streaks placed on the GPU in a box around the camera,
 // falling, leaning with the wind and fading at their ends: a port of weather/RainSystem.js of Drusniel:
 // Gods' End (https://github.com/danielsobrado/drusniel-gods-end, MIT, Copyright (c) 2026 Daniel Sobrado,
 // licenses/LICENSE-Drusniel.md), with an InstancedBufferGeometry like the rest of the project and our
@@ -8,71 +11,113 @@
 // panel's own values and back to them when it stops; past 60% it storms (world/lightning.js).
 // app.weather: setRain( 0..1 ), rain, wetness.
 import * as THREE from 'three/webgpu';
-import { rainFall, rainClock } from './rainImpacts.js';
+import { rainFall, rainClock, rainImpacts, rainSplatter } from './rainImpacts.js';
 import { clothWind } from './materials.js';
-import { cameraPosition, float, fract, hash, instanceIndex, mix, positionGeometry, time, uniform, vec3 } from 'three/tsl';
+import { cameraPosition, cross, float, fract, hash, instanceIndex, mix, positionGeometry, smoothstep, time, uniform, uv, varying, vec3 } from 'three/tsl';
 
 export const wetness = uniform( 0 );
 
-const COUNT = 9000, AREA = 28, BELOW = 25, ABOVE = 35; // drops in a 28 m box from 25 m below to 35 m above the camera
-const SPEED = 9, DROP_LENGTH = 1.1, DROP_WIDTH = 0.014, OPACITY = 0.5;
 const WIND = { x: 0.7071, z: - 0.7071, strength: 2.5 }; // from the south-west
+// Two layers, after Cortiz's RainCurtain (as above): the mass of the weather far around, and a few
+// fat drops near the lens for the parallax that makes rain read as volume rather than as a texture.
+const LAYERS = {
+	far: { count: 9000, half: 30, height: 50, below: 20, speed: 8.5, width: 0.006, opacity: 0.32, fadeNear: 3, fadeFar: 55 },
+	near: { count: 600, half: 7, height: 16, below: 8, speed: 9.5, width: 0.02, opacity: 0.22, fadeNear: 1.6, fadeFar: 9 }
+};
+const EXPOSURE = 0.085; // s: a streak is the path a drop covers in it, relative to the camera
+const MIN_PIXELS = 1.5;  // a streak is never drawn thinner (its alpha paid back), or it breaks into crawling dashes
+
+const camVel = uniform( new THREE.Vector3() ), pixelScale = uniform( 0.002 ), rainLight = uniform( new THREE.Color( 0.75, 0.82, 0.95 ) );
 
 export class Rain {
 	constructor() {
-		this.center = uniform( new THREE.Vector3() );
 		this.intensity = uniform( 0 );
-		const quad = new THREE.PlaneGeometry( 1, 1 ).translate( 0, - 0.5, 0 );
+		// both layers in one instanced mesh (one draw, one pipeline): the first LAYERS.far.count drops
+		// are the far layer, the rest the near one
+		const quad = new THREE.PlaneGeometry( 1, 1 );
 		const geo = new THREE.InstancedBufferGeometry();
 		geo.index = quad.index;
 		geo.setAttribute( 'position', quad.attributes.position );
 		geo.setAttribute( 'uv', quad.attributes.uv );
-		geo.instanceCount = COUNT;
+		geo.instanceCount = LAYERS.far.count + LAYERS.near.count;
 		this.mesh = new THREE.Mesh( geo, this._material() );
 		this.mesh.name = 'rain';
-		this.mesh.frustumCulled = false;
+		this.mesh.frustumCulled = false; // the column is around the camera
 		this.mesh.renderOrder = 3;
 		this.mesh.visible = false;
 		this.mesh.layers.set( 1 ); // not in the reflection
+		this._prev = null;
+		this.forceVelocity = null; // QA: a Vector3 the camera is taken to move at (tools/rainfx.mjs)
 	}
 
+	// Every drop has a fixed place in the WORLD on a lattice that falls (and drifts with the wind),
+	// wrapped in a box around the camera on all three axes: the camera moves through the rain and
+	// the rain does not move with it (the old box followed the camera's height). A streak is drawn
+	// along the drop's velocity RELATIVE TO THE CAMERA over a short exposure, so flying into the rain
+	// draws it towards the lens, like a photograph would; facing the camera about that direction.
 	_material() {
 		const i = instanceIndex.toFloat();
+		const near = i.greaterThanEqual( LAYERS.far.count );
+		const P = {};
+		for ( const k of [ 'half', 'height', 'below', 'speed', 'width', 'opacity', 'fadeNear', 'fadeFar' ] ) P[ k ] = near.select( float( LAYERS.near[ k ] ), float( LAYERS.far[ k ] ) );
 		const r = ( k ) => hash( i.add( k ) );
-		const len = mix( DROP_LENGTH * 0.45, DROP_LENGTH * 1.35, r( 331.71 ) );
-		const wid = mix( DROP_WIDTH * 0.55, DROP_WIDTH * 1.25, r( 441.31 ) );
-		const spd = mix( SPEED * 0.7, SPEED * 1.35, r( 71.91 ) );
-		const range = BELOW + ABOVE;
-		// falling through the box (wraps), around the camera's height
-		const y = fract( r( 41.27 ).add( time.mul( spd ).div( range ).negate() ) ).mul( range ).sub( BELOW ).add( this.center.y );
+		// real rain is not one drop size: speed and length paired (a long exposure does that), width apart
+		const spd = P.speed.mul( mix( 0.75, 1.3, r( 71.91 ) ) );
+		const lenK = mix( 0.7, 1.3, r( 331.71 ) );
+		const wid = P.width.mul( mix( 0.6, 1.4, r( 441.31 ) ) );
 		const windE = mix( 0.8, 1.2, r( 121.43 ) ).mul( WIND.strength );
-		const wt = time.mul( windE );
-		const x = fract( r( 17.13 ).add( wt.mul( WIND.x ).div( AREA ) ).sub( this.center.x.div( AREA ) ) ).sub( 0.5 ).mul( AREA ).add( this.center.x );
-		const z = fract( r( 93.71 ).add( wt.mul( WIND.z ).div( AREA ) ).sub( this.center.z.div( AREA ) ) ).sub( 0.5 ).mul( AREA ).add( this.center.z );
-		const ph = time.mul( 0.7 ).add( r( 211.17 ).mul( Math.PI * 2 ) );
-		const dx = x.add( ph.sin().mul( 0.15 ) ), dz = z.add( ph.cos().mul( 0.15 ) );
-		// facing the camera about the vertical, leaning with the wind
-		const toCam = cameraPosition.sub( vec3( dx, 0, dz ) );
-		const hd = toCam.xz.length().max( 0.001 );
-		const right = vec3( toCam.z.div( hd ), 0, toCam.x.div( hd ).negate() );
-		const w = positionGeometry.x.mul( wid ), l = positionGeometry.y.mul( len );
-		const tilt = positionGeometry.y.add( 0.5 ).mul( windE.div( spd ) ).mul( len );
-		const mat = new THREE.MeshBasicNodeMaterial( { transparent: true, depthWrite: false } );
+		const vDrop = vec3( windE.mul( WIND.x ), spd.negate(), windE.mul( WIND.z ) );
+		const wrap = ( seed, travel, lo, span ) => fract( seed.mul( span ).add( travel ).sub( lo ).div( span ) ).mul( span ).add( lo );
+		const side2 = P.half.mul( 2 );
+		const x = wrap( r( 17.13 ), time.mul( vDrop.x ), cameraPosition.x.sub( P.half ), side2 );
+		const z = wrap( r( 93.71 ), time.mul( vDrop.z ), cameraPosition.z.sub( P.half ), side2 );
+		const y = wrap( r( 41.27 ), time.mul( vDrop.y ), cameraPosition.y.sub( P.below ), P.height );
+		const center = vec3( x, y, z );
+		const vRel = vDrop.sub( camVel ), sp = vRel.length().max( 0.001 );
+		const dir = vRel.div( sp );
+		const len = sp.mul( EXPOSURE ).clamp( 0.12, 4 ).mul( lenK );
+		const toCam = cameraPosition.sub( center ).normalize();
+		const side = cross( dir, toCam ).normalize();
+		const d = cameraPosition.distance( center );
+		const drawW = wid.max( pixelScale.mul( MIN_PIXELS ).mul( d ) );
+		const mat = new THREE.MeshBasicNodeMaterial( { transparent: true, depthWrite: false, side: THREE.DoubleSide } );
 		mat.name = 'Rain';
-		mat.positionNode = vec3( dx.add( right.x.mul( w ) ).add( tilt.mul( WIND.x ) ), y.add( l ), dz.add( right.z.mul( w ) ).add( tilt.mul( WIND.z ) ) );
-		const ly = positionGeometry.y.add( 0.5 );
-		const profile = ly.mul( float( 1 ).sub( ly ) ).mul( 4 ).clamp( 0, 1 );
-		// the drops right at the lens thin out (wide white bars there, blurred wider by the depth of field)
-		const near = cameraPosition.distance( vec3( dx, y, dz ) ).smoothstep( 1.5, 3.5 );
-		mat.opacityNode = profile.mul( 0.1 ).mul( mix( 0.5, 1, r( 551.91 ) ) ).mul( OPACITY ).clamp( 0.05, 1 ).mul( this.intensity ).mul( near );
-		mat.colorNode = vec3( 0.78, 0.86, 1.0 );
+		mat.forceSinglePass = true; // double-sided (the quad's winding follows the drop) in one pass: one pipeline, not two
+		mat.positionNode = center.add( side.mul( positionGeometry.x.mul( drawW ) ) ).add( dir.mul( positionGeometry.y.mul( len ) ) );
+		// per drop: how much it was widened (paid back in alpha), the fades at the lens and into the haze,
+		// and a brightness of its own (else the curtain reads as one texture)
+		const k = varying( wid.div( drawW ).mul( P.opacity )
+			.mul( smoothstep( 0, P.fadeNear, d ) ).mul( smoothstep( P.fadeFar.mul( 0.55 ), P.fadeFar, d ).oneMinus() )
+			.mul( mix( 0.55, 1, r( 551.91 ) ) ), 'vRainK' );
+		const across = uv().x.mul( 2 ).sub( 1 ).abs().oneMinus();
+		const along = uv().y; // 1 at the leading end: the drop itself, the rest the smeared trail
+		const head = smoothstep( 0.68, 1, along ).mul( 0.8 );
+		mat.opacityNode = smoothstep( 0, 0.6, across ).mul( smoothstep( 0, 0.3, along ) ).mul( smoothstep( 0, 0.45, along.oneMinus() ) )
+			.mul( head.add( 1 ) ).mul( k ).mul( this.intensity );
+		mat.colorNode = rainLight.mul( head.add( 1 ) );
 		return mat;
 	}
 
-	update( camera, intensity ) {
+	// camera: the view; dt: the frame; renderer: for the pixel size; light: the drops' colour
+	update( camera, intensity, dt = 1 / 60, renderer = null, light = null ) {
 		this.intensity.value = intensity;
 		this.mesh.visible = intensity > 0.001;
-		if ( this.mesh.visible ) this.center.value.copy( camera.position );
+		// the camera's velocity, smoothed; a jump (a preset view) is not a velocity
+		const p = camera.position;
+		if ( this._prev && dt > 0 ) {
+			const raw = this._v || ( this._v = new THREE.Vector3() );
+			raw.subVectors( p, this._prev ).divideScalar( dt );
+			if ( raw.length() > 150 ) raw.set( 0, 0, 0 ); else raw.clampLength( 0, 60 );
+			camVel.value.lerp( raw, Math.min( 1, dt * 8 ) );
+		}
+		( this._prev || ( this._prev = new THREE.Vector3() ) ).copy( p );
+		if ( this.forceVelocity ) camVel.value.copy( this.forceVelocity );
+		if ( ! this.mesh.visible ) return;
+		if ( renderer && camera.isPerspectiveCamera ) {
+			const h = renderer.getDrawingBufferSize( this._bs || ( this._bs = new THREE.Vector2() ) ).y;
+			pixelScale.value = 2 * Math.tan( camera.fov * Math.PI / 360 ) / Math.max( h, 1 );
+		}
+		if ( light ) rainLight.value.copy( light );
 	}
 }
 
@@ -80,6 +125,8 @@ export class Weather {
 	// app: sky, fogScale; scene to add the rain to
 	constructor( app, scene ) {
 		this.app = app;
+		// the drops' effects on the surfaces, for tuning from the console and the QA (world/rainImpacts.js)
+		app.rainFx = { ripples: rainImpacts, splatter: rainSplatter, fall: rainFall };
 		this.rain = new Rain();
 		scene.add( this.rain.mesh );
 		this.target = 0;  // the rain asked for (0..1)
@@ -104,7 +151,10 @@ export class Weather {
 		clothWind.turb.value = 0.12 * ( 1 + 1.0 * this.level );
 		const w = wetness.value;
 		wetness.value = this.level > w ? Math.min( this.level, w + dt / 40 ) : Math.max( this.level, w - dt / 120 );
-		this.rain.update( camera, underwater ? 0 : this.level );
+		// the drops lit like the air around them: the sky's light, dim at night
+		const night = this.app.sky.state.night ?? 0;
+		this._rainLight = ( this._rainLight || new THREE.Color() ).setRGB( 0.75, 0.82, 0.95 ).multiplyScalar( 1 - 0.85 * night );
+		this.rain.update( camera, underwater ? 0 : this.level, dt, this.app.renderer, this._rainLight );
 		// a storm past 60% rain (world/lightning.js); its shaders are warmed before the first strike
 		const L = this.lightning;
 		if ( L ) {

@@ -12,6 +12,7 @@ import {
 } from 'three/tsl';
 import { cloudShade } from '../cloudShadow.js';
 import { wetness } from '../weather.js';
+import { wetStone } from '../materials.js';
 
 // sRGB triplet -> linear vec3 constant
 export const srgb = ( r, g, b ) => {
@@ -212,6 +213,9 @@ export function createGraniteMaterial( { tex, heightTex, waterLevel = 0, lo = fa
 	mat.normalNode = Fn( () => transformNormalToView( perturbNormal( N, R.hd, 1.0 ) ) )();
 	const cav = attribute( 'ao', 'float' );
 	mat.aoNode = saturate( cav.mul( float( 1 ).sub( contact.mul( 0.35 ) ) ).mul( smoothstep( 0.0, 0.35, R.height ).mul( 0.35 ).add( 0.65 ) ) );
+	// the drops' wet marks and the beads running down the tall faces (world/rainImpacts.js); the far
+	// tiles (lo) are past the marks' reach anyway
+	if ( ! lo ) wetStone( mat );
 	return mat;
 
 }

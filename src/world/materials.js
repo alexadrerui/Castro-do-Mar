@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-	Fn, uv, positionWorld, normalWorld, float, vec2, vec3, color, mix, smoothstep, floor, fract, sin,
+	Fn, uv, positionWorld, normalWorld, normalWorldGeometry, float, vec2, vec3, color, mix, smoothstep, floor, fract, sin,
 	hash, texture, fwidth, length, clamp, abs, max, uniform, attribute, positionLocal, modelWorldMatrix,
 	vec4, dot, cos, time
 } from 'three/tsl';
@@ -8,6 +8,7 @@ import { proceduralBump } from './terrain.js';
 import { SURFACE } from './surfaceBake.js';
 import { cloudShade } from './cloudShadow.js';
 import { wetness } from './weather.js';
+import { rainSplat, rainSplatter } from './rainImpacts.js';
 
 // All building materials read metric UVs written by core/builder.js.
 // Colours are tuned against the references: warm grey granite, grey-olive
@@ -273,6 +274,22 @@ export function emberMaterial( T ) {
 	return mat;
 }
 
+// The rain on a stone surface: darker and glossier where a drop just hit or a bead runs down
+// (rainSplat, world/rainImpacts.js; nothing is evaluated while it does not rain).
+export function wetStone( m ) {
+	if ( ! m ) return;
+	// the surface's own normal, not the bumped one: the relief would flip the face-on plane at every
+	// bump and scatter the marks and the trickles into speckle
+	const splat = rainSplat( positionWorld, normalWorldGeometry, float( 1 ) );
+	const c = m.colorNode;
+	m.colorNode = mix( mix( c, c.mul( rainSplatter.darken.oneMinus() ), splat ), vec3( splat ), rainSplatter.debug );
+	m.roughnessNode = mix( m.roughnessNode ?? float( m.roughness ), rainSplatter.rough, splat );
+	// Under the rain the stone is lit mostly by the sky's reflection (the environment), not by its
+	// colour: darkening the colour alone moved the wall's brightness by 3%. The wet mark dims the
+	// light the surface gives back from the sky too (the indirect light, through the AO).
+	m.aoNode = ( m.aoNode ?? float( 1 ) ).mul( splat.mul( rainSplatter.dim ).oneMinus() );
+}
+
 // T: the baked surface textures (world/surfaceBake.js surfaceTextures)
 export function createBuildingMaterials( T ) {
 	const mats = {
@@ -305,6 +322,8 @@ export function createBuildingMaterials( T ) {
 		m.colorNode = m.colorNode.mul( wetness.mul( - 0.2 ).add( 1 ) );
 		if ( m.roughnessNode ) m.roughnessNode = mix( m.roughnessNode, float( 0.5 ), wetness.mul( 0.6 ) );
 	}
+	// on the stone, the drops' wet marks and the beads running down the walls (world/rainImpacts.js)
+	for ( const k of [ 'stone', 'stoneDark', 'fortStone', 'castroStone', 'darkRock' ] ) wetStone( mats[ k ] );
 	return mats;
 }
 
