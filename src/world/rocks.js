@@ -90,8 +90,9 @@ export function createRocks( app, progress ) {
 	// the cheap variant
 	const tex = getDetailTexture();
 	const heightTex = app.terrain.heightTex;
-	const mat = createGraniteMaterial( { tex, heightTex, waterLevel: WATER_LEVEL } );
-	const matLo = createGraniteMaterial( { tex, heightTex, waterLevel: WATER_LEVEL, lo: true } );
+	const groundShift = app.terrain.groundShift;
+	const mat = createGraniteMaterial( { tex, heightTex, waterLevel: WATER_LEVEL, groundShift } );
+	const matLo = createGraniteMaterial( { tex, heightTex, waterLevel: WATER_LEVEL, lo: true, groundShift } );
 	app.rockMaterial = mat;
 
 	// one style per setting: rounded tor blocks on the hills, boulders on the shore, angular

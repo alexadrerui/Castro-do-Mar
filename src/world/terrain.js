@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, normalWorld, positionView, normalView, faceDirection,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, abs, sin, cross, dot, normalize, length,
-	attribute, fwidth, cameraViewMatrix, vec4
+	attribute, fwidth, cameraViewMatrix, vec4, textureLoad, ivec2, floor, select
 } from 'three/tsl';
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';
@@ -50,6 +50,10 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	const normals = computeGridNormals( hf );
 	const aoArr = aoData || new Float32Array( n * n ).fill( 1 );
 	const chunks = buildChunks( hf, normals, aoArr );
+	// the stride drawn by each chunk (1 = full res), for the things set on the ground (groundShift)
+	const NC = hf.seg / CHUNK;
+	const lodTex = new THREE.DataTexture( new Float32Array( NC * NC ).fill( 1 ), NC, NC, THREE.RedFormat, THREE.FloatType );
+	lodTex.needsUpdate = true;
 
 	// ---------- textures (node inputs) ----------
 	const maskTex = new THREE.DataTexture( maskData, MASK.res, MASK.res, THREE.RGBAFormat );
@@ -238,7 +242,7 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 			c.box.clampPoint( camera.position, _p );
 			const d = _p.distanceTo( camera.position );
 			const lod = d < 160 ? 0 : d < 420 ? 1 : d < 900 ? 2 : d < 1700 ? 3 : 4;
-			if ( c.lod !== lod ) { c.lod = lod; c.mesh.geometry = c.lods[ lod ]; }
+			if ( c.lod !== lod ) { c.lod = lod; c.mesh.geometry = c.lods[ lod ]; lodTex.image.data[ c.k ] = STRIDES[ lod ]; lodTex.needsUpdate = true; }
 			// only nearby chunks are worth drawing again in the water reflection
 			// (the far mesh already covers the distant shores)
 			if ( d < 700 ) c.mesh.layers.enable( 2 ); else c.mesh.layers.disable( 2 );
@@ -276,7 +280,34 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 
 	const refreshHeightTex = ( i0, j0, i1, j1 ) => updateHeightTexture( heightTex, hf, i0, j0, i1, j1 );
 
-	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, waterTex, macroTex, detailTex, update, refresh, refreshHeightTex };
+	const groundShift = makeGroundShift( hf, heightTex, lodTex );
+	return { mesh: group, material: mat, uniforms: U, maskTex, heightTex, waterTex, macroTex, detailTex, lodTex, groundShift, update, refresh, refreshHeightTex };
+}
+
+// Things set on the ground at a distance (the scattered rocks) were placed on the full-res relief,
+// but a far chunk draws a coarse grid (stride 2..16 cells, terrain.js buildChunks) that cuts below
+// the hill tops and fills the hollows: up to tens of metres at the horizon, where the tors on the
+// crests hung in the air (tools/rockfloat.mjs). groundShift( xz ) is the drawn ground minus the true
+// ground at xz, with the chunk's current stride (lodTex) and the very triangulation of its mesh
+// (the quad split along the ( i + 1, j ) - ( i, j + 1 ) diagonal); 0 in full-res chunks. An object
+// moved up or down by it at its anchor stands on the ground that is drawn, like the terrain's own
+// geomorphing would demand of it (CDLOD, Strugar 2009).
+function makeGroundShift( hf, heightTex, lodTex ) {
+	const n = hf.n, NC = hf.seg / CHUNK;
+	const H = ( i, j ) => textureLoad( heightTex, ivec2( vec2( i, j ).min( n - 1 ) ) ).r;
+	return Fn( ( [ xz ] ) => {
+		const g = xz.sub( vec2( hf.x0, hf.z0 ) ).div( hf.cell ).clamp( 0, hf.seg - 0.001 ).toVar();
+		const ch = floor( g.div( CHUNK ) ).clamp( 0, NC - 1 );
+		const st = textureLoad( lodTex, ivec2( ch ) ).r.toVar();
+		const f = g.div( st ), c = floor( f ), uv = f.sub( c );
+		const i0 = c.mul( st ), i1 = c.add( 1 ).mul( st );
+		const A = H( i0.x, i0.y ), B = H( i0.x, i1.y ), C = H( i1.x, i0.y ), D = H( i1.x, i1.y );
+		const drawn = select( uv.x.add( uv.y ).lessThanEqual( 1 ),
+			A.add( uv.x.mul( C.sub( A ) ) ).add( uv.y.mul( B.sub( A ) ) ),
+			D.add( uv.x.oneMinus().mul( B.sub( D ) ) ).add( uv.y.oneMinus().mul( C.sub( D ) ) ) );
+		const truth = texture( heightTex, g.add( 0.5 ).div( n ) ).r;
+		return select( st.greaterThan( 1.5 ), drawn.sub( truth ), float( 0 ) );
+	} );
 }
 
 function computeGridNormals( hf ) {
@@ -307,9 +338,10 @@ function updateGridNormals( hf, out, i0, j0, i1, j1 ) {
 }
 
 // 11 x 11 chunks of 80 cells, LOD strides 1/2/4/8/16, with skirts to hide cracks.
+const CHUNK = 80, STRIDES = [ 1, 2, 4, 8, 16 ];
 function buildChunks( hf, normals, ao ) {
-	const n = hf.n, CH = 80, NC = hf.seg / CH;
-	const strides = [ 1, 2, 4, 8, 16 ];
+	const n = hf.n, CH = CHUNK, NC = hf.seg / CH;
+	const strides = STRIDES;
 	const chunks = [];
 	for ( let cj = 0; cj < NC; cj ++ ) for ( let ci = 0; ci < NC; ci ++ ) {
 		const lods = [];
@@ -361,7 +393,7 @@ function buildChunks( hf, normals, ao ) {
 		}
 		// all LODs share the full-res bounds so culling never flickers
 		for ( const g of lods ) { g.boundingBox = box.clone(); g.boundingSphere = box.getBoundingSphere( new THREE.Sphere() ); }
-		chunks.push( { lods, box, lod: 0, i0: ci * CH, j0: cj * CH, i1: ci * CH + CH, j1: cj * CH + CH } );
+		chunks.push( { lods, box, lod: 0, k: cj * NC + ci, i0: ci * CH, j0: cj * CH, i1: ci * CH + CH, j1: cj * CH + CH } );
 	}
 	return chunks;
 }

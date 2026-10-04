@@ -40,8 +40,10 @@ export function foliageAtlas() {
 
 // clusters: the leaf-cluster atlas of leafAtlas.js (R coverage, G brightness, B per-leaf random)
 // instead of the canvas atlas (A coverage, R luminance); fern: fronds of trees.js bracken(), the
-// pinnae cut out from the frond uv (s along, t across the leaflet strip)
-export function createFoliageMaterial( sunDir, { clusters = null, fern = false } = {} ) {
+// pinnae cut out from the frond uv (s along, t across the leaflet strip); groundShift (terrain.js):
+// every plant moved, whole, onto the ground its terrain chunk draws (the far coarse LODs cut below
+// the crests, where the trees hung in the air)
+export function createFoliageMaterial( sunDir, { clusters = null, fern = false, groundShift = null } = {} ) {
 	const U = { wind: uniform( 1.0 ), sunDir: uniform( sunDir ) };
 	// low specular: at grazing angles (fronds seen from below, the upright grass cards) the Fresnel
 	// reflection of the bright sky washed the green out to grey / white
@@ -77,6 +79,8 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false }
 		p.z.addAssign( sin( time.mul( 1.3 ).add( phase.mul( 1.3 ) ).add( p.x.mul( 0.5 ) ) ).mul( 0.09 ).mul( w ) );
 		// leaf flutter
 		p.addAssign( vec3( sin( time.mul( 7.0 ).add( p.y.mul( 3.0 ) ).add( phase ) ) ).mul( 0.02 ).mul( leaf ).mul( w ) );
+		// the instance's anchor (core/chunked.js iM3)
+		if ( groundShift ) p.y.addAssign( groundShift( attribute( 'iM3', 'vec4' ).xz ) );
 		return p;
 	} )();
 
@@ -203,7 +207,8 @@ export async function createVegetation( app, progress ) {
 	const group = new THREE.Group();
 	group.name = 'vegetation';
 
-	const { material } = createFoliageMaterial( sunDir );
+	const groundShift = app.terrain.groundShift;
+	const { material } = createFoliageMaterial( sunDir, { groundShift } );
 	app.foliageMaterial = material;
 	// GPU bakes: the leaf-cluster atlas (Tidewater's; tile 1 the pine needles) and the octahedral
 	// impostors of the far oaks / pines; after the first load read from the IndexedDB cache
@@ -225,12 +230,12 @@ export async function createVegetation( app, progress ) {
 			.then( ( [ leaf, oak, pine ] ) => cachePut( bakeKey, { leaf, oak, pine }, 'bakes:' ) )
 			.then( () => console.info( 'bakes: cached', bakeKey ) );
 	}
-	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture } );
+	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture, groundShift } );
 	app.canopyMaterial = canopy;
-	const { material: fernMat } = createFoliageMaterial( sunDir, { fern: true } );
+	const { material: fernMat } = createFoliageMaterial( sunDir, { fern: true, groundShift } );
 	app.fernMaterial = fernMat;
-	const oakImpostor = oakAtlas.createMaterial( { bark: OAK_BARK } );
-	const pineImpostor = pineAtlas.createMaterial( { bark: PINE_BARK } );
+	const oakImpostor = oakAtlas.createMaterial( { bark: OAK_BARK, groundShift } );
+	const pineImpostor = pineAtlas.createMaterial( { bark: PINE_BARK, groundShift } );
 	app.oakImpostors = oakAtlas;
 	app.pineImpostors = pineAtlas;
 	const species = {

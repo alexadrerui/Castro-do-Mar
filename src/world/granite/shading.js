@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import {
 	float, vec2, vec3, normalize, mix, smoothstep, max, min, abs, dot, cross, dFdx, dFdy, sign, fwidth, length,
 	positionWorld, normalWorld, texture, attribute, fract, saturate, transformNormalToView, Fn,
+	positionLocal, varying,
 } from 'three/tsl';
 import { cloudShade } from '../cloudShadow.js';
 import { wetness } from '../weather.js';
@@ -183,10 +184,15 @@ export function graniteSurface( { tex, p, N, h, macro, seed = float( 0.5 ), moss
 // Material of the scattered granite (instanced): per-instance tint (aTint) and seed, the cavity
 // term baked into the geometry ('ao'), the ground contact (soil / sand drifted against the base,
 // a darker crevice) from the terrain height texture. lo: the cheap variant for distant tiles.
-export function createGraniteMaterial( { tex, heightTex, waterLevel = 0, lo = false, mossAmount = 1 } ) {
+// groundShift (terrain.js): each rock moved, whole, onto the ground its terrain chunk draws at a
+// distance (the coarse LODs cut below the crests, where the rocks hung in the air).
+export function createGraniteMaterial( { tex, heightTex, waterLevel = 0, lo = false, mossAmount = 1, groundShift = null } ) {
 
 	const mat = new THREE.MeshStandardNodeMaterial( { roughness: 0.85, metalness: 0 } );
 	mat.name = lo ? 'GraniteLo' : 'Granite';
+	// the instance's anchor (core/chunked.js iM3); applied after the instance matrix
+	const shift = groundShift ? varying( groundShift( attribute( 'iM3', 'vec4' ).xz ) ) : float( 0 );
+	if ( groundShift ) mat.positionNode = positionLocal.add( vec3( 0, shift, 0 ) );
 	const p = positionWorld;
 	const N = normalWorld.toVar();
 	const tint = attribute( 'aTint', 'vec3' );
@@ -197,7 +203,7 @@ export function createGraniteMaterial( { tex, heightTex, waterLevel = 0, lo = fa
 	const hd = heightTex.userData;
 	const huv = p.xz.sub( vec2( hd.x0, hd.z0 ) ).div( hd.cell ).add( 0.5 ).div( hd.n );
 	const ground = texture( heightTex, huv ).r;
-	const above = p.y.sub( ground );
+	const above = p.y.sub( shift ).sub( ground );
 	const contact = float( 1 ).sub( smoothstep( 0.0, 0.3, above.add( R.height.sub( 0.5 ).mul( 0.2 ) ) ) ).mul( smoothstep( waterLevel - 0.5, waterLevel + 0.3, ground ) );
 	const drift = mix( srgb( 0.37, 0.3, 0.23 ), srgb( 0.64, 0.59, 0.48 ), smoothstep( waterLevel + 3.0, waterLevel + 1.0, ground ) );
 	const albedo = mix( R.albedo.mul( tint ), drift, contact.mul( 0.75 ) );

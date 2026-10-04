@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { bakeTarget, textureFromData, readTarget } from '../core/bakeCache.js';
 import {
 	Fn, float, uniform, vec2, vec3, vec4, attribute, texture, uv, positionGeometry, normalGeometry, positionWorld, cameraPosition, property,
-	normalize, cross, dot, abs, max, mix, floor, clamp, select, sin, cos, color, cameraViewMatrix, positionViewDirection, mx_noise_float
+	normalize, cross, dot, abs, max, mix, floor, clamp, select, sin, cos, color, cameraViewMatrix, positionViewDirection, mx_noise_float, varying
 } from 'three/tsl';
 import { cloudShade } from './cloudShadow.js';
 
@@ -163,18 +163,20 @@ export class ImpostorAtlas {
 	}
 
 	// Runtime material. Per instance: iPos (x, y, z, scale), iDat (yaw, height stretch, 0, seed),
-	// aTint (vec3, the canopy tint). bark: linear colour of the trunk.
-	createMaterial( { bark } ) {
+	// aTint (vec3, the canopy tint). bark: linear colour of the trunk. groundShift (terrain.js): the
+	// plant set on the ground its far terrain chunk draws (the coarse LODs cut below the crests).
+	createMaterial( { bark, groundShift = null } ) {
 		const mat = new THREE.MeshStandardNodeMaterial( { side: THREE.DoubleSide } );
 		mat.name = 'impostor';
 		const iPos = attribute( 'iPos', 'vec4' ), iDat = attribute( 'iDat', 'vec4' ), tint = attribute( 'aTint', 'vec3' );
+		const base = groundShift ? iPos.xyz.add( vec3( 0, varying( groundShift( iPos.xz ) ), 0 ) ) : iPos.xyz;
 		// uniforms, not constants: the impostors of every species share one shader (and pipeline)
 		const R = uniform( this.radius ), Rh = uniform( this.rh ), Hv = uniform( this.hv ), Cy = uniform( this.center.y );
 
 		// ---- vertex: camera-facing quad fitted to the plant's projected extent
 		mat.positionNode = Fn( () => {
 			const s = iPos.w, sy = iDat.y;
-			const C = iPos.xyz.add( vec3( 0, Cy.mul( s ).mul( sy ), 0 ) );
+			const C = base.add( vec3( 0, Cy.mul( s ).mul( sy ), 0 ) );
 			const toCam = normalize( cameraPosition.sub( C ) );
 			const right = normalize( cross( UP, toCam ).add( vec3( 1e-4, 0, 0 ) ) );
 			const up = cross( toCam, right );
@@ -192,7 +194,7 @@ export class ImpostorAtlas {
 		mat.maskNode = Fn( () => {
 			const s = iPos.w, sy = iDat.y, yaw = iDat.x;
 			const cyw = cos( yaw ), syw = sin( yaw );
-			const C = iPos.xyz.add( vec3( 0, Cy.mul( s ).mul( sy ), 0 ) );
+			const C = base.add( vec3( 0, Cy.mul( s ).mul( sy ), 0 ) );
 			// world -> plant-local (unstretched, centred): rotate by -yaw, divide by the scale
 			const toLocal = ( v ) => vec3( v.x.mul( cyw ).sub( v.z.mul( syw ) ), v.y, v.x.mul( syw ).add( v.z.mul( cyw ) ) ).div( vec3( s, s.mul( sy ), s ) );
 			const O = toLocal( cameraPosition.sub( C ) ).toVar();
