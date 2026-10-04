@@ -267,6 +267,9 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - No headless, o `?perf` / `gpuProfile` hoje devolve tempos irreais (~0,2 ms por frame): não serve para medir custo de GPU.
 
 ## Pendências (backlog)
+### Licença
+- [ ] **Reescrever a cáustica embaixo d'água para liberar o uso comercial** (pedido do usuário em 04/10/2026, para o futuro). A função `caustic` de `src/post/underwater.js` segue o "Tileable Water Caustic" de David Hoskins no Shadertoy (adaptado de um efeito de joltz0r do GLSL Sandbox), sem licença declarada: vale o padrão do Shadertoy, CC BY-NC-SA 3.0, não comercial. É a única parte do projeto com essa restrição (ver `THIRD_PARTY_NOTICES.md`, seção "Ressalva"). Fazer uma cáustica própria com a mesma interface (`caustic( uv, t )`, ladrilhável, ~0..1+, linhas claras em campo escuro), por exemplo com bordas de células de Voronoi animadas em duas camadas ou o ruído de gradiente do projeto; manter o deslocamento pelo sol refratado e a perda de nitidez com a profundidade. Conferir com `node tools/dive.mjs` (rocha e areia do fundo) e `app.underwater.debug = 1`. Depois: tirar a ressalva do `THIRD_PARTY_NOTICES.md` e do README e o crédito do Hoskins da cáustica (o "Hash without Sine", MIT, continua).
+
 ### Câmera
 - [x] Foco nas capturas: o `app.capture` chama `focus.snap()` (mede e assenta a lente na hora, sem a transição), então a captura sai focada na vista atual mesmo com o loop pausado (antes ficava o foco da vista anterior). QA: `node tools/clearing.mjs`.
 - [x] Foco pelo clique. (Abertura/bokeh ajustáveis no painel continuam opcionais.)
