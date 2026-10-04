@@ -29,7 +29,6 @@ export class RiverEdit {
 	constructor( ed ) {
 		this.ed = ed;
 		this.app = ed.app;
-		this.selecting = false; // the next click picks a river
 		this.river = null;      // the river being edited (app.rivers entry)
 		this.points = null;     // its control points [ x, z, width ] while edited
 		this.picked = - 1;      // the handle the gizmo is on
@@ -52,6 +51,7 @@ export class RiverEdit {
 			return l;
 		};
 		this.center = line( 0x5fc8e8, 4096 );
+		this.hover = line( 0xffe7a0, 4096 ); // the river under the pointer, while picking one
 		this.bankL = line( 0xb7e3f0, 4096 );
 		this.bankR = line( 0xb7e3f0, 4096 );
 		// the gizmo, on the ground plane only
@@ -69,6 +69,8 @@ export class RiverEdit {
 	}
 
 	get editing() { return !! this.river; }
+	// the "Editar rio" tool with no river picked yet: a click picks one
+	get selecting() { return this.ed.tool === 'riveredit' && ! this.river; }
 
 	// ------------------------------------------------------------------ boxes
 
@@ -154,6 +156,20 @@ export class RiverEdit {
 			this.drawMenu.querySelector( '[data-act=done]' ).disabled = pts.length < 2;
 			this._place( this.drawMenu, last[ 0 ], this._ground( last[ 0 ], last[ 1 ] ), last[ 1 ] );
 		}
+		// picking: the river under the pointer drawn over the ground, and a hand cursor on it
+		const hovered = this.selecting && ed.active && ed.pointer.inside && ed.hit ? this.app.rivers?.at( ed.hit.x, ed.hit.z, 4 ) : null;
+		if ( hovered !== this._hovered ) {
+			this._hovered = hovered;
+			if ( hovered ) {
+				const S = hovered.course.samples, a = this.hover.geometry.attributes.position, m = Math.min( S.length, 4096 );
+				for ( let q = 0; q < m; q ++ ) a.setXYZ( q, S[ q ].x, this._ground( S[ q ].x, S[ q ].z ), S[ q ].z );
+				a.needsUpdate = true;
+				this.hover.geometry.setDrawRange( 0, m );
+			}
+			this.hover.visible = !! hovered;
+			ed.dom.style.cursor = hovered ? 'pointer' : '';
+		}
+		if ( ! this.selecting && this.hover.visible ) { this.hover.visible = false; this._hovered = null; ed.dom.style.cursor = ''; }
 		this.editMenu.style.display = this.editing ? '' : 'none';
 		if ( this.editing ) {
 			// the handles keep about the same size on screen, from the ground or from high above
@@ -172,21 +188,17 @@ export class RiverEdit {
 
 	// ------------------------------------------------------------------ selection
 
-	// "Selecionar rio": the next click on a river picks it
-	startSelect() {
-		if ( ! this.app.rivers?.list.length ) { this.ed._toast( 'Ainda não há rio para editar.' ); return; }
-		if ( this.editing ) this.cancel();
-		this.ed._riverCancel();
-		this.selecting = true;
-		this.ed._toast( 'Clique num rio para editá-lo (Esc desiste).' );
+	// the tool switched on
+	enter() {
+		this.ed._toast( this.app.rivers?.list.length ? 'Editar rio: clique num rio pronto.' : 'Ainda não há rio pronto: trace um com a ferramenta Rio.' );
 	}
 
 	// a click of the river tool while selecting or editing (e: the pointer event); true if taken
 	click( hit, e ) {
 		if ( this.selecting ) {
-			this.selecting = false;
 			const r = hit && this.app.rivers.at( hit.x, hit.z, 4 );
-			if ( ! r ) { this.ed._toast( 'Nenhum rio aqui.' ); return true; }
+			// a miss leaves the tool picking (it does not fall back to laying a river)
+			if ( ! r ) { this.ed._toast( 'Nenhum rio aqui: clique sobre a água de um rio (ele fica destacado sob o cursor).' ); return true; }
 			this.select( r );
 			return true;
 		}
@@ -223,7 +235,6 @@ export class RiverEdit {
 	}
 
 	cancel() {
-		this.selecting = false;
 		if ( ! this.river ) return;
 		this.river = null; this.points = null; this.picked = - 1;
 		this.tc.detach(); this.gizmo.visible = false;

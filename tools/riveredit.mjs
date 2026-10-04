@@ -66,10 +66,23 @@ await done.click(); await sleep( 1200 );
 s = await page.evaluate( () => { const a = window.__app, r = a.rivers.list.at( - 1 ); return { n: a.rivers.list.length, carve: r?.record.carve?.k.length ?? 0, pts: r?.record.points.length, menu: document.querySelector( '.river-menu' ).style.display }; } );
 check( s.n === before + 1 && s.carve > 0 && s.menu === 'none', `Concluir pela caixa: rio criado (${ s.pts } pontos), escavação guardada no rio (${ s.carve } células), caixa fechada` );
 
-// 2) selecting it: "Selecionar rio" and a click on the river
+// 2) selecting it: the "Editar rio" tool (the panel's button) and a click on the river
 await page.click( '#terrain-editor [data-act=riverSelect]' ); await sleep( 300 );
+s = await page.evaluate( () => ( { tool: window.__app.editor.tool, editOn: document.querySelector( '#terrain-editor [data-tool=riveredit]' ).classList.contains( 'on' ), riverOn: document.querySelector( '#terrain-editor [data-tool=river]' ).classList.contains( 'on' ), hint: document.querySelector( '#terrain-editor .hint' ).textContent.slice( 0, 40 ) } ) );
+check( s.tool === 'riveredit' && s.editOn && ! s.riverOn && /rio pronto/.test( s.hint ), `"Editar rio" é uma ferramenta própria: o botão dela aceso, o de Rio apagado, dica "${ s.hint }…"` );
+// a click away from any river: no point laid, still picking
+const away = await page.evaluate( ( p ) => [ p[ 0 ][ 0 ] - 60, p[ 0 ][ 1 ] - 60 ], plan );
+await click( await screen( away[ 0 ], away[ 1 ] ) );
+s = await page.evaluate( () => { const ed = window.__app.editor; return { tool: ed.tool, pts: ed.river.points.length, picking: ed.riverEdit.selecting, draw: document.querySelector( '.river-menu' ).style.display }; } );
+check( s.tool === 'riveredit' && s.pts === 0 && s.picking && s.draw === 'none', 'clique fora de um rio: nenhum ponto de rio novo, continua escolhendo' );
 const mid = await page.evaluate( () => { const S = window.__app.rivers.list.at( - 1 ).course.samples, p = S[ Math.floor( S.length * 0.45 ) ]; return [ p.x, p.z ]; } );
-await click( await screen( mid[ 0 ], mid[ 1 ] ) );
+// the pointer over it: highlighted, hand cursor
+const over = await screen( mid[ 0 ], mid[ 1 ] );
+await page.mouse.move( over.x, over.y ); await sleep( 600 );
+s = await page.evaluate( () => ( { lit: window.__app.editor.riverEdit.hover.visible, cursor: window.__app.renderer.domElement.style.cursor } ) );
+check( s.lit && s.cursor === 'pointer', 'o rio sob o cursor fica destacado, cursor de mão' );
+await shot( 'pick' );
+await click( over );
 s = await page.evaluate( () => { const R = window.__app.editor.riverEdit; return { editing: R.editing, handles: R.handles.length, flow: !! R.flow, menu: document.querySelectorAll( '.river-menu' )[ 1 ].style.display !== 'none', banks: R.bankL.visible && R.bankR.visible }; } );
 check( s.editing && s.handles >= 2 && s.flow && s.menu && s.banks, `selecionado: ${ s.handles } alças, margens, setas correndo (Flow), caixa de edição` );
 await sleep( 800 );
@@ -94,14 +107,13 @@ s = await page.evaluate( ( oldK, k ) => {
 	const a = window.__app, ed = a.editor, r = a.rivers.list.at( - 1 ), rec = r.record, newK = new Set( rec.carve.k );
 	let left = 0;
 	for ( const c of oldK ) if ( ! newK.has( c ) && Math.abs( ed.delta[ c ] ) > 0.01 ) left ++;
-	return { n: a.rivers.list.length, widths: rec.points.every( ( p ) => p[ 2 ] === 9 ), editing: ed.riverEdit.editing, left, newCells: rec.carve.k.length, saved: a.objectEditor.edits.rivers.length };
+	return { n: a.rivers.list.length, widths: rec.points.every( ( p ) => p[ 2 ] === 9 ), editing: ed.riverEdit.editing, left, newCells: rec.carve.k.length, saved: a.objectEditor.edits.rivers.length, picking: ed.riverEdit.selecting };
 }, oldCarve, k );
-check( s.n === before + 1 && s.widths && ! s.editing && s.left === 0 && s.newCells > 0 && s.saved === s.n, `Enter aplicou: um rio só, largura 9 m em todos os pontos, leito antigo desfeito (${ s.left } células antigas sobrando), novo leito (${ s.newCells } células)` );
+check( s.n === before + 1 && s.widths && ! s.editing && s.picking && s.left === 0 && s.newCells > 0 && s.saved === s.n, `Enter aplicou (e a ferramenta volta a escolher): um rio só, largura 9 m em todos os pontos, leito antigo desfeito (${ s.left } células antigas sobrando), novo leito (${ s.newCells } células)` );
 await sleep( 800 );
 await shot( 'applied' );
 
-// 4) select again, remove from the box: the relief back
-await page.click( '#terrain-editor [data-act=riverSelect]' ); await sleep( 300 );
+// 4) select again (still the tool), remove from the box: the relief back
 const mid2 = await page.evaluate( () => { const S = window.__app.rivers.list.at( - 1 ).course.samples, p = S[ Math.floor( S.length * 0.5 ) ]; return [ p.x, p.z ]; } );
 await click( await screen( mid2[ 0 ], mid2[ 1 ] ) );
 const cells = await page.evaluate( () => window.__app.editor.riverEdit.river?.record.carve.k.slice() ?? [] );
