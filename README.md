@@ -124,7 +124,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
 
 ## Créditos
 
-- **[Tidewater](https://github.com/dgreenheck/tidewater)** (MIT, Copyright (c) 2026 DRG Software Solutions LLC): peixes, fundo do mar, pedras de granito, gaivotas e aves pousadas, carvalho, tojo e fento, atlas de folhas, impostores, grama, gotas na lente e neve marinha, adaptados. Cada arquivo portado traz o cabeçalho de origem.
+- **[Tidewater](https://github.com/dgreenheck/tidewater)** (MIT, Copyright (c) 2026 DRG Software Solutions LLC, em `licenses/LICENSE-Tidewater.md`): peixes, fundo do mar, pedras de granito, gaivotas e aves pousadas, carvalho, tojo e fento, atlas de folhas, impostores, grama, gotas na lente e neve marinha, adaptados. Cada arquivo portado traz o cabeçalho de origem.
 - **[Drusniel: Gods' End](https://github.com/danielsobrado/drusniel-gods-end)** (MIT, Copyright (c) 2026 Daniel Sobrado, em `licenses/LICENSE-Drusniel.md`), adaptados:
   - o lago com nível e superfície próprios (`src/world/lakeFill.js`, `lakeWater.js`);
   - a sombra de nuvens (`src/world/cloudShadow.js`);
@@ -136,12 +136,20 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
   - a névoa de vale (`src/post/valleyFog.js`);
   - a chuva com chão molhado (`src/world/weather.js`);
   - as plantas do prado (`src/world/meadowFlora.js`).
-- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz"): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`; e o modo pintura a óleo (`src/post/kuwahara.js`, Kuwahara anisotrópico, que ele adapta de Maxime Heckel).
+- **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz", em `licenses/LICENSE-Cortiz.md`): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`; e o modo pintura a óleo (`src/post/kuwahara.js`, Kuwahara anisotrópico, que ele adapta de Maxime Heckel).
 - **[three-geospatial / @takram/three-clouds](https://github.com/takram-design-engineering/three-geospatial/tree/main/packages/clouds)** (MIT, Copyright (c) 2024 Shota Matsuda, em `licenses/LICENSE-takram-clouds.md`): o modelo das nuvens volumétricas (camadas pelo mapa de clima, forma e detalhe, espalhamento múltiplo, integração por passo, filtro temporal), portado para TSL em `src/post/clouds.js`, e as texturas de forma, detalhe e clima (`public/clouds/`).
 - **[Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX)** (MIT, Copyright (c) 2026 Sahil K, em `licenses/LICENSE-LightningVFX.md`): o raio com ramos, as rachaduras, as faíscas e a onda de choque (`src/world/lightning.js`), portados para TSL e adaptados.
 - **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados. A licença está em `src/world/koi/LICENSE-AndyLePool`.
-- **shader-studio** (void032, MIT): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.
+- **[shader-studio](https://github.com/void032/shader-studio)** (MIT, Copyright (c) 2025 Vineet Kumar "void032", em `licenses/LICENSE-shader-studio.md`): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.
 - **Makone** (MIT): ideias das ferramentas `tools/verify.mjs` e `tools/houses.mjs`.
-- Cáusticas embaixo d'água a partir do "Tileable Water Caustic" de Dave Hoskins.
-- Exemplos do three.js (`webgpu_custom_fog_scattering`, `webgpu_postprocessing_fog`, `webgpu_sculpt`) e [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) (MIT) para os raycasts.
+- **[@takram/three-atmosphere](https://github.com/takram-design-engineering/three-geospatial)** (MIT, Copyright (c) 2024 Shota Matsuda, em `licenses/LICENSE-takram-atmosphere.md`): as estrelas (`src/world/stars.js`, com o Yale Bright Star Catalog empacotado em `public/sky/stars.bin`) e a lua (`src/world/sky.js`).
+- Mapa de cor da lua: NASA CGI Moon Kit (LROC), crédito NASA's Scientific Visualization Studio.
+- Cáusticas embaixo d'água a partir do "Tileable Water Caustic" de Dave Hoskins (ver a ressalva em `THIRD_PARTY_NOTICES.md`); hashes sem seno do "Hash without Sine" de Dave Hoskins (MIT).
+- [three.js](https://github.com/mrdoob/three.js) e seus exemplos (`webgpu_custom_fog_scattering`, `webgpu_postprocessing_fog`, `webgpu_sculpt`), [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) para os raycasts e [three-bvh-csg](https://github.com/gkjohnson/three-bvh-csg), todos MIT (`licenses/`).
 - Ideias de ferramentas do editor (margens de água, decorações, pincel de natureza) inspiradas no jogo Habitat Creator.
+
+## Licença
+
+O código e as imagens do Castro do Mar estão sob a licença **MIT** (`LICENSE`): pode usar, modificar, redistribuir e vender, desde que mantenha o aviso de copyright.
+
+As partes vindas de outros projetos (listadas em Créditos) continuam sob as licenças delas, quase todas MIT; as carpas e o lótus são Apache 2.0. Os textos completos estão em `licenses/`, e o `THIRD_PARTY_NOTICES.md` mostra o que veio de onde, as regras de cada licença e uma ressalva: a cáustica embaixo d'água pode ser não comercial (CC BY-NC-SA, o padrão do Shadertoy) e deve ser trocada antes de um uso comercial.

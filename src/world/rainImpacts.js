@@ -5,7 +5,8 @@
 // Kept from the original: the ripples are ANALYTIC, one drop per cell of a grid on its own clock,
 // the GRADIENT of the rings summed over the 3 x 3 neighbouring cells (a ring grows past its cell);
 // the drop lands somewhere new every cycle (the cycle is a hash key of its own); not every cell gets
-// a drop each cycle (how many vs how big); the sine-free hashes (Dave Hoskins' "hash without sine":
+// a drop each cycle (how many vs how big); the sine-free hashes (Dave Hoskins' "hash without sine",
+// MIT License, Copyright (c) 2014 David Hoskins:
 // a sin() hash fed by a growing cycle count degenerates into a smooth lattice after minutes) and the
 // clocks folded seamlessly every WET_CYCLES cycles; the glints as a fast attack and an exponential
 // decay. Changes: TSL; driven by the rain of world/weather.js (rainFall, rainClock); the masks
