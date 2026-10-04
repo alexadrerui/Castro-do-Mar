@@ -44,6 +44,7 @@ As ferramentas de desenvolvimento (Vite, puppeteer-core) não entram no site pub
 | `public/sky/moon_color.webp` | NASA CGI Moon Kit (LROC), https://svs.gsfc.nasa.gov/4720/, na cópia de 1k do takram | imagem da NASA, de uso livre com crédito: "NASA's Scientific Visualization Studio" |
 | Cores das estrelas pelo índice B−V | tabela de Mitchell Charity (vendian.org) | dados factuais, crédito no cabeçalho de `src/world/stars.js` |
 | `ref/` | imagens de referência do autor | MIT, como o resto do projeto |
+| `public/audio/light-rain.mp3` | gravação de chuva gerada pelo autor com o ChatGPT (laço de 45 s recortado do original) | MIT, como o resto do projeto |
 
 ## Só ideias ou referência visual (nenhum código copiado)
 

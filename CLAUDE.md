@@ -57,7 +57,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - Camadas, com o ganho recalculado ~12×/s pelo lugar:
   - mar: distância à linha da costa numa grade de 10 m feita na carga a partir do relevo (transformada de distância com a semente mais próxima), mais a altitude; o som vem do lado da praia; arrebentação em duas vozes alternadas (sobe 1–2 s, chia e some em 2,5–4,5 s);
   - vento: rajadas (passeio aleatório), mais forte exposto (alto sobre o chão ou sobre o mar), na tempestade e mais calmo à noite; assobio nos cumes; folhas no bosque;
-  - chuva (`weather.level`); rios e cachoeiras (amostras do `riverCourse`, com direção); fogueiras pelas fontes de fumaça das casas (`app.hearths`);
+  - chuva (`weather.level`): a gravação `public/audio/light-rain.mp3` (gerada pelo usuário com o ChatGPT, dele, MIT; laço sem emenda de 45 s a 128 kbps, 0,7 MB, recortado do original de 104 s com o fim cruzado no começo pelo ffmpeg), baixada só na primeira vez que chove; até chegar, ou se falhar, fica o chiado sintetizado. Chuva plena: −31 dB; rios e cachoeiras (amostras do `riverCourse`, com direção); fogueiras pelas fontes de fumaça das casas (`app.hearths`);
   - vozes agendadas: gaivotas na costa de dia, pássaros no bosque de dia (tordo, melro, tentilhão, chapim; coro ao amanhecer, ~7h) pela densidade de árvores numa grade de 64 m, coruja-do-mato à noite no bosque; grilos à noite em campo aberto (laço sintetizado);
   - embaixo d'água: tudo o que está acima passa por um passa-baixa de 320 Hz, mais um ronco grave e bolhas.
 - `app.ambience.levels` mostra o nível de cada camada.

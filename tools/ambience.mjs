@@ -67,6 +67,8 @@ for ( const place of places ) {
 		a.views.push( { label: place, pos: [ x, y, z ], target: [ tx, place === 'under' ? - 3 : hf.heightAt( tx, tz ) + 1.5, tz ] } );
 		a.setView( a.views.length - 1 );
 		await new Promise( ( r ) => setTimeout( r, 2500 ) );
+		// the rain recording is fetched the first time it rains
+		if ( place === 'rain' ) { for ( let k = 0; k < 40 && ! amb.L.rainRec; k ++ ) await new Promise( ( r ) => setTimeout( r, 200 ) ); await new Promise( ( r ) => setTimeout( r, 3000 ) ); }
 		// record the master bus
 		const ctx = amb.ctx, n = Math.floor( seconds * ctx.sampleRate );
 		const L = new Float32Array( n ), R = new Float32Array( n );

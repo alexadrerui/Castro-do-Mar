@@ -18,6 +18,8 @@
 import { WATER_LEVEL } from '../world/layout.js';
 
 const TICK = 1 / 12;
+// the rain recording's level at full rain (it is ~-27 dB RMS): about the synthesised one's -29 dB
+const RAIN_GAIN = 0.75;
 const clamp01 = ( v ) => Math.min( 1, Math.max( 0, v ) );
 const sstep = ( a, b, x ) => { const t = clamp01( ( x - a ) / ( b - a ) ); return t * t * ( 3 - 2 * t ); };
 const rnd = ( a, b ) => a + Math.random() * ( b - a );
@@ -183,7 +185,7 @@ export class Ambience {
 		const B = { white: noise( ctx, 5, 'white' ), pink: noise( ctx, 6, 'pink' ), brown: noise( ctx, 7, 'brown' ) };
 		this.B = B;
 		// a looping source -> filters -> gain -> panner -> out
-		const loop = ( buf, filters, out = this.air, rate = 1 ) => {
+		const loop = this._loop = ( buf, filters, out = this.air, rate = 1 ) => {
 			const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.playbackRate.value = rate;
 			src.loopStart = 0; src.start( 0, Math.random() * buf.duration );
 			let node = src;
@@ -277,9 +279,13 @@ export class Ambience {
 		lv.leaves = forest * ( 0.3 + 0.7 * g.v ) * calm;
 		set( L.leaves.g, lv.leaves * 0.2, 0.5 );
 
-		// --- the rain
+		// --- the rain: the recording (public/audio/light-rain.mp3, fetched the first time it rains),
+		// the synthesised hiss until it is in (or if it fails)
 		lv.rain = rain;
-		set( L.rain.g, Math.pow( rain, 0.8 ) * 0.3, 0.8 ); set( L.rainLow.g, rain * 0.08, 0.8 );
+		if ( rain > 0.01 && ! this._rainLoading ) this._loadRain();
+		const rec = lv.rainRec = L.rainRec ? 1 : 0;
+		set( L.rain.g, Math.pow( rain, 0.8 ) * 0.3 * ( 1 - rec ), 0.8 ); set( L.rainLow.g, rain * 0.08 * ( 1 - rec ), 0.8 );
+		if ( rec ) set( L.rainRec.g, Math.pow( rain, 0.8 ) * RAIN_GAIN, 0.8 );
 
 		// --- rivers and falls: the nearest sample (every 3rd) and the nearest fall
 		let river = 0, riverPan = 0, falls = 0, fallsPan = 0;
@@ -343,6 +349,22 @@ export class Ambience {
 			if ( Math.random() < lv.owl ) this._owl( t, lv.owl );
 			this.calls.owl = t + rnd( 12, 35 );
 		}
+	}
+
+	async _loadRain() {
+		this._rainLoading = true;
+		try {
+			const res = await fetch( ( import.meta.env?.BASE_URL ?? '/' ) + 'audio/light-rain.mp3' );
+			if ( ! res.ok ) throw new Error( res.status );
+			const buf = await this.ctx.decodeAudioData( await res.arrayBuffer() );
+			// the file is a seamless loop (its end cross-faded into its start); 30 ms more against the decoder's edges
+			const f = Math.floor( 0.03 * buf.sampleRate ), n = buf.length;
+			for ( let ch = 0; ch < buf.numberOfChannels; ch ++ ) {
+				const d = buf.getChannelData( ch );
+				for ( let i = 0; i < f; i ++ ) { const t = i / f; d[ i ] = d[ i ] * t + d[ n - f + i ] * ( 1 - t ); }
+			}
+			this.L.rainRec = this._loop( buf, [ [ 'highpass', 70 ] ] );
+		} catch ( e ) { console.warn( 'ambience: rain recording not loaded, the synthesised rain stays', e ); }
 	}
 
 	// ------------------------------------------------------------------ voices
