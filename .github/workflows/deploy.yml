@@ -27,6 +27,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build -- --base=/${{ github.event.repository.name }}/
+        env:
+          # optional TURN relay for the shared visit (src/core/multiplayer.js): Settings → Secrets and
+          # variables → Actions → Variables; empty = peer to peer only
+          VITE_TURN_URLS: ${{ vars.TURN_URLS }}
+          VITE_TURN_USERNAME: ${{ vars.TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ vars.TURN_CREDENTIAL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

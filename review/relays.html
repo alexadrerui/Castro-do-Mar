@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Relays</title>
+<!-- QA page for tools/relays.mjs: joins a Trystero room through one Nostr relay (?relay=host&room=id) -->
+<script type="module">
+	import { joinRoom } from 'trystero';
+	const q = new URLSearchParams( location.search );
+	window.peers = 0; window.left = 0; window.log = [];
+	const urls = q.get( 'relay' ).split( ',' ).map( ( h ) => 'wss://' + h );
+	const enter = () => {
+		const room = window.room = joinRoom( { appId: 'castro-do-mar-relaytest', relayConfig: { urls } }, q.get( 'room' ), { onJoinError: ( d ) => window.log.push( 'joinError ' + d.error ) } );
+		room.onPeerJoin = ( id ) => { window.peers ++; window.log.push( 'join ' + id ); };
+		room.onPeerLeave = ( id ) => { window.left ++; window.log.push( 'leave ' + id ); };
+	};
+	enter();
+	// ?refresh=s: leave and join again every s seconds while alone (the shared visit's fix, tools/_late)
+	const every = +q.get( 'refresh' );
+	if ( every ) setInterval( async () => { if ( window.peers ) return; await window.room.leave(); enter(); window.log.push( 'refresh' ); }, every * 1000 );
+</script>

@@ -233,6 +233,11 @@ export class HUD {
 		name.addEventListener( 'keydown', ( e ) => { e.stopPropagation(); if ( e.key === 'Enter' ) name.blur(); } );
 		$( 'c-mpworld' ).onchange = ( e ) => { mp.shareWorld = e.target.checked; };
 		$( 'b-mpleave' ).onclick = () => { mp.leave(); this.toast( 'Fora da sala' ); };
+		// Entrar com código: the room of a friend, by its code or its link
+		const code = $( 'i-room' );
+		const join = async () => { if ( await mp.joinCode( code.value ) ) code.value = ''; };
+		$( 'b-join' ).onclick = join;
+		code.addEventListener( 'keydown', ( e ) => { e.stopPropagation(); if ( e.key === 'Enter' ) join(); } );
 		show();
 	}
 

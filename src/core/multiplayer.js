@@ -21,6 +21,7 @@ import * as THREE from 'three/webgpu';
 import { color, float, sin, time, uniform } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Clock } from '../world/clock.js';
+import { reloadKeepingView } from './recovery.js';
 
 const APP_ID = 'castro-do-mar-alexadrerui';
 const SEND_HZ = 10;          // a camera moves smoothly: 10 states a second are plenty
@@ -30,10 +31,49 @@ const BUF = 24;              // snapshots kept per friend
 const WORLD_POLL = 0.25;     // s between checks of the shared world for a local change
 const LANTERN_DROP = 0.45;   // the lantern hangs this far below the visitor's eye (m)
 
-export const roomFromURL = () => {
-	const r = new URLSearchParams( location.search ).get( 'sala' );
-	return r && /^[a-z0-9-]{3,40}$/i.test( r ) ? r : null;
+// The Nostr relays that introduce the visitors. Trystero's default is 5 of its list drawn by the app id,
+// and for ours 3 of those 5 were down and the other 2 slow (07/10/2026: two friends never met). These 8
+// each carried a test room on their own in 3-5 s (node tools/relays.mjs checks them again); every
+// visitor talks to all of them, so a few going down does not keep anyone apart. ?relays=a,b overrides.
+const RELAYS = [
+	'wss://nos.lol',
+	'wss://relay.primal.net',
+	'wss://nostr.mom',
+	'wss://nostr.oxtr.dev',
+	'wss://basspistol.org',
+	'wss://nostr-01.uid.ovh',
+	'wss://bucket.coracle.social',
+	'wss://nostr-relay.corb.net'
+];
+const relayList = () => {
+	const q = new URLSearchParams( location.search ).get( 'relays' );
+	return q ? q.split( ',' ).map( ( h ) => h.trim() ).filter( Boolean ).map( ( h ) => ( h.startsWith( 'wss://' ) ? h : 'wss://' + h ) ) : RELAYS;
 };
+// Alone in a room, the visitor leaves and joins it again this often: after a few minutes alone a
+// Trystero room sometimes stopped hearing newcomers through the relays (tools/relays.mjs --late=300: 1
+// in 3-4 rooms left alone 4-5 min never met the next visitor; refreshing every 90 s, 6 of 6 met, 4 of
+// them only at the next refresh, ~26 s later: hence a shorter period).
+const REFRESH = 45;          // s
+const WAIT_HELP = 40;         // s alone in a room before the panel explains what to check
+// An optional TURN relay (none by default: the free public ones no longer answer, tested 07/10/2026):
+// with it, two visitors behind strict NATs (some mobile and corporate networks) still connect, through
+// it. Build-time variables (.env.local, or the repository's Actions variables in the deploy workflow):
+// VITE_TURN_URLS (comma separated), VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL; a free account at
+// metered.ca or Cloudflare's TURN gives them. They end up in the public site, as with any client TURN.
+const TURN = ( () => {
+	const env = import.meta.env || {};
+	const urls = String( env.VITE_TURN_URLS || '' ).split( ',' ).map( ( u ) => u.trim() ).filter( Boolean );
+	return urls.length ? [ { urls, username: env.VITE_TURN_USERNAME, credential: env.VITE_TURN_CREDENTIAL } ] : null;
+} )();
+
+// a room code from the address, or from what a visitor typed or pasted (the code, or the whole link)
+export const parseRoom = ( text ) => {
+	const t = String( text || '' ).trim();
+	const m = t.match( /[?&]sala=([a-z0-9-]{3,40})/i );
+	const r = m ? m[ 1 ] : t;
+	return /^[a-z0-9-]{3,40}$/i.test( r ) ? r.toLowerCase() : null;
+};
+export const roomFromURL = () => parseRoom( new URLSearchParams( location.search ).get( 'sala' ) );
 const newRoomId = () => Array.from( crypto.getRandomValues( new Uint8Array( 6 ) ), ( b ) => 'abcdefghjkmnpqrstuvwxyz23456789'[ b % 31 ] ).join( '' );
 const inviteURL = ( id ) => `${ location.origin }${ location.pathname }?sala=${ id }`;
 const r2 = ( x ) => Math.round( x * 100 ) / 100;
@@ -68,12 +108,26 @@ export class Multiplayer {
 		this.follow = false;          // joined from a link: fly to the first friend heard from
 		this.listeners = [];          // the panel follows the room
 		this.joinedAt = 0;
+		this.relays = { open: 0, total: 0 };   // the Nostr relays that introduce the visitors
+		this._relayAcc = 0;
+		this.banner = document.createElement( 'div' );
+		this.banner.id = 'mp-banner';
+		this.banner.hidden = true;
+		document.body.appendChild( this.banner );
+		this._title = document.title;
+		addEventListener( 'visibilitychange', () => { if ( ! document.hidden ) document.title = this._title; } );
 		this.group = new THREE.Group();
 		this.group.name = 'visitors';
 		this.tags = document.createElement( 'div' );
 		this.tags.id = 'mp-tags';
 		document.body.appendChild( this.tags );
 		addEventListener( 'pagehide', () => this.room?.leave() );
+		// alone for a while: join the room again (see REFRESH). By the wall clock, not the frames: the one
+		// who invites switches to another app to send the link, and the page stops drawing meanwhile; and at
+		// once on coming back after 30 s alone
+		const alone = ( s ) => this.room && ! this.peers.size && ! this._refreshing && performance.now() - this._enteredAt > s * 1000;
+		setInterval( () => { if ( alone( REFRESH ) ) this._refresh(); }, 5000 );
+		addEventListener( 'visibilitychange', () => { if ( ! document.hidden && alone( 30 ) ) this._refresh(); } );
 		app.onFrame.push( ( dt ) => this.update( dt ) );
 	}
 
@@ -84,11 +138,24 @@ export class Multiplayer {
 	}
 	get count() { return this.peers.size; }
 
-	// the panel's status line
+	// the panel's status line: the room's code, who is here, and while alone what is going on
 	get note() {
 		if ( ! this.room ) return '';
 		const names = [ ...this.peers.values() ].map( ( p ) => p.name ).filter( Boolean );
-		return `Sala <b>${ this.roomId }</b> · ` + ( names.length ? 'com ' + names.map( escapeHTML ).join( ', ' ) : 'esperando alguém abrir o link' );
+		const head = `Sala <b class="mp-code">${ this.roomId }</b> · `;
+		if ( names.length ) return head + 'com ' + names.map( escapeHTML ).join( ', ' );
+		const alone = ( performance.now() - this.joinedAt ) / 1000;
+		const { open, total } = this.relays;
+		if ( ! open ) {
+			return head + ( alone < 12 ? 'conectando aos servidores de encontro…'
+				: '<span class="mp-warn">sem acesso aos servidores de encontro</span>: esta rede pode estar bloqueando a conexão (tente outra rede ou desligue a VPN).' );
+		}
+		let t = head + `esperando alguém (${ open } de ${ total } servidores de encontro)`;
+		if ( alone > WAIT_HELP ) {
+			t += `<br><span class="mp-warn">Ninguém ainda?</span> Confiram se os dois estão na sala <b>${ this.roomId }</b> (quem não abriu o link pode entrar com o código, abaixo).`
+				+ ( TURN ? '' : ' Em redes diferentes, dados móveis ou Wi-Fi de empresa às vezes bloqueiam a conexão direta: tentem os dois no mesmo Wi-Fi ou num Wi-Fi de casa.' );
+		}
+		return t;
 	}
 
 	_changed() { for ( const f of this.listeners ) f(); }
@@ -99,8 +166,20 @@ export class Multiplayer {
 		this.follow = follow;
 		this.joinedAt = performance.now();
 		this._buildLanternMaterials();
-		const { joinRoom } = await import( 'trystero' );
-		const room = this.room = joinRoom( { appId: APP_ID }, id );
+		this._mod = this._mod || await import( 'trystero' );
+		this._enter( id );
+		this.expected = this._worldNow();
+		this._changed();
+	}
+
+	// the Trystero room and its actions (again on each refresh while alone)
+	_enter( id ) {
+		const config = { appId: APP_ID, relayConfig: { urls: relayList() } };
+		if ( TURN ) config.turnConfig = TURN;
+		const room = this.room = this._mod.joinRoom( config, id, {
+			onJoinError: ( d ) => { console.warn( 'multiplayer: join error', d ); this.app.hud?.toast( 'Falha ao conectar com um visitante: ' + d.error, 4000 ); }
+		} );
+		this._enteredAt = performance.now();
 		this.hello = room.makeAction( 'hi' );
 		this.state = room.makeAction( 'st' );
 		this.world = room.makeAction( 'w' );
@@ -109,8 +188,15 @@ export class Multiplayer {
 		this.hello.onMessage = ( h, { peerId } ) => this._onHello( peerId, h );
 		this.state.onMessage = ( s, { peerId } ) => this._onState( peerId, s );
 		this.world.onMessage = ( w, { peerId } ) => this._onWorld( peerId, w );
-		this.expected = this._worldNow();
-		this._changed();
+	}
+
+	async _refresh() {
+		const old = this.room, id = this.roomId;
+		this._refreshing = true;
+		try { await old.leave(); } catch ( e ) { /* gone already */ }
+		this._refreshing = false;
+		if ( this.room !== old || this.roomId !== id ) return; // left or moved meanwhile
+		this._enter( id );
 	}
 
 	// Convidar: open a room if there is none (its id goes into the address), then copy its link
@@ -131,10 +217,30 @@ export class Multiplayer {
 		return link;
 	}
 
+	// Entrar com código: the code or the link a friend sent; leaves the room this visitor is in first
+	async joinCode( text ) {
+		const id = parseRoom( text );
+		if ( ! id ) { this.app.hud?.toast( 'Código de sala inválido' ); return false; }
+		if ( id === this.roomId ) { this.app.hud?.toast( 'Você já está nessa sala' ); return true; }
+		const url = new URL( location.href ); url.searchParams.set( 'sala', id );
+		// a page that was in a room already keeps Trystero's peer id, and the others ignored it when it came
+		// back: a reload keeping the view (as opening the editor) gives a fresh one
+		if ( this.room || this._left ) {
+			url.searchParams.set( 'auto', '' );
+			reloadKeepingView( this.app, url.href.replace( /=(?=&|$)/g, '' ), 'Entrando na sala ' + id );
+			return true;
+		}
+		history.replaceState( null, '', url.href.replace( /=(?=&|$)/g, '' ) );
+		await this.join( id, { follow: true } );
+		this.app.hud?.toast( 'Na sala ' + id );
+		return true;
+	}
+
 	async leave() {
 		if ( ! this.room ) return;
 		const room = this.room;
 		this.room = null;
+		this._left = true;
 		for ( const id of [ ...this.peers.keys() ] ) this._drop( id, true );
 		const url = new URL( location.href ); url.searchParams.delete( 'sala' );
 		history.replaceState( null, '', url.href.replace( /=(?=&|$)/g, '' ) );
@@ -204,10 +310,39 @@ export class Multiplayer {
 		p.name = String( h?.name ?? '' ).slice( 0, 24 ) || 'Visitante';
 		p.since = +h?.since || 0;
 		p.tag.textContent = p.name;
-		if ( first ) this.app.hud?.toast( p.name + ' entrou na visita' );
+		if ( first ) this._arrived( peerId, p.name );
 		// the newcomer takes the world of whoever has been in the room longer
 		if ( first && this.shareWorld && h?.world && p.since > performance.now() - this.joinedAt ) this._applyWorld( h.world );
 		this._changed();
+	}
+
+	// A friend arrived: a banner at the top with a button to fly there, a soft chime (through the
+	// ambience's bus: the mute and volume of the options apply), and the tab's title when it is hidden.
+	_arrived( peerId, name ) {
+		const b = this.banner;
+		b.innerHTML = `<span class="mp-bell">✦</span> <b>${ escapeHTML( name ) }</b> entrou na visita <button type="button">Ir até</button><button type="button" class="mp-x" aria-label="Fechar">×</button>`;
+		b.querySelector( 'button' ).onclick = () => { this.goTo( peerId ); b.hidden = true; };
+		b.querySelector( '.mp-x' ).onclick = () => { b.hidden = true; };
+		b.hidden = false;
+		b.classList.remove( 'show' ); void b.offsetWidth; b.classList.add( 'show' );
+		clearTimeout( this._bannerT ); this._bannerT = setTimeout( () => { b.hidden = true; }, 9000 );
+		if ( document.hidden ) document.title = `✦ ${ name } entrou · ${ this._title }`;
+		this._chime();
+	}
+
+	_chime() {
+		const out = this.app.ambience?.output?.();
+		if ( ! out || this.app.settings?.muted ) return;
+		const { ctx, destination } = out, t = ctx.currentTime;
+		for ( const [ f, d ] of [ [ 784, 0 ], [ 1175, 0.14 ] ] ) {
+			const o = ctx.createOscillator(), g = ctx.createGain();
+			o.type = 'sine'; o.frequency.value = f;
+			g.gain.setValueAtTime( 0, t + d );
+			g.gain.linearRampToValueAtTime( 0.12, t + d + 0.02 );
+			g.gain.exponentialRampToValueAtTime( 0.0001, t + d + 1.2 );
+			o.connect( g ).connect( destination );
+			o.start( t + d ); o.stop( t + d + 1.3 );
+		}
 	}
 
 	_onState( peerId, s ) {
@@ -296,6 +431,17 @@ export class Multiplayer {
 	update( dt ) {
 		if ( ! this.room ) return;
 		const app = this.app, cam = app.camera;
+		// the relays' sockets, once a second, for the panel (and its status while alone)
+		this._relayAcc += dt;
+		if ( this._relayAcc > 1 ) {
+			this._relayAcc = 0;
+			let open = 0, total = 0;
+			try { for ( const ws of Object.values( this._mod?.getRelaySockets?.() || {} ) ) { total ++; if ( ws?.readyState === 1 ) open ++; } } catch ( e ) { /* another Trystero */ }
+			const changed = open !== this.relays.open || total !== this.relays.total;
+			this.relays = { open, total };
+			// alone: the status line moves on with the time (connecting, waiting, the help)
+			if ( changed || ! this.peers.size ) this._changed();
+		}
 		// our state
 		this.sendAcc += dt;
 		if ( this.sendAcc >= 1 / SEND_HZ && this.peers.size ) {

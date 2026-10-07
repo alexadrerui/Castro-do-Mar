@@ -6,7 +6,7 @@
 import puppeteer from 'puppeteer-core';
 
 const prefix = process.argv.slice( 2 ).find( ( x ) => ! x.startsWith( '--' ) ) || 'mp';
-const BASE = 'http://localhost:5190/';
+const BASE = ( process.argv.find( ( a ) => a.startsWith( '--base=' ) ) || '--base=http://localhost:5190/' ).slice( 7 );
 const browser = await puppeteer.launch( {
 	executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: 'new', protocolTimeout: 900000,
 	args: [ '--enable-unsafe-webgpu', '--enable-features=Vulkan,WebGPU', '--use-angle=d3d11', '--ignore-gpu-blocklist', '--window-size=1280,720' ],
@@ -22,7 +22,7 @@ async function visitor( label, url ) {
 	await ctx.overridePermissions( new URL( BASE ).origin, [ 'clipboard-read', 'clipboard-write', 'clipboard-sanitized-write' ] );
 	const page = await ctx.newPage();
 	page.on( 'pageerror', ( e ) => errors.push( label + ': ' + String( e ).slice( 0, 300 ) ) );
-	page.on( 'console', ( m ) => { if ( m.type() === 'error' && ! /404|Failed to load resource|WebSocket|wss:/.test( m.text() ) ) errors.push( label + ': ' + m.text().slice( 0, 300 ) ); } );
+	page.on( 'console', ( m ) => { if ( m.type() === 'error' && ! /404|Failed to load resource|WebSocket|wss:|User-Initiated Abort/.test( m.text() ) ) errors.push( label + ': ' + m.text().slice( 0, 300 ) ); } );
 	page.on( 'dialog', ( d ) => d.accept() );
 	await page.goto( url, { waitUntil: 'domcontentloaded' } );
 	await page.waitForFunction( () => window.__app?.ready && window.__app.mp, { timeout: 300000, polling: 500 } );
@@ -48,8 +48,13 @@ let a = await state( A );
 const link = await A.evaluate( () => navigator.clipboard.readText().catch( () => '' ) );
 console.log( 'A', JSON.stringify( a ), 'link', link );
 check( 'Convidar: room in the address and the link copied', !! a.room && a.url.includes( 'sala=' + a.room ) && link.endsWith( '?sala=' + a.room ) );
-check( 'panel open, "esperando"', a.panel && /esperando/.test( a.note ) );
+await settle( 4000 );
+a = await state( A );
+check( 'panel open, waiting, the relays counted', a.panel && /esperando alguém \(\d+ de \d+ servidores/.test( a.note ), a.note );
 
+// --late=s: Alice waits alone that long before Bruno opens the link (the room's refresh, core/multiplayer.js)
+const late = +( ( process.argv.find( ( x ) => x.startsWith( '--late=' ) ) || '--late=0' ).slice( 7 ) );
+if ( late ) { console.log( `A alone for ${ late } s` ); await settle( late * 1000 ); }
 console.log( 'B: loading from the link' );
 const t0 = Date.now();
 const B = await visitor( 'B', link + '&auto' );
@@ -63,6 +68,9 @@ await settle( 3500 );
 a = await state( A ); let b = await state( B );
 console.log( 'A', JSON.stringify( a ) ); console.log( 'B', JSON.stringify( b ) );
 check( 'B sees Alice', b.peers[ 0 ]?.name === 'Alice' && /Alice/.test( b.note ) && /Alice/.test( b.list ) );
+const banner = await A.evaluate( () => { const el = document.getElementById( 'mp-banner' ); return el.hidden ? '' : el.textContent; } );
+check( 'A: the banner announces the arrival', /entrou na visita/.test( banner ), banner );
+await A.screenshot( { path: `shots/${ prefix }_banner.png`, clip: { x: 280, y: 40, width: 720, height: 90 } } );
 check( 'B flew to Alice (< 12 m)', dist( b.cam, a.cam ) < 12, dist( b.cam, a.cam ).toFixed( 1 ) + ' m' );
 check( "Alice's lantern under her camera", b.peers[ 0 ]?.at && dist( b.peers[ 0 ].at, [ a.cam[ 0 ], a.cam[ 1 ] - 0.45, a.cam[ 2 ] ] ) < 0.3 );
 check( 'the newcomer took the older world (hour)', Math.abs( b.hour - a.hour ) < 0.02, `${ a.hour } / ${ b.hour }` );
@@ -108,6 +116,21 @@ await B.click( '#b-mpleave' );
 check( 'A sees B leave', await waitFor( A, () => window.__app.mp.peers.size === 0, null, 20000 ) );
 b = await state( B );
 check( 'B: out of the room, address clean', ! b.room && ! b.url.includes( 'sala' ) && ! b.panel );
+
+// back by the code typed in the panel
+await B.type( '#i-room', a.room );
+// (a page that was in a room reloads to join another: a fresh peer id)
+await Promise.all( [ B.waitForNavigation( { waitUntil: 'domcontentloaded' } ), B.click( '#b-join' ) ] );
+await B.waitForFunction( () => window.__app?.ready && window.__app.mp, { timeout: 300000, polling: 500 } );
+const back = await waitFor( A, () => window.__app.mp.peers.size === 1 && [ ...window.__app.mp.peers.values() ][ 0 ].name, null, 120000 );
+check( 'B back by the code, A sees it', back );
+if ( true ) {
+	const diag = ( P ) => P.evaluate( () => { const m = window.__app.mp; return { room: m.roomId, relays: m.relays, peers: [ ...m.peers.values() ].map( ( p ) => p.name ), trystero: Object.keys( m.room?.getPeers?.() || {} ).length, url: location.search }; } );
+	console.log( '  A', JSON.stringify( await diag( A ) ) );
+	console.log( '  B', JSON.stringify( await diag( B ) ) );
+}
+b = await state( B );
+check( 'B: the room in the address again', b.room === a.room && b.url.includes( 'sala=' + a.room ) );
 
 check( 'no errors', errors.length === 0, errors.join( ' | ' ) );
 await browser.close();

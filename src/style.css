@@ -167,3 +167,17 @@ body.is-touch .keys { display: none; }
 #touch-ui .t-btn { width: 58px; height: 58px; border-radius: 50%; border: 1.5px solid rgba(230,201,135,.55); background: rgba(12,10,6,.45); color: #f3e3bd; font: 600 20px Inter, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
 #touch-ui .t-btn.on { background: rgba(201,164,92,.5); color: #1a140a; }
 body.clean #touch-ui { display: none; }
+
+/* shared visit: joining by code, the status, and the banner when a friend arrives */
+.mp-join { display: flex; gap: 6px; margin: 2px 0 6px; }
+.mp-join input.txt { margin-top: 0; flex: 1; min-width: 0; }
+.mp-code { font-family: ui-monospace, Consolas, monospace; letter-spacing: .06em; color: var(--gold-2); }
+.mp-warn { color: #f0c36a; font-weight: 600; }
+#mp-banner { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-radius: 12px; background: rgba(20,16,8,.86); border: 1px solid #e6c987; box-shadow: 0 8px 30px rgba(0,0,0,.45), 0 0 24px rgba(230,201,135,.25); color: #f3e3bd; font: 500 14px Inter, sans-serif; white-space: nowrap; max-width: calc(100vw - 32px); }
+#mp-banner[hidden] { display: none; }
+#mp-banner.show { animation: mp-in .45s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes mp-in { from { opacity: 0; transform: translate(-50%, -14px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+#mp-banner b { color: var(--gold-2); }
+#mp-banner .mp-bell { color: var(--gold-2); font-size: 16px; }
+#mp-banner button { font: 600 12px Inter, sans-serif; padding: 5px 10px; border-radius: 7px; border: 1px solid #e6c987; background: linear-gradient(#b48c45, #7d5f2a); color: #1a140a; cursor: pointer; }
+#mp-banner button.mp-x { background: transparent; color: #cdb98d; border-color: rgba(230,201,135,.35); padding: 4px 8px; }

@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, cameraPosition, time, reflector,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, pow, dot, normalize, reflect, length, sin,
-	mx_noise_float, pmremTexture, vec4
+	mx_noise_float, pmremTexture, vec4, exp
 } from 'three/tsl';
 import { PlanarReprojection } from './planarReprojection.js';
 import { rainRipples } from './rainImpacts.js';
@@ -64,12 +64,16 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		waveStrength: uniform( opts.waveStrength ?? 0.4 ),
 		foam: uniform( opts.foam ?? 1 ), // the surf at the shore (a still lake: a thin wet line)
 		foamLight: uniform( new THREE.Color( 1, 1, 1 ) ), // the light on the foam (main.js: dim at night; it glowed white)
-		reflectivity: uniform( 1.0 )
+		reflectivity: uniform( 1.0 ),
+		// how fast the water hides the bed (1/m along the light's path down and back up to the eye)
+		absorb: uniform( 0.12 )
 	};
 
 	const mat = new THREE.MeshBasicNodeMaterial();
 	mat.transparent = true;
 	mat.depthWrite = true;
+	// the colour below is premultiplied (reflection on top, the bed through what the water lets pass)
+	mat.premultipliedAlpha = true;
 	mat.name = 'WaterTSL';
 
 	const geo = opts.geometry ?? new THREE.PlaneGeometry( 36000, 36000, 1, 1 );
@@ -140,10 +144,35 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		reflNode = pmremTexture( opts.envMap, reflect( V.negate(), N ), float( 0.04 ) ).rgb.mul( U.envGain );
 	}
 
+	// The bed in the shallows, after offroad's water.js (https://github.com/alexadrerui/offroad, MIT,
+	// Copyright (c) 2026 Arz-Gev, licenses/LICENSE-offroad.md): the depth comes from the height texture
+	// (no depth pre-pass), the light that reaches the bed and comes back is T = exp(-absorb * depth *
+	// (1 + 1/cos)) (down from the surface, back up along the view: more water at a grazing look), and
+	// the Fresnel reflection lies on top at its full strength (premultiplied blending): what shows of
+	// the bed is (1 - kR) T; the water's own colour is the light it scatters, (1 - kR)(1 - T). Over deep
+	// water T = 0 and this is the old mix of body and reflection; before, the shallows were a fixed
+	// opacity (0.18 at the shore to 1 at 5.5 m) that also faded the reflection there.
+	const cosV = max( dot( V, N ), 0.0 );
+	const fres = float( 0.02 ).add( float( 0.98 ).mul( pow( float( 1 ).sub( cosV ), 5.0 ) ) );
+	// wind patches read mostly through the reflection: calm slicks are a bright mirror, the
+	// rippled patches scatter it and show more of the darker water body
+	const kR = clamp( fres.mul( 1.15 ).add( 0.06 ), 0.0, 1.0 ).mul( U.reflectivity ).mul( mix( 1.0, 0.62, windField ) ).mul( reflWeight );
+	// the view's path under the surface follows the refracted ray (index 1.33: steeper than the look)
+	const cosR = float( 1 ).sub( float( 1 ).sub( cosV.mul( cosV ) ).div( 1.78 ) ).sqrt();
+	const trans = exp( U.absorb.mul( depth ).mul( float( 1 ).add( float( 1 ).div( cosR ) ) ).negate() );
+	// the shoreline foam (bands travelling towards the shore): opaque, over everything
+	const foam = Fn( () => {
+		const fn = mx_noise_float( wp.xz.mul( 0.35 ).add( time.mul( 0.08 ) ) ).mul( 0.5 ).add( 0.5 );
+		const band = sin( depth.mul( 9.0 ).sub( time.mul( 1.7 ) ).add( fn.mul( 5.0 ) ) ).mul( 0.5 ).add( 0.5 );
+		const f = smoothstep( 0.0, 1.1, depth ).oneMinus().mul( smoothstep( 0.55, 0.95, band ).mul( 0.6 ).add( smoothstep( 0.0, 0.35, depth ).oneMinus() ) ).mul( fn.mul( 0.6 ).add( 0.5 ) );
+		// (x 0.5: the foam is opaque now; before, the shallows' low opacity also thinned it)
+		return clamp( f.mul( U.foam ).mul( 0.5 ), 0, 0.9 );
+	} )();
+	// what of the water is not see-through: the reflection, the scattered light (the foam on top)
+	const cover = kR.add( kR.oneMinus().mul( trans.oneMinus() ) );
+
 	mat.colorNode = Fn( () => {
 		const L = normalize( U.sunDir );
-		const cosT = max( dot( V, N ), 0.0 );
-		const fres = float( 0.02 ).add( float( 0.98 ).mul( pow( float( 1 ).sub( cosT ), 5.0 ) ) );
 
 		// body colour by depth (turquoise over sand -> deep teal/navy)
 		const body = mix( U.shallow, U.mid, smoothstep( 0.8, 3.5, depth ) ).toVar();
@@ -152,31 +181,21 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		const bodyLit = body.mul( U.sunColor ).mul( diffuse );
 
 		const reflCol = reflNode.min( vec3( 1.1 ) );
-		// wind patches read mostly through the reflection: calm slicks are a bright mirror, the
-		// rippled patches scatter it and show more of the darker water body
-		const kR = clamp( fres.mul( 1.15 ).add( 0.06 ), 0.0, 1.0 ).mul( U.reflectivity ).mul( mix( 1.0, 0.62, windField ) ).mul( reflWeight );
-		const col = mix( bodyLit, reflCol, kR ).toVar();
+		// premultiplied: the reflection, plus the light the water body scatters back
+		const col = reflCol.mul( kR ).add( bodyLit.mul( kR.oneMinus() ).mul( trans.oneMinus() ) ).toVar();
 
 		// sun glitter
 		const R = reflect( L.negate(), N );
 		const spec = pow( max( dot( R, V ), 0.0 ), 420.0 ).mul( 9.0 ).add( pow( max( dot( R, V ), 0.0 ), 60.0 ).mul( 0.25 ) );
 		col.addAssign( U.sunColor.mul( spec ) );
 
-		// shoreline foam: bands travelling towards the shore
-		const fn = mx_noise_float( wp.xz.mul( 0.35 ).add( time.mul( 0.08 ) ) ).mul( 0.5 ).add( 0.5 );
-		const band = sin( depth.mul( 9.0 ).sub( time.mul( 1.7 ) ).add( fn.mul( 5.0 ) ) ).mul( 0.5 ).add( 0.5 );
-		const foam = smoothstep( 0.0, 1.1, depth ).oneMinus().mul( smoothstep( 0.55, 0.95, band ).mul( 0.6 ).add( smoothstep( 0.0, 0.35, depth ).oneMinus() ) ).mul( fn.mul( 0.6 ).add( 0.5 ) );
-		col.assign( mix( col, vec3( 0.92, 0.95, 0.95 ).mul( U.foamLight ), clamp( foam.mul( U.foam ), 0, 0.9 ) ) );
+		// the foam over it (premultiplied: its colour at its own coverage)
+		col.assign( mix( col, vec3( 0.92, 0.95, 0.95 ).mul( U.foamLight ), foam ) );
 		return col;
 	} )();
 
-	// transparency in the shallows lets the seabed show through
-	mat.opacityNode = Fn( () => {
-		const cosT = max( dot( V, N ), 0.0 );
-		const fres = pow( float( 1 ).sub( cosT ), 3.0 );
-		const a = mix( 0.18, 1.0, smoothstep( 0.0, 5.5, depth ) );
-		return clamp( a.add( fres.mul( 0.5 ) ), 0.0, 1.0 );
-	} )();
+	// the bed shows through what the water lets pass: alpha is what covers it
+	mat.opacityNode = mix( cover, float( 1 ), foam );
 
 	// The sun's shadow on the water (hills, fort, houses). The water computes its own shading and
 	// receives no light, so the shadow is a thin layer just above it drawn with three's
