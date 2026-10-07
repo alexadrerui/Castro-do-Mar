@@ -43,6 +43,8 @@ import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
 import { Kuwahara } from './post/kuwahara.js';
 import { AutoExposure } from './post/autoExposure.js';
+import { DynamicResolution } from './core/dynamicRes.js';
+import { TouchControls } from './controls/touch.js';
 import { KEYS as LOOK_KEYS, lookAt, refreshLook } from './world/look.js';
 import { createSunShadows } from './world/sunShadows.js';
 import { generateFields } from './world/genFields.js';
@@ -349,7 +351,7 @@ async function main() {
 		const v = app.views[ i ];
 		cam.jumpTo( new THREE.Vector3( ...v.pos ), new THREE.Vector3( ...v.target ) );
 	};
-	app.setPixelRatio = ( v ) => { app.pixelRatio = v; dyn.scale = 1; renderer.setPixelRatio( v ); };
+	app.setPixelRatio = ( v ) => { app.pixelRatio = v; app.dynRes?.set( 1 ); renderer.setPixelRatio( v ); };
 	// Shadows off: the shadow's intensity goes to 0 and its map stops being redrawn (the cost goes with
 	// it). Toggling castShadow broke the renderer: three r186 disposes the light's shadow map, and the
 	// shadow node, still in the compiled materials, read the disposed map when the light cast again
@@ -432,6 +434,9 @@ async function main() {
 	// after each frame; 1 by day, adaptive from the sunset on (onSunChanged)
 	const exposure = new AutoExposure( scenePass.renderTarget.texture );
 	app.exposure = exposure;
+	// dynamic resolution (core/dynamicRes.js): the scene pass drawn at fewer pixels when the frame rate drops
+	const dynRes = new DynamicResolution( scenePass );
+	app.dynRes = dynRes;
 	app.scenePass = scenePass;
 	const grade = uniform( 1.0 );
 	app.grade = grade;
@@ -676,8 +681,9 @@ async function main() {
 
 	app.capture = async ( name = 'shot', w = 1600, h = 900 ) => {
 		app.water.reflection?.invalidate(); // a fresh reflection for the shot
-		const prev = { w: innerWidth, h: innerHeight, pr: renderer.getPixelRatio() };
+		const prev = { w: innerWidth, h: innerHeight, pr: renderer.getPixelRatio(), scale: scenePass.getResolutionScale() };
 		renderer.setPixelRatio( 1 ); renderer.setSize( w, h, false );
+		scenePass.setResolutionScale( 1 ); // a shot at full resolution, whatever the dynamic resolution did
 		camera.aspect = w / h; camera.updateProjectionMatrix();
 		for ( const f of app.onFrame ) f( 0 );
 		terrain.update( camera );
@@ -689,6 +695,7 @@ async function main() {
 		app.renderFrame();
 		const blob = await new Promise( ( r ) => canvas.toBlob( r, 'image/png' ) );
 		renderer.setPixelRatio( prev.pr ); renderer.setSize( prev.w, prev.h, false );
+		scenePass.setResolutionScale( prev.scale );
 		camera.aspect = prev.w / prev.h; camera.updateProjectionMatrix();
 		app.lastCaptureBlob = blob; // tools/verify.mjs measures it
 		await fetch( '/__capture?name=' + encodeURIComponent( name ), { method: 'POST', body: blob } );
@@ -880,6 +887,8 @@ async function main() {
 	// visiting together (core/multiplayer.js): a room from the invite link (?sala=), peer to peer
 	app.mp = new Multiplayer( app );
 	hud.bindMultiplayer( app.mp );
+	// phones and tablets (controls/touch.js): a stick and up / down buttons, shown on the first touch
+	app.touch = new TouchControls( app );
 	const room = roomFromURL();
 	// opened from a link: fly to the first friend heard from (not after a reload that keeps the view)
 	let keepView = false;
@@ -912,7 +921,8 @@ async function main() {
 	let firstFrame = true;
 	renderer.setAnimationLoop( () => {
 		timer.update();
-		const dt = Math.min( timer.getDelta(), 0.1 );
+		const rawDt = timer.getDelta();
+		const dt = Math.min( rawDt, 0.1 );
 		app.frameDt = dt;
 		cam.update( dt );
 		terrain.update( camera );
@@ -925,7 +935,8 @@ async function main() {
 		app.renderFrame();
 		if ( firstFrame ) { firstFrame = false; console.info( 'first frame (ms)', Math.round( performance.now() - tf ) ); }
 		hud.update( dt, camera, renderer.info, cam.moveSpeed );
-		adaptResolution( dt );
+		dynRes.enabled = app.dynamicRes;
+		dynRes.update( rawDt );
 	} );
 
 	loader.finish( () => hud.show(), AUTO );
@@ -935,21 +946,6 @@ async function main() {
 }
 
 const tmpV = new THREE.Vector3(), tmpC = new THREE.Vector3();
-
-// Dynamic resolution: trade pixels for frame rate, never above the user's choice.
-const dyn = { acc: 0, n: 0, scale: 1 };
-function adaptResolution( dt ) {
-	if ( ! app.dynamicRes ) return;
-	dyn.acc += dt; dyn.n ++;
-	if ( dyn.acc < 1.0 ) return;
-	const fps = dyn.n / dyn.acc;
-	dyn.acc = 0; dyn.n = 0;
-	const max = app.pixelRatio;
-	if ( fps < 27 && dyn.scale > 0.55 ) dyn.scale = Math.max( 0.55, dyn.scale - 0.1 );
-	else if ( fps > 48 && dyn.scale < 1 ) dyn.scale = Math.min( 1, dyn.scale + 0.05 );
-	else return;
-	app.renderer.setPixelRatio( max * dyn.scale );
-}
 
 // Move the sun + target with the camera, snapped to shadow texels to avoid shimmering.
 export { color, mix, smoothstep, normalize, cameraPosition, dot };

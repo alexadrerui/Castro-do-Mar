@@ -80,6 +80,8 @@ export class HUD {
 			if ( n >= 1 && n <= app.views.length ) app.goView( n - 1 );
 		} );
 		$( 'st-backend' ).textContent = app.backendName;
+		// the dynamic resolution's scale (core/dynamicRes.js), shown while below 100%
+		app.dynRes?.listeners.push( ( k ) => { const el = $( 'st-res' ); el.hidden = k >= 1; el.textContent = Math.round( k * 100 ) + '% res'; } );
 	}
 
 	show() { this.root.hidden = false; }

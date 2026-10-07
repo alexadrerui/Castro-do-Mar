@@ -5,6 +5,9 @@ import * as THREE from 'three/webgpu';
 //  - Shift: boost                   - wheel while looking: speed, otherwise dolly
 //  - middle drag: pan               - Alt + left drag: orbit around pivot
 //  - F: frame pivot
+// Touch (controls/touch.js puts a stick and up/down buttons over the canvas): one finger on the view
+// looks, two fingers pinch to fly forward and back (and drag together to look); `analog` is the
+// stick's move (x right, y up, z back, -1..1), added to the keys.
 export class FreeCam {
 
 	constructor( camera, dom, opts = {} ) {
@@ -27,6 +30,10 @@ export class FreeCam {
 		this.vel = new THREE.Vector3();
 		this.pivot = new THREE.Vector3();
 		this.keys = new Set();
+		this.analog = new THREE.Vector3();   // the touch stick and buttons (controls/touch.js)
+		this.touchBoost = false;
+		this.touches = new Map();            // pointerId -> { x, y } of fingers on the view
+		this.touchLook = 1.8;                // a finger turns the view faster than the mouse
 		this.mode = null; // 'look' | 'pan' | 'orbit'
 		this.last = { x: 0, y: 0 };
 		this.tween = null;
@@ -56,6 +63,7 @@ export class FreeCam {
 
 	_down( e ) {
 		if ( ! this.enabled ) return;
+		if ( e.pointerType === 'touch' ) return this._touchDown( e );
 		this.tween = null;
 		if ( e.button === 0 && ! e.altKey && ( ! this.leftLook || this.leftBlocker?.( e ) ) ) return;
 		if ( e.button === 2 || ( e.button === 0 && ! e.altKey ) ) this.mode = 'look';
@@ -67,6 +75,7 @@ export class FreeCam {
 	}
 
 	_move( e ) {
+		if ( e.pointerType === 'touch' && this.touches.has( e.pointerId ) ) return this._touchMove( e );
 		if ( ! this.mode ) return;
 		const dx = e.clientX - this.last.x, dy = e.clientY - this.last.y;
 		this.last.x = e.clientX; this.last.y = e.clientY;
@@ -94,9 +103,50 @@ export class FreeCam {
 		}
 	}
 
-	_up() {
+	_up( e ) {
+		if ( e?.pointerType === 'touch' ) return this._touchUp( e );
 		this.mode = null;
 		this.dom.classList.remove( 'dragging' );
+	}
+
+	// ---- touch: one finger looks; two pinch (fly along the view) and look with their midpoint
+	_touchDown( e ) {
+		if ( ! this.leftLook ) return; // an editor tool has the finger
+		this.tween = null;
+		this.touches.set( e.pointerId, { x: e.clientX, y: e.clientY } );
+		this.dom.setPointerCapture?.( e.pointerId );
+		this._pinch = this.touches.size === 2 ? this._spread() : null;
+	}
+
+	_spread() {
+		const [ a, b ] = [ ...this.touches.values() ];
+		return { d: Math.hypot( a.x - b.x, a.y - b.y ), x: ( a.x + b.x ) / 2, y: ( a.y + b.y ) / 2 };
+	}
+
+	_touchMove( e ) {
+		const t = this.touches.get( e.pointerId );
+		const dx = e.clientX - t.x, dy = e.clientY - t.y;
+		t.x = e.clientX; t.y = e.clientY;
+		if ( this.touches.size === 1 ) {
+			this._turn( dx, dy, this.touchLook );
+		} else if ( this.touches.size === 2 && this._pinch ) {
+			const p = this._spread();
+			// spreading the fingers flies forward: ~ the move speed per 100 px
+			const fwd = new THREE.Vector3( 0, 0, - 1 ).applyQuaternion( this.camera.quaternion );
+			this.camera.position.addScaledVector( fwd, ( p.d - this._pinch.d ) * this.moveSpeed * 0.01 );
+			this._turn( p.x - this._pinch.x, p.y - this._pinch.y, this.touchLook * 0.6 );
+			this._pinch = p;
+		}
+	}
+
+	_touchUp( e ) {
+		this.touches.delete( e.pointerId );
+		this._pinch = this.touches.size === 2 ? this._spread() : null;
+	}
+
+	_turn( dx, dy, k ) {
+		this.yaw -= dx * this.lookSpeed * k;
+		this.pitch = Math.max( - 1.55, Math.min( 1.55, this.pitch - dy * this.lookSpeed * k ) );
 	}
 
 	_wheel( e ) {
@@ -159,7 +209,10 @@ export class FreeCam {
 			( k.has( 'KeyE' ) || k.has( 'Space' ) ? 1 : 0 ) - ( k.has( 'KeyQ' ) || k.has( 'ControlLeft' ) ? 1 : 0 ),
 			( k.has( 'KeyS' ) || k.has( 'ArrowDown' ) ? 1 : 0 ) - ( k.has( 'KeyW' ) || k.has( 'ArrowUp' ) ? 1 : 0 )
 		);
-		const speed = this.moveSpeed * ( k.has( 'ShiftLeft' ) || k.has( 'ShiftRight' ) ? this.boost : 1 );
+		// the touch stick and buttons (analog, -1..1)
+		input.add( this.analog );
+		input.x = Math.max( - 1, Math.min( 1, input.x ) ); input.y = Math.max( - 1, Math.min( 1, input.y ) ); input.z = Math.max( - 1, Math.min( 1, input.z ) );
+		const speed = this.moveSpeed * ( k.has( 'ShiftLeft' ) || k.has( 'ShiftRight' ) || this.touchBoost ? this.boost : 1 );
 		let wish;
 		if ( this.planar ) {
 			// looking down, "forward" is up on the screen: the heading (yaw), not the view direction
@@ -169,7 +222,8 @@ export class FreeCam {
 			wish = new THREE.Vector3( input.x, 0, input.z ).applyQuaternion( cam.quaternion );
 			wish.y += input.y;
 		}
-		if ( wish.lengthSq() > 0 ) wish.normalize().multiplyScalar( speed );
+		// full speed for keys; a stick pushed half way flies at half speed
+		if ( wish.lengthSq() > 0 ) wish.normalize().multiplyScalar( speed * Math.min( 1, input.length() ) );
 
 		const damp = Math.pow( this.damping, dt * 60 );
 		this.vel.lerp( wish, 1 - damp );

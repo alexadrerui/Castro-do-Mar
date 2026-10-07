@@ -151,3 +151,19 @@ body.clean #hud { display: none; }
 .mp-tag { position: absolute; left: 0; top: 0; padding: 2px 8px 3px; border-radius: 10px; background: rgba(12,10,6,.55); border: 1px solid rgba(230,201,135,.45); color: #f3e3bd; font: 600 12px Inter, sans-serif; white-space: nowrap; text-align: center; text-shadow: 0 1px 2px #000; will-change: transform; }
 .mp-tag small { display: block; font-weight: 500; font-size: 10px; color: #cdb98d; }
 body.clean #mp-tags { display: none; }
+
+/* touch controls (controls/touch.js): a stick under the left thumb, up / down / fast on the right */
+#view { touch-action: none; }
+#touch-ui { display: none; }
+body.is-touch #touch-ui { display: block; }
+body.is-touch .keys { display: none; }
+#touch-ui .t-zone { position: fixed; left: 0; bottom: 0; width: 42vw; height: 52vh; z-index: 8; touch-action: none; }
+#touch-ui .t-hint { position: absolute; left: 22px; bottom: 74px; font: 500 11px Inter, sans-serif; color: rgba(239,230,210,.55); pointer-events: none; transition: opacity .3s; }
+#touch-ui .t-zone.active .t-hint { opacity: 0; }
+#touch-ui .t-base { position: absolute; width: 132px; height: 132px; margin: -66px 0 0 -66px; border-radius: 50%; border: 1.5px solid rgba(230,201,135,.5); background: radial-gradient(rgba(12,10,6,.25), rgba(12,10,6,.45)); pointer-events: none; }
+#touch-ui .t-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(230,201,135,.55); border: 1.5px solid #e6c987; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+#touch-ui .t-buttons { position: fixed; right: 72px; bottom: 64px; z-index: 8; display: grid; gap: 10px; }
+/* (right of it, the folded panel keeps a 42 px strip over the view) */
+#touch-ui .t-btn { width: 58px; height: 58px; border-radius: 50%; border: 1.5px solid rgba(230,201,135,.55); background: rgba(12,10,6,.45); color: #f3e3bd; font: 600 20px Inter, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+#touch-ui .t-btn.on { background: rgba(201,164,92,.5); color: #1a140a; }
+body.clean #touch-ui { display: none; }
