@@ -78,6 +78,7 @@ No topo do painel ficam as **Opções**: qualidade (Baixa, Média, Alta), áudio
 - Voo livre e mergulho.
 - Profundidade de campo com foco automático (raycast com BVH) ou pelo clique.
 - Gradação de cor de fim de tarde e, como opção, o modo pintura a óleo.
+- Exposição automática: do pôr do sol em diante o olho se adapta ao que vê (a face escura da mina clareia aos poucos, o céu enluarado escurece um pouco); de dia não muda nada.
 
 ## Editor (`?edit`)
 
@@ -99,6 +100,7 @@ Três abas compartilham o botão "Salvar e aplicar". No servidor de desenvolvime
 | `?nocache` | ignora o cache do IndexedDB |
 | `?rain=1` | começa chovendo (0 a 1) |
 | `?paint=1` | começa com a pintura a óleo |
+| `?autoexp=0` | sem exposição automática à noite |
 | `?clouds=0`, `?mist=0`, `?valley=0`, `?godrays=0`, `?scatter=0`, `?cloudshadow=0`, `?flora=0` | desligam nuvens volumétricas, brétema, névoa de vale, god rays, espalhamento na névoa, sombra das nuvens e flores do prado |
 | `?reflectms=0` | reflexo da água capturado a cada quadro |
 | `?perf` | timestamps de GPU |
@@ -123,7 +125,7 @@ Rodam no Edge headless com WebGPU, com o servidor de desenvolvimento no ar (`npm
 - `node tools/verify.mjs`: checagem de regressão da imagem em carga fria e com cache, comparada com `tools/verify.baseline.json`. Rode antes de publicar mudanças visuais.
 - `node tools/shoot.mjs <prefixo> [vistas]`: capturas em `shots/`.
 - `node tools/loadtime.mjs`, `shadercost.mjs`, `pipedup.mjs`, `abtest.mjs`: tempo de carga, custo de compilação de cada shader, pipelines criados depois da carga e A/B de tempo de quadro.
-- Testes específicos: `houses.mjs`, `trees.mjs`, `grass.mjs`, `rocks.mjs`, `birds.mjs`, `fish.mjs`, `dive.mjs`, `koi.mjs`, `river.mjs`, `lightning.mjs`, `multiplayer.mjs`, `terrainedit.mjs`, `objectedit.mjs`, `natureedit.mjs`, `clearing.mjs`.
+- Testes específicos: `houses.mjs`, `trees.mjs`, `grass.mjs`, `rocks.mjs`, `birds.mjs`, `fish.mjs`, `dive.mjs`, `koi.mjs`, `river.mjs`, `lightning.mjs`, `multiplayer.mjs`, `exposure.mjs`, `terrainedit.mjs`, `objectedit.mjs`, `natureedit.mjs`, `clearing.mjs`.
 
 O `CLAUDE.md` tem as notas técnicas: decisões, armadilhas do three r186 e do WebGPU, e pendências.
 
@@ -148,7 +150,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
 - **[Stylized Premium Scenes](https://github.com/CortizLabs/stylized-premium-patreon)** (MIT, Copyright (c) 2026 Christian Ortiz "Cortiz", em `licenses/LICENSE-Cortiz.md`): as gotas de chuva batendo, com anéis nas poças e na água e brilhos dos impactos (`src/world/rainImpacts.js`), a partir do `wetSurface.ts`, portado para TSL e adaptado; a ideia dos panos ao vento (`clothMaterial` em `src/world/materials.js`), do `windSway.ts`; e o modo pintura a óleo (`src/post/kuwahara.js`, Kuwahara anisotrópico, que ele adapta de Maxime Heckel).
 - **[three-geospatial / @takram/three-clouds](https://github.com/takram-design-engineering/three-geospatial/tree/main/packages/clouds)** (MIT, Copyright (c) 2024 Shota Matsuda, em `licenses/LICENSE-takram-clouds.md`): o modelo das nuvens volumétricas (camadas pelo mapa de clima, forma e detalhe, espalhamento múltiplo, integração por passo, filtro temporal), portado para TSL em `src/post/clouds.js`, e as texturas de forma, detalhe e clima (`public/clouds/`).
 - **[Folio 2025](https://github.com/brunosimon/folio-2025)** (MIT, Copyright (c) 2025 Bruno Simon, em `licenses/LICENSE-folio-2025.md`): a organização das opções do painel (qualidade, áudio, renderizador), em `src/core/settings.js`.
-- **[offroad](https://github.com/alexadrerui/offroad)** (MIT, Copyright (c) 2026 Arz-Gev, em `licenses/LICENSE-offroad.md`): o esquema da visita junto (sala pelo link, estados a 10 Hz, buffer com atraso, relógio estimado pelo menor atraso, extrapolação), em `src/core/multiplayer.js`.
+- **[offroad](https://github.com/alexadrerui/offroad)** (MIT, Copyright (c) 2026 Arz-Gev, em `licenses/LICENSE-offroad.md`): o esquema da visita junto (sala pelo link, estados a 10 Hz, buffer com atraso, relógio estimado pelo menor atraso, extrapolação), em `src/core/multiplayer.js`, e a exposição automática (luminância log média na GPU, adaptação em escala log com limites), em `src/post/autoExposure.js`.
 - **[Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX)** (MIT, Copyright (c) 2026 Sahil K, em `licenses/LICENSE-LightningVFX.md`): o raio com ramos, as rachaduras, as faíscas e a onda de choque (`src/world/lightning.js`), portados para TSL e adaptados.
 - **[AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool)** (Apache License 2.0, AndyLeAI): carpas koi e lótus de `src/world/koi/` (`koi.js`, `lotus.js`), adaptados. A licença está em `src/world/koi/LICENSE-AndyLePool`.
 - **[shader-studio](https://github.com/void032/shader-studio)** (MIT, Copyright (c) 2025 Vineet Kumar "void032", em `licenses/LICENSE-shader-studio.md`): o carimbo de relevo procedural (fbm e ilha) da ferramenta "Gerar" do editor.

@@ -42,6 +42,7 @@ import { bindSky, updateCloudSun, cloudShadowUniforms, clearCloudMap } from './w
 import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
 import { Kuwahara } from './post/kuwahara.js';
+import { AutoExposure } from './post/autoExposure.js';
 import { createSunShadows } from './world/sunShadows.js';
 import { generateFields } from './world/genFields.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
@@ -362,6 +363,7 @@ async function main() {
 	};
 	const _sunTint = new THREE.Color();
 	app.nightExposure = 1.5; // the exposure at night: x (1 + this)
+	app.autoExposure = params.get( 'autoexp' ) === '0' ? 0 : 1; // how much the eye adapts by itself where it does (0 = the fixed exposure; ?autoexp=0)
 	const _nightLit = new THREE.Color(), _nightAmb = new THREE.Color(), _smokeDay = new THREE.Color( 1, 0.95, 0.88 );
 	app.onSunChanged = () => {
 		sky.update( false );
@@ -384,6 +386,12 @@ async function main() {
 		// the eye adapts from the sunset on (phase 6): from the sun 8 degrees up, full 6 degrees down
 		const adapt = THREE.MathUtils.smoothstep( - e, - 8, 6 );
 		renderer.toneMappingExposure = 0.8 * ( 1 + app.nightExposure * adapt );
+		// and the automatic exposure takes over with it: by day the look as tuned, at dusk and night the
+		// eye adapts to what it looks at (moonlit clouds, a dark wood, the lit windows)
+		if ( app.exposure ) {
+			app.exposure.fixed.value = renderer.toneMappingExposure;
+			app.exposure.auto.value = adapt * app.autoExposure;
+		}
 		// things that are not lit by the lights but kept a fixed day colour, white at night: the
 		// shore's foam (water.js) and the chimney smoke (smoke.js, unlit sprites) take the moonlight
 		// and the night sky's grey (day: unchanged)
@@ -413,6 +421,11 @@ async function main() {
 	const post = new THREE.RenderPipeline( renderer );
 	post.outputColorTransform = false;
 	const scenePass = pass( scene, camera, { samples: 4 } );
+	// the eye's adaptation (post/autoExposure.js): a multiplier on the exposure, measured from the scene
+	// after each frame; 1 by day, adaptive from the sunset on (onSunChanged)
+	const exposure = new AutoExposure( scenePass.renderTarget.texture );
+	app.exposure = exposure;
+	app.scenePass = scenePass;
 	const grade = uniform( 1.0 );
 	app.grade = grade;
 
@@ -577,7 +590,7 @@ async function main() {
 		const misty = valley ? valley.apply( misty0 ) : misty0;
 		const src0 = godrays ? godrays.apply( misty ) : misty;
 		const src = withBloom ? src0.add( bloomPass.rgb ) : src0;
-		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV );
+		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV ).mul( exposure.texture.sample( vec2( 0.5 ) ).r );
 		const c = renderOutput( vec4( wetRGB, 1.0 ) ).toVar();
 		const rgb = c.rgb.toVar();
 		const luma = dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
@@ -638,6 +651,7 @@ async function main() {
 		// the clouds' shadow map (world/cloudShadow.js), read by the ground and by the clouds' pass
 		if ( clouds ) clouds.renderShadow( renderer );
 		post.render();
+		exposure.update( renderer, app.frameDt ?? 0 );
 	};
 
 	// GPU time per frame (needs ?perf for timestamp queries), at a fixed size.
@@ -664,6 +678,8 @@ async function main() {
 		focus.snap(); // the lens settled on this view, also with the loop paused
 		app.hud?.updateFocus( focus );
 		if ( app.shadowsOn ) app.shadows.markDirty();
+		// the eye adapted to this view at once (a frame to measure it)
+		if ( exposure.auto.value > 0.001 ) { exposure.settle(); app.renderFrame(); }
 		app.renderFrame();
 		const blob = await new Promise( ( r ) => canvas.toBlob( r, 'image/png' ) );
 		renderer.setPixelRatio( prev.pr ); renderer.setSize( prev.w, prev.h, false );
@@ -776,6 +792,8 @@ async function main() {
 		// and what only shows under the water (marine snow, the surface seen from below, the water's
 		// shadow layer from below...): one frame with the camera dived, every geometry drawing nothing
 		if ( compiled && ! params.has( 'nodiveprep' ) ) prepareDive();
+		// the automatic exposure's two passes, built now (by day they write 1 and then sleep)
+		exposure.warm( renderer );
 		// The sun's shadows off by default (03/10/2026, the user's choice): the terrain drawn into the
 		// three cascades every frame cost ~1.6 ms and took views 0 and 2 from 60 to ~55 FPS in the real
 		// window (tools/fps.mjs). Compiled above all the same, so the panel's "Sombras" (or ?shadows=1)
@@ -889,6 +907,7 @@ async function main() {
 	renderer.setAnimationLoop( () => {
 		timer.update();
 		const dt = Math.min( timer.getDelta(), 0.1 );
+		app.frameDt = dt;
 		cam.update( dt );
 		terrain.update( camera );
 		for ( const f of app.onFrame ) f( dt );

@@ -60,6 +60,8 @@ export class HUD {
 		$( 'c-refl' ).onchange = ( e ) => app.setReflections( e.target.checked );
 		$( 'c-focus' ).onchange = ( e ) => this.setFocus( e.target.checked );
 		$( 'c-bloom' ).onchange = ( e ) => { app.setBloom( e.target.checked ); this.toast( e.target.checked ? 'Brilho ligado' : 'Brilho desligado' ); };
+		$( 'c-autoexp' ).checked = app.autoExposure > 0;
+		$( 'c-autoexp' ).onchange = ( e ) => { app.autoExposure = e.target.checked ? 1 : 0; app.onSunChanged(); this.toast( e.target.checked ? 'Exposição automática ligada' : 'Exposição automática desligada' ); };
 		$( 'c-paint' ).checked = !! app.paint && new URLSearchParams( location.search ).get( 'paint' ) === '1';
 		$( 'c-paint' ).onchange = ( e ) => { app.setPaint( e.target.checked ); this.toast( e.target.checked ? 'Pintura a óleo ligada' : 'Pintura a óleo desligada' ); };
 
