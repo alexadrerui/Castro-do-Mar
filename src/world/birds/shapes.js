@@ -1,6 +1,7 @@
 // Copied from Tidewater (https://github.com/dgreenheck/tidewater, src/world/wildlife/BirdShapes.js,
 // three.js version at d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
-// Changes: a sixth species, the northern gannet (BIRD.GANNET, our own template, after the tern's).
+// Changes: two species of ours, after the tern's template: the northern gannet (BIRD.GANNET) and
+// the European shag (BIRD.SHAG).
 import * as THREE from 'three/webgpu';
 
 // Bird species and their shared-topology template.
@@ -20,7 +21,7 @@ import * as THREE from 'three/webgpu';
 // Legs are built in the shader from the posed knee / foot: A = ( side, segment, t, 8 ),
 // B = ( cos, sin, radius scale, 0 ), C = toe offset (feet).
 
-export const BIRD = { GULL: 0, TERN: 1, PELICAN: 2, FRIGATE: 3, SANDERLING: 4, GANNET: 5 };
+export const BIRD = { GULL: 0, TERN: 1, PELICAN: 2, FRIGATE: 3, SANDERLING: 4, GANNET: 5, SHAG: 6 };
 
 // body stations: [ z, y, half width, half height above, half height below ] from the tail base
 // to the forehead. neck: z range blending body -> head; pivot: neck joint (head rotation)
@@ -147,6 +148,29 @@ export const SPECIES = [
 		fold: { front: 0.14, tip: - 0.5, top: 0.062, h: 0.1, minX: 0.016 },
 		legs: { hip: [ 0.04, - 0.056, 0.0 ], tibia: 0.05, tarsus: 0.05, r: 0.007, toe: 0.07, web: 1 },
 		eye: [ 0.284, 0.062, 0.006 ],
+	},
+	// European shag (Gulosus aristotelis), ours: the tern's template made a cormorant (0.72 m long,
+	// 1 m across): a longer body, a long thin neck (the front stretched more), a thin hooked bill,
+	// short broad wings, a long rounded stiff tail and the legs set far back
+	{
+		name: 'european shag', length: 0.72, span: 1.0,
+		body: [
+			[ - 0.174, 0.018, 0.0208, 0.0117, 0.0117 ], [ - 0.1305, 0.009, 0.039, 0.0273, 0.0299 ], [ - 0.06525, 0.0, 0.0559, 0.0429, 0.0481 ],
+			[ 0.0145, 0.0, 0.0598, 0.0468, 0.052 ], [ 0.07975, 0.006, 0.052, 0.0429, 0.0468 ], [ 0.149, 0.0195, 0.0351, 0.0351, 0.0338 ],
+			[ 0.1953, 0.0315, 0.02431, 0.03315, 0.0232 ], [ 0.2436, 0.0375, 0.02431, 0.03094, 0.02099 ], [ 0.2898, 0.0345, 0.01878, 0.0221, 0.01657 ],
+			[ 0.3213, 0.0285, 0.01105, 0.01326, 0.01105 ],
+		],
+		neck: [ 0.12, 0.25 ], pivot: [ 0, 0.02, 0.105 ],
+		bill: { z: 0.3093, y: 0.028, len: 0.062, pitch: - 0.04, w: 0.0055, up: 0.006, low: 0.005, hook: 0.0045, gonys: 0, pouch: 0 },
+		tail: { z: - 0.168, y: 0.016, w: 0.022, len: [ 0.15, 0.148, 0.142, 0.13 ], spread: 0.3 },
+		wing: {
+			root: [ 0.035, 0.026, 0.03 ], span: 0.43, elbow: 0.24, wrist: 0.5, thick: [ 0.15, 0.08, 0.035 ],
+			le: [ [ 0, 0.05 ], [ 0.24, 0.058 ], [ 0.5, 0.05 ], [ 0.72, 0.02 ], [ 0.88, - 0.02 ], [ 1, - 0.07 ] ],
+			chord: [ [ 0, 0.17 ], [ 0.24, 0.17 ], [ 0.5, 0.16 ], [ 0.72, 0.13 ], [ 0.88, 0.09 ], [ 1, 0.025 ] ],
+		},
+		fold: { front: 0.09, tip: - 0.3, top: 0.04, h: 0.065, minX: 0.01 },
+		legs: { hip: [ 0.03, - 0.04, - 0.07 ], tibia: 0.045, tarsus: 0.05, r: 0.005, toe: 0.06, web: 1 },
+		eye: [ 0.2953, 0.04, 0.0042 ],
 	},
 ];
 

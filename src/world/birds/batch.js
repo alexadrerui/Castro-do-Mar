@@ -1,7 +1,7 @@
 // Adapted from Tidewater (https://github.com/dgreenheck/tidewater, src/world/wildlife/BirdBatch.js,
 // three.js version at d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
 // Changes: three's MeshStandardNodeMaterial; the plumage of the yellow-legged gull, the
-// sandwich tern and the northern gannet (the other species keep a neutral grey); no motion vectors or translucency term;
+// sandwich tern, the northern gannet and the European shag (the other species keep a neutral grey); no motion vectors or translucency term;
 // reversed smoothstep edges rewritten with oneMinus(). The previous-frame pose is still written
 // (the vertex stage computes it) but nothing reads it here.
 import * as THREE from 'three/webgpu';
@@ -321,15 +321,28 @@ export class BirdBatch {
 				c.assign( select( isBill, srgb( 0.68, 0.72, 0.78 ), c ) );
 				c.assign( select( isLeg, srgb( 0.12, 0.13, 0.13 ), c ) );
 
+			} ).ElseIf( species.equal( 6 ), () => {
+
+				// European shag (Gulosus aristotelis, adult): black all over with a green gloss on the back
+				// and the wing coverts (stronger where the feathers face up), a dark bill with the yellow
+				// gape at its base, black legs and feet
+				const black = srgb( 0.03, 0.035, 0.035 ), gloss = srgb( 0.07, 0.13, 0.1 );
+				const sheen = smoothstep( 0.0, 0.7, N.y ).mul( select( isWing, smoothstep( 0.0, 0.5, u ).oneMinus(), float( 1 ) ) );
+				c.assign( mix( black, gloss, sheen ) );
+				c.assign( select( isBill, mix( srgb( 0.92, 0.75, 0.2 ), srgb( 0.06, 0.06, 0.06 ), smoothstep( 0.08, 0.2, u ) ), c ) );
+				c.assign( select( isLeg, srgb( 0.04, 0.04, 0.04 ), c ) );
+				rough.assign( 0.66 ); // a little gloss (at 0.5 the wings mirrored the sky at a grazing look: pale grey)
+
 			} );
 
-			// eye: dark, with a pale yellow iris for the gull and a pale blue one for the gannet
+			// eye: dark, with a pale yellow iris for the gull, a pale blue one for the gannet and an emerald
+			// one for the shag
 			const eye = JT.element( uint( species ).mul( 8 ).add( 6 ) );
 			const ed = length( vec2( P.z.sub( eye.z ), P.y.sub( eye.y ) ) );
 			const onHead = part.lessThan( 2.5 ).and( abs( P.x ).greaterThan( 0.004 ) );
 			const iris = smoothstep( eye.w.mul( 0.8 ), eye.w, ed ).oneMinus().mul( select( onHead, 1, 0 ) ).toVar();
 			const pupil = smoothstep( eye.w.mul( 0.45 ), eye.w.mul( 0.6 ), ed ).oneMinus().mul( select( onHead, 1, 0 ) );
-			const irisCol = select( species.equal( 0 ), srgb( 0.85, 0.75, 0.3 ), select( species.equal( 5 ), srgb( 0.72, 0.8, 0.88 ), srgb( 0.05, 0.03, 0.02 ) ) );
+			const irisCol = select( species.equal( 0 ), srgb( 0.85, 0.75, 0.3 ), select( species.equal( 5 ), srgb( 0.72, 0.8, 0.88 ), select( species.equal( 6 ), srgb( 0.15, 0.6, 0.35 ), srgb( 0.05, 0.03, 0.02 ) ) ) );
 			c.assign( mix( mix( c, irisCol, iris ), srgb( 0.01, 0.01, 0.01 ), pupil ) );
 			rough.assign( mix( select( isBill.or( isLeg ), float( 0.4 ), rough ), float( 0.15 ), iris ) );
 			// fine feather texture, darker feather bases toward the trailing edge of the wings

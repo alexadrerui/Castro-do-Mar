@@ -1,4 +1,5 @@
-// Gulls that perch and loaf, terns that hover and dive, gannets that plunge. Adapted from Tidewater
+// Gulls that perch and loaf, terns that hover and dive, gannets that plunge, a line of shags skimming
+// the water. Adapted from Tidewater
 // (https://github.com/dgreenheck/tidewater, src/world/wildlife/Birds.js, three.js version at
 // d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
 // Changes: yellow-legged gulls, sandwich terns and northern gannets (no pelicans or frigatebirds);
@@ -6,7 +7,9 @@
 // boulders) instead of the pier, the huts and the boat; the terns' patrol lanes are found over the
 // lake; the gannets are the pelicans' plunge divers (forage circles over deep water, the dive, the
 // float and the running take-off from the water) moved higher and faster, as a gannet dives; the
-// viewer is the free camera; a fixed south-west wind; the splashes are ours (splash.js).
+// shags are the pelicans' line (each bird in the leader's track, spaced in time) on a loop found
+// along this coast, beating all the time as shags do instead of the pelicans' flap bouts and glides;
+// the viewer is the free camera; a fixed south-west wind; the splashes are ours (splash.js).
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../core/noise.js';
 import { BIRD } from './shapes.js';
@@ -21,14 +24,15 @@ const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const FLUSH = { [ BIRD.GULL ]: 7, [ BIRD.TERN ]: 9 };
 // template -> real size: laughing gull (1.03 m span) -> yellow-legged gull (~1.4 m);
 // royal tern (1.3 m) -> sandwich tern (~0.95 m)
-const SIZE = { [ BIRD.GULL ]: 1.36, [ BIRD.TERN ]: 0.75, [ BIRD.GANNET ]: 1 };
+const SIZE = { [ BIRD.GULL ]: 1.36, [ BIRD.TERN ]: 0.75, [ BIRD.GANNET ]: 1, [ BIRD.SHAG ]: 1 };
 // how far each kind is drawn (m): a gannet's white shows a long way over the sea
-const FAR = { gull: 550, tern: 550, gannet: 900 };
+const FAR = { gull: 550, tern: 550, gannet: 900, shag: 700 };
+const SHAG_SPEED = 13; // m/s along the loop
 
 export class Flock {
 
 	// app: hf (heightAt), layers.buildings / fort / rocks (the perches are found on them)
-	constructor( app, { gulls = 16, terns = 5, gannets = 4, seed = 11 } = {} ) {
+	constructor( app, { gulls = 16, terns = 5, gannets = 4, shags = 5, seed = 11 } = {} ) {
 		this.paused = false;
 		this.splash = null; // splash.js Splashes (main.js): where the divers hit the water
 		this.hf = app.hf;
@@ -79,7 +83,103 @@ export class Flock {
 			this.startForage( a, c );
 		} );
 
+		// ---- shags: a line low over the water along the coast, out and back on a loop
+		this.shagPath = this.buildShagPath();
+		this.shagS = rng() * ( this.shagPath?.length ?? 1 );
+		if ( this.shagPath ) for ( let i = 0; i < shags; i ++ ) add( 'shag', BIRD.SHAG, ( a ) => {
+			a.state = 'line';
+			a.slot = i;
+			a.f.freqMul = 0.93 + rng() * 0.14; // each its own beat: the line ripples, not in step
+		} );
+
 		for ( const a of this.agents ) a.f.P.fresh = true;
+	}
+
+	// The shags' loop, found along this coast (it runs north - south, the sea to the east): the
+	// skimming leg ~1 m over the water, at the first point at least 45 m off the shore where there is
+	// water more than 1 m deep for 12 m (the islets near the shore push it out), smoothed; a wide turn
+	// out to sea at each end; the way back further out (from 220 m off the shore) and higher, 5 m, at
+	// least 3 m over any islet on it. Null if no coast is found.
+	buildShagPath() {
+		const H = ( x, z ) => this.hf.heightAt( x, z );
+		const shoreAt = ( z ) => { for ( let x = VILLAGE.x - 100; x < VILLAGE.x + 900; x += 2 ) if ( H( x, z ) < WATER_LEVEL && H( x - 2, z ) >= WATER_LEVEL ) return x; return null; };
+		const waterFrom = ( x0, z ) => { for ( let x = x0; x < x0 + 300; x += 3 ) { let ok = true; for ( let d = 0; d <= 12; d += 3 ) if ( H( x + d, z ) > WATER_LEVEL - 1 ) ok = false; if ( ok ) return x + 6; } return null; };
+		const zs = [], near = [], far = [];
+		for ( let z = VILLAGE.z - 360; z <= VILLAGE.z + 360; z += 20 ) {
+			const sh = shoreAt( z );
+			if ( sh === null ) return null;
+			const a = waterFrom( sh + 45, z ), b = waterFrom( sh + 220, z );
+			if ( a === null || b === null ) return null;
+			zs.push( z ); near.push( a ); far.push( Math.max( b, a + 120 ) );
+		}
+		// smoothed (a running mean over 5 samples), never pulled back closer than the water allowed
+		const smooth5 = ( v ) => v.map( ( _, i ) => { let m = 0, n = 0; for ( let k = - 2; k <= 2; k ++ ) if ( v[ i + k ] !== undefined ) { m += v[ i + k ]; n ++; } return Math.max( m / n, v[ i ] ); } );
+		const A = smooth5( near ), B = smooth5( far );
+		const pts = [];
+		const n = zs.length;
+		for ( let i = 0; i < n; i ++ ) pts.push( [ A[ i ], 1.1, zs[ i ] ] );
+		const turn = ( xa, xb, z, h0, h1, dir ) => {
+			const cx = ( xa + xb ) / 2, r = ( xb - xa ) / 2;
+			for ( let k = 1; k < 8; k ++ ) {
+				const t = k / 8, ang = Math.PI - t * Math.PI;
+				pts.push( [ cx + Math.cos( ang ) * r * dir, lerp( h0, h1, t ), z + Math.sin( ang ) * r * 0.8 * ( dir > 0 ? 1 : - 1 ) ] );
+			}
+		};
+		turn( A[ n - 1 ], B[ n - 1 ], zs[ n - 1 ], 1.1, 5, 1 );
+		for ( let i = n - 1; i >= 0; i -- ) pts.push( [ B[ i ], 5, zs[ i ] ] );
+		// the turn back toward the shore at the south end (the circle from the far leg to the near one)
+		{
+			const xa = B[ 0 ], xb = A[ 0 ], z = zs[ 0 ];
+			const cx = ( xa + xb ) / 2, r = ( xa - xb ) / 2;
+			for ( let k = 1; k < 8; k ++ ) {
+				const ang = k / 8 * Math.PI;
+				pts.push( [ cx + Math.cos( ang ) * r, lerp( 5, 1.1, k / 8 ), z - Math.sin( ang ) * r * 0.8 ] );
+			}
+		}
+		// clear of the land everywhere: the curve through those points cut a headland between two of them
+		// and sagged under 1 m between others, so it is sampled every ~5 m, each sample lifted to 3 m over
+		// the land (the islets under the far leg, a spit on a turn) and 1.1 m over the water, the lifts
+		// eased into their neighbours, and the curve drawn again through the samples
+		const first = new THREE.CatmullRomCurve3( pts.map( ( q ) => new THREE.Vector3( q[ 0 ], q[ 1 ], q[ 2 ] ) ), true, 'centripetal' );
+		const N = Math.ceil( first.getLength() / 5 );
+		const dense = first.getSpacedPoints( N ).slice( 0, N );
+		const floor = dense.map( ( q ) => Math.max( H( q.x, q.z ) + 3, H( q.x - 4, q.z ) + 3, H( q.x + 4, q.z ) + 3, H( q.x, q.z - 4 ) + 3, H( q.x, q.z + 4 ) + 3, WATER_LEVEL + 1.2 ) );
+		const lift = dense.map( ( q, i ) => Math.max( 0, floor[ i ] - q.y ) );
+		dense.forEach( ( q, i ) => {
+			let up = 0;
+			for ( let k = - 6; k <= 6; k ++ ) up = Math.max( up, lift[ ( i + k + N ) % N ] * ( 1 - Math.abs( k ) / 7 ) );
+			q.y = Math.max( q.y + up, floor[ i ] );
+		} );
+		const curve = new THREE.CatmullRomCurve3( dense, true, 'centripetal' );
+		return { curve, length: curve.getLength(), pt: new THREE.Vector3(), tan: new THREE.Vector3(), points: pts };
+	}
+
+	// each shag in the leader's track a few metres behind the one in front, alternately a little to
+	// either side; beating all the time
+	shagMember( a, dt ) {
+		const path = this.shagPath, f = a.f;
+		const gap = 3.2 + ( a.slot % 2 ) * 0.5;
+		const s = ( ( this.shagS - a.slot * gap ) % path.length + path.length ) % path.length;
+		path.curve.getPointAt( s / path.length, path.pt );
+		path.curve.getTangentAt( s / path.length, path.tan );
+		const side = ( a.slot % 2 ? 1 : - 1 ) * Math.min( a.slot, 1 ) * 0.8;
+		const tx = path.tan.x, tz = path.tan.z;
+		const tl = Math.hypot( tx, tz ) || 1;
+		const x = path.pt.x - tz / tl * side, z = path.pt.z + tx / tl * side;
+		const y = path.pt.y + Math.sin( this.time * 0.8 + a.slot * 1.7 ) * 0.2;
+		const yaw = Math.atan2( tx, tz );
+		if ( f.P.fresh ) f.place( x, y, z, yaw );
+		const k = 1 / Math.max( dt, 1e-4 );
+		const vy = ( y - f.y ) * k;
+		const rate = dt > 0 ? angleDiff( yaw, f.yaw ) * k : 0;
+		f.bank += ( clamp( rate * SHAG_SPEED / 9.81, - 0.5, 0.5 ) - f.bank ) * approach( 3, dt );
+		f.yaw = yaw;
+		f.vx = ( x - f.x ) * k; f.vz = ( z - f.z ) * k; f.vy = clamp( vy, - 3, 3 );
+		f.x = x; f.y = y; f.z = z;
+		f.gamma = Math.atan2( f.vy, SHAG_SPEED );
+		f.headPitch += ( 0.05 - f.headPitch ) * approach( 2, dt );
+		f.flapWant = 1;
+		f.animate( dt );
 	}
 
 	// deep water (> 8 m) 150-700 m from the village, away from each other: the gannets' fishing grounds
@@ -269,8 +369,10 @@ export class Flock {
 		if ( this.paused ) dt = 0; // QA (tools/birds.mjs): frozen poses, still drawn
 		this.time += dt;
 		this.lastViewer = viewer;
+		if ( this.shagPath ) this.shagS = ( this.shagS + SHAG_SPEED * dt ) % this.shagPath.length;
 		for ( const a of this.agents ) {
-			if ( a.kind === 'gull' ) this.updateGull( a, dt, viewer );
+			if ( a.kind === 'shag' ) this.shagMember( a, dt );
+			else if ( a.kind === 'gull' ) this.updateGull( a, dt, viewer );
 			else if ( a.kind === 'gannet' ) this.updateGannet( a, dt, viewer );
 			else this.updateTern( a, dt );
 		}
