@@ -35,6 +35,7 @@ import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
 import { Settings } from './core/settings.js';
+import { Multiplayer, roomFromURL } from './core/multiplayer.js';
 import { Ambience } from './audio/ambience.js';
 import { wind } from './world/wind.js';
 import { bindSky, updateCloudSun, cloudShadowUniforms, clearCloudMap } from './world/cloudShadow.js';
@@ -852,6 +853,14 @@ async function main() {
 	// the player's options (core/settings.js): quality preset, audio, renderer, editor
 	app.settings = new Settings( app );
 	hud.bindOptions( app.settings );
+	// visiting together (core/multiplayer.js): a room from the invite link (?sala=), peer to peer
+	app.mp = new Multiplayer( app );
+	hud.bindMultiplayer( app.mp );
+	const room = roomFromURL();
+	// opened from a link: fly to the first friend heard from (not after a reload that keeps the view)
+	let keepView = false;
+	try { keepView = !! sessionStorage.getItem( 'castroDoMar:recovery' ); } catch ( e ) { /* no storage */ }
+	if ( room ) app.mp.join( room, { follow: ! keepView } );
 	// terrain editor (?edit): sculpt the relief, save it into public/terrain-edits.bin
 	if ( params.has( 'edit' ) ) {
 		const { TerrainEditor } = await import( './editor/terrainEditor.js' );

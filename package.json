@@ -13,7 +13,8 @@
   "dependencies": {
     "three": "^0.186.1",
     "three-bvh-csg": "^0.0.18",
-    "three-mesh-bvh": "^0.9.15"
+    "three-mesh-bvh": "^0.9.15",
+    "trystero": "^0.25.4"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",

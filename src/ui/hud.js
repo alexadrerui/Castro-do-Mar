@@ -48,6 +48,7 @@ export class HUD {
 		const showPlay = () => { play.textContent = clock.playing ? '⏸ Parar o tempo' : '▶ Passar o tempo'; play.classList.toggle( 'on', clock.playing ); };
 		showPlay();
 		play.onclick = () => { clock.playing = ! clock.playing; showPlay(); };
+		this._showPlay = showPlay;
 		this._range( 'r-speed', 'o-speed', clock.speed, ( v ) => { clock.speed = v; }, ( v ) => '1 dia em ' + Math.round( 24 / v ) + ' min' );
 		this._range( 'r-cloud', 'o-cloud', sky.sky.cloudCoverage.value, ( v ) => { sky.sky.cloudCoverage.value = v; }, ( v ) => Math.round( v * 100 ) + '%' );
 		this._range( 'r-rain', 'o-rain', app.weather?.target ?? 0, ( v ) => app.setRain?.( v ), ( v ) => Math.round( v * 100 ) + '%' );
@@ -189,6 +190,46 @@ export class HUD {
 			url.searchParams.set( 'auto', '' );
 			reloadKeepingView( app, url.href.replace( /=(?=&|$)/g, '' ), inEditor ? 'Fora do editor' : 'Editor aberto: relevo, objetos e natureza' );
 		};
+	}
+
+	// For the shared visit (core/multiplayer.js): a slider set through its own input event (the same
+	// path as the hand, so the setter and the readout follow), and the time passing on or off.
+	setRange( id, v ) {
+		const r = $( id );
+		if ( Math.abs( + r.value - v ) < 1e-6 ) return;
+		r.value = v;
+		r.dispatchEvent( new Event( 'input' ) );
+	}
+
+	setPlaying( on ) {
+		this.app.clock.playing = on;
+		this._showPlay();
+	}
+
+	// The panel's "Amigos": invite (opens a room and copies its link), the name, the friends (a click
+	// flies to one), the shared hour and weather, leaving the room.
+	bindMultiplayer( mp ) {
+		const panel = $( 'mp-panel' ), tip = $( 't-mp' ), list = $( 'mp-list' ), name = $( 'i-name' ), inv = $( 'b-invite' );
+		const show = () => {
+			panel.hidden = ! mp.room;
+			inv.textContent = mp.room ? 'Copiar link' : 'Convidar';
+			tip.innerHTML = mp.note;
+			list.replaceChildren( ...[ ...mp.peers ].filter( ( [ , p ] ) => p.name ).map( ( [ id, p ] ) => {
+				const b = document.createElement( 'button' );
+				b.textContent = '➜ ' + p.name;
+				b.title = 'Voar até ' + p.name;
+				b.onclick = () => mp.goTo( id );
+				return b;
+			} ) );
+		};
+		mp.listeners.push( show );
+		inv.onclick = () => mp.invite();
+		name.value = mp.name;
+		name.addEventListener( 'change', () => { mp.rename( name.value ); name.value = mp.name; } );
+		name.addEventListener( 'keydown', ( e ) => { e.stopPropagation(); if ( e.key === 'Enter' ) name.blur(); } );
+		$( 'c-mpworld' ).onchange = ( e ) => { mp.shareWorld = e.target.checked; };
+		$( 'b-mpleave' ).onclick = () => { mp.leave(); this.toast( 'Fora da sala' ); };
+		show();
 	}
 
 	setFocus( on ) {

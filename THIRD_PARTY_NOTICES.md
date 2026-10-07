@@ -19,6 +19,7 @@ Resumo para quem vai reutilizar:
 | [@takram/three-clouds](https://github.com/takram-design-engineering/three-geospatial) | MIT, Copyright (c) 2024 Shota Matsuda | `src/post/clouds.js`, `src/world/cloudShadow.js` | `licenses/LICENSE-takram-clouds.md` |
 | [@takram/three-atmosphere](https://github.com/takram-design-engineering/three-geospatial) | MIT, Copyright (c) 2024 Shota Matsuda | estrelas (`src/world/stars.js`) e lua (`createMoon` em `src/world/sky.js`) | `licenses/LICENSE-takram-atmosphere.md` |
 | [Folio 2025](https://github.com/brunosimon/folio-2025) (Bruno Simon) | MIT, Copyright (c) 2025 Bruno Simon | organização das opções do painel: `src/core/settings.js`, `bindOptions` em `src/ui/hud.js` | `licenses/LICENSE-folio-2025.md` |
+| [offroad](https://github.com/alexadrerui/offroad) | MIT, Copyright (c) 2026 Arz-Gev | esquema da visita junto em `src/core/multiplayer.js` (reescrito para a câmera livre) | `licenses/LICENSE-offroad.md` |
 | [Lightning-VFX](https://github.com/SahilK-027/Lightning-VFX) | MIT, Copyright (c) 2026 Sahil K | `src/world/lightning.js` | `licenses/LICENSE-LightningVFX.md` |
 | [AndyLe Pool](https://github.com/AndyLeAI/Andy_KOI_Pool) (commit dc3b205) | Apache License 2.0, AndyLeAI | `src/world/koi/koi.js`, `lotus.js` (as mudanças estão descritas nos cabeçalhos) | `src/world/koi/LICENSE-AndyLePool` |
 | [shader-studio](https://github.com/void032/shader-studio) | MIT, Copyright (c) 2025 Vineet Kumar (void032) | ferramenta "Gerar" de `src/editor/terrainEditor.js` | `licenses/LICENSE-shader-studio.md` |
@@ -32,6 +33,8 @@ Resumo para quem vai reutilizar:
 | [three](https://github.com/mrdoob/three.js) | MIT, Copyright © 2010-2026 three.js authors | `licenses/LICENSE-three.md` |
 | [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) | MIT, Copyright (c) 2018 Garrett Johnson | `licenses/LICENSE-three-mesh-bvh.md` |
 | [three-bvh-csg](https://github.com/gkjohnson/three-bvh-csg) | MIT, Copyright (c) 2022 Garrett Johnson | `licenses/LICENSE-three-bvh-csg.md` |
+| [trystero](https://github.com/dmotz/trystero) (com `@trystero-p2p/core` e `@trystero-p2p/nostr`) | MIT, Copyright (c) 2021 Dan Motzenbecker | `licenses/LICENSE-trystero.md` |
+| [@noble/secp256k1](https://github.com/paulmillr/noble-secp256k1) (dependência do Trystero) | MIT, Copyright (c) 2019 Paul Miller | `licenses/LICENSE-noble-secp256k1.md` |
 
 As ferramentas de desenvolvimento (Vite, puppeteer-core) não entram no site publicado.
 

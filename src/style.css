@@ -140,3 +140,14 @@ body.clean #hud { display: none; }
 /* the wind's settings (hud.js bindWind): a block that opens under its button */
 .subpanel { margin: 6px 0 4px; padding: 6px 8px 8px; border: 1px solid rgba(201,164,92,.25); border-radius: 8px; background: rgba(0,0,0,.18); }
 .subpanel[hidden] { display: none; }
+
+/* shared visit (core/multiplayer.js): the name field, the friends, and the name over each lantern */
+.side input.txt { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 5px 8px; border-radius: 6px; border: 1px solid rgba(201,164,92,.3); background: rgba(0,0,0,.3); color: var(--ink); font: 500 12px Inter, sans-serif; }
+.side input.txt:focus { outline: none; border-color: var(--gold); }
+.mp-list { margin: 6px 0; }
+.mp-list:empty { display: none; }
+.mp-list button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mp-tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+.mp-tag { position: absolute; left: 0; top: 0; padding: 2px 8px 3px; border-radius: 10px; background: rgba(12,10,6,.55); border: 1px solid rgba(230,201,135,.45); color: #f3e3bd; font: 600 12px Inter, sans-serif; white-space: nowrap; text-align: center; text-shadow: 0 1px 2px #000; will-change: transform; }
+.mp-tag small { display: block; font-weight: 500; font-size: 10px; color: #cdb98d; }
+body.clean #mp-tags { display: none; }

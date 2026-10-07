@@ -33,6 +33,8 @@ export class Settings {
 		this.quality = QUALITY[ s.quality ] ? s.quality : isMobile ? 'baixa' : 'media';
 		this.muted = s.muted === true;
 		this.volume = Number.isFinite( s.volume ) ? Math.min( 1, Math.max( 0, s.volume ) ) : 0.8;
+		// the visitor's name in a shared visit (core/multiplayer.js)
+		this.name = typeof s.name === 'string' ? s.name.slice( 0, 24 ) : '';
 		// a stored (or phone) quality is applied once the world is up; the default is the look as built
 		if ( this.quality !== 'media' ) this.applyQuality();
 		this.applyAudio();
@@ -41,7 +43,7 @@ export class Settings {
 	on( type, f ) { this.listeners[ type ].push( f ); }
 
 	_save() {
-		try { localStorage.setItem( KEY, JSON.stringify( { quality: this.quality, muted: this.muted, volume: this.volume } ) ); } catch ( e ) { /* no storage */ }
+		try { localStorage.setItem( KEY, JSON.stringify( { quality: this.quality, muted: this.muted, volume: this.volume, name: this.name } ) ); } catch ( e ) { /* no storage */ }
 	}
 
 	setQuality( level ) {
@@ -60,6 +62,11 @@ export class Settings {
 		app.setFocus( q.focus );
 		app.setBloom( q.bloom );
 		for ( const f of this.listeners.quality ) f( this.quality, q );
+	}
+
+	setName( name ) {
+		this.name = String( name ).slice( 0, 24 );
+		this._save();
 	}
 
 	// unmuting at volume 0 (the slider pulled down) brings a volume back
