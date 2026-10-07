@@ -52,7 +52,7 @@ export class Clock {
 	_apply( jump ) {
 		const { elevation, azimuth } = sunAt( this.hour );
 		const s = this.app.sky.state;
-		s.elevation = elevation; s.azimuth = azimuth;
+		s.elevation = elevation; s.azimuth = azimuth; s.hour = this.hour;
 		// the sun's dependants (sky, light, haze, water, rivers, underwater): onSunChanged() also
 		// rebuilds the sky environment 250 ms after the last change, which never comes while the time
 		// passes; then it is rebuilt once the sun has moved half a degree

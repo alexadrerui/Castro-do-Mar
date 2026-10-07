@@ -1,6 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
 import { Fn, If, uniform, vec2, vec3, vec4, max, dot, normalize, pow, positionWorld, cameraPosition, mix, smoothstep, sqrt, atan, asin, cross, exp, length, fwidth, texture, float } from 'three/tsl';
+import { lookAt } from './look.js';
 
 // Preetham sky + procedural clouds (built into SkyMesh), sun light and
 // sky-derived image based lighting.
@@ -73,6 +74,8 @@ export function createSky( scene, renderer ) {
 	const state = {
 		elevation: 21,   // degrees: late-afternoon
 		azimuth: 238,    // degrees, 0 = north(-z), 90 = east(+x)
+		hour: 15 + 32 / 60, // the clock's (world/clock.js), for the look's key frames (world/look.js)
+		look: {},           // the look at this hour (world/look.js), set by update()
 		sunDir: new THREE.Vector3(),
 		// the main light (day and night, phase 5): the sun by day, the moon at night; what is lit by the
 		// light follows this (the directional light and its shadows, terrain, plants, water, clouds...),
@@ -100,6 +103,8 @@ export function createSky( scene, renderer ) {
 		envSky.sunPosition.value.copy( state.sunDir );
 		for ( const k of [ 'turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG' ] ) envSky[ k ].value = sky[ k ].value;
 
+		// the look by the hour (world/look.js): what was tuned by hand here and in main.js
+		const look = lookAt( state.hour, undefined, state.look );
 		const e = Math.max( 0, state.elevation );
 		const warm = THREE.MathUtils.smoothstep( e, 0, 25 );
 		// the night (day and night, phase 2): 0 with the sun 2 degrees up, 1 at 10 degrees down
@@ -113,7 +118,7 @@ export function createSky( scene, renderer ) {
 			state.lightElevation = state.elevation;
 			sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
 			// the sunset (day and night, phase 6): deeper orange below 6 degrees (unchanged above)
-			sun.color.lerp( _sunset, THREE.MathUtils.smoothstep( - state.elevation, - 6, 0 ) * 0.8 );
+			sun.color.lerp( _sunset, look.sunset );
 			sun.intensity = sunI;
 		} else {
 			// the moonlight (phase 5): the same light, from the moon (opposite the sun), cool white, rising
@@ -125,10 +130,9 @@ export function createSky( scene, renderer ) {
 		}
 		sun.position.copy( sun.target.position ).addScaledVector( state.lightDir, 700 );
 		state.sunIntensity = sun.intensity; // clear sky: world/weather.js dims it under rain
-		// the twilight (phase 6): the sky still lights the ground for a while after the sun has set
-		const dusk = THREE.MathUtils.smoothstep( - state.elevation, - 6, 1 ) * ( 1 - THREE.MathUtils.smoothstep( - state.elevation, 4, 12 ) );
-		state.dusk = dusk;
-		hemi.intensity = 0.08 + 0.09 * THREE.MathUtils.smoothstep( e, - 5, 30 ) + 0.1 * dusk;
+		// the sky's light on the ground, with the twilight's (phase 6: the sky still lights the ground for
+		// a while after the sun has set): the look's `ambient`
+		hemi.intensity = look.ambient;
 		// the sky's light at night: a cool grey
 		hemi.color.copy( _hemiDay ).lerp( _hemiNight, n );
 		hemi.groundColor.copy( _groundDay ).lerp( _groundNight, n );

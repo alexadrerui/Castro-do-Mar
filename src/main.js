@@ -43,6 +43,7 @@ import { setLakeTest } from './world/vegetation.js';
 import { createHorizon } from './world/horizon.js';
 import { Kuwahara } from './post/kuwahara.js';
 import { AutoExposure } from './post/autoExposure.js';
+import { KEYS as LOOK_KEYS, lookAt, refreshLook } from './world/look.js';
 import { createSunShadows } from './world/sunShadows.js';
 import { generateFields } from './world/genFields.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
@@ -244,6 +245,8 @@ async function main() {
 	// Aerial perspective: exponential-squared haze that thins with altitude.
 	const hazeColor = uniform( new THREE.Color( 0x9db6d6 ) );
 	app.hazeColor = hazeColor;
+	// the cool tint of the shadows in the grade, the look's `cool` (world/look.js): 1 by day, 0.3 at night
+	const lookCool = uniform( 1 );
 	const hazeFar = uniform( new THREE.Color( 0x8fa9cc ) );
 	// haze amount at view distance d and world height y (also weights the scattering blur below)
 	const hazeAmount = ( d, y ) => {
@@ -362,7 +365,8 @@ async function main() {
 		app.water.reflector.reflector.updateBeforeType = on ? THREE.NodeUpdateType.RENDER : THREE.NodeUpdateType.NONE;
 	};
 	const _sunTint = new THREE.Color();
-	app.nightExposure = 1.5; // the exposure at night: x (1 + this)
+	// the look by the hour (world/look.js): the table (edit a row in the console, then app.look.apply())
+	app.look = { keys: LOOK_KEYS, at: ( h ) => lookAt( h, LOOK_KEYS ), apply: () => { refreshLook(); app.onSunChanged(); } };
 	app.autoExposure = params.get( 'autoexp' ) === '0' ? 0 : 1; // how much the eye adapts by itself where it does (0 = the fixed exposure; ?autoexp=0)
 	const _nightLit = new THREE.Color(), _nightAmb = new THREE.Color(), _smokeDay = new THREE.Color( 1, 0.95, 0.88 );
 	app.onSunChanged = () => {
@@ -375,17 +379,19 @@ async function main() {
 		clearTimeout( app._envT );
 		app._envT = setTimeout( () => sky.buildEnv(), 250 );
 		const e = sky.state.elevation;
-		const warm = THREE.MathUtils.smoothstep( e, 0, 22 );
-		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) );
+		// the look by the hour (world/look.js, computed in sky.update): exposure, haze, wind, ...
+		const look = sky.state.look;
+		const warm = look.warm;
+		hazeColor.value.setRGB( 0.5 + 0.04 * warm, 0.6 + 0.08 * warm, 0.72 + 0.1 * warm, THREE.SRGBColorSpace ).multiplyScalar( look.haze );
 		// at night the haze takes the night sky's horizon (sky.js), and the exposure rises as the eye
 		// adapts: the moonlit scene stays readable, the lanterns and windows stand out
 		const night = sky.state.night;
 		hazeColor.value.lerp( sky.nightHorizon.value, night );
 		// the far haze (fogNode, past 4-14 km) too: a fixed day colour, it glowed over the distant ranges at night
-		hazeFar.value.setHex( 0x8fa9cc ).multiplyScalar( 0.35 + 0.65 * THREE.MathUtils.smoothstep( e, - 4, 12 ) ).lerp( sky.nightHorizon.value, night );
-		// the eye adapts from the sunset on (phase 6): from the sun 8 degrees up, full 6 degrees down
-		const adapt = THREE.MathUtils.smoothstep( - e, - 8, 6 );
-		renderer.toneMappingExposure = 0.8 * ( 1 + app.nightExposure * adapt );
+		hazeFar.value.setHex( 0x8fa9cc ).multiplyScalar( look.haze ).lerp( sky.nightHorizon.value, night );
+		// the eye adapts from the sunset on (phase 6; now the look's `exposure` and `auto`)
+		const adapt = look.auto;
+		renderer.toneMappingExposure = look.exposure;
 		// and the automatic exposure takes over with it: by day the look as tuned, at dusk and night the
 		// eye adapts to what it looks at (moonlit clouds, a dark wood, the lit windows)
 		if ( app.exposure ) {
@@ -405,7 +411,8 @@ async function main() {
 		// opened and closed bright gaps in the dark crowns at every frame (they flickered); without wind
 		// the flicker fell from 1.3% to 0.06% of the pixels (tools/flicker.mjs, a wood at 23:00)
 		// (the world's one wind, world/wind.js: grass, plants and cloth together)
-		wind.calm.value = 1 - 0.7 * night;
+		wind.calm.value = look.calm;
+		lookCool.value = look.cool;
 		app.underwater?.setDaylight( hazeColor.value );
 		app.underwater?.setSun( sky.state.lightDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.lightDir, sky.sun, app.underwater?.murk.value );
@@ -510,7 +517,7 @@ async function main() {
 			// the sun, low or just set: the clouds keep a golden, then orange-red light that the ground
 			// has lost (one curve: no gap where the sun's own light reaches 0 at -1 degree)
 			cloudLight.copy( sky.state.sunDir );
-			const glow = 0.45 * THREE.MathUtils.smoothstep( se, - 5, - 0.5 ) * ( 1 - THREE.MathUtils.smoothstep( se, 3, 10 ) ) * ( 1 - 0.55 * ( app.weather?.wetness?.value ?? 0 ) );
+			const glow = sky.state.look.afterglow * ( 1 - 0.55 * ( app.weather?.wetness?.value ?? 0 ) ); // the look's `afterglow`
 			const k = Math.max( se > - 1 ? sky.sun.intensity / SUN_MAX : 0, glow );
 			clouds.sunColor.value.copy( se > - 1 ? sky.sun.color : _afterglow ).multiplyScalar( k );
 		} else {
@@ -543,9 +550,8 @@ async function main() {
 	const MIST_DAY = { density: 0.035, top: WATER_LEVEL + 14 }, MIST_NIGHT = { density: 0.045, top: WATER_LEVEL + 18 };
 	app.nightFog = 0;
 	app.onFrame.push( () => {
-		const h = app.clock?.hour ?? 15.5;
-		const dawn = h > 4 && h < 12 ? 1 - THREE.MathUtils.smoothstep( h, 6.5, 8 ) : 0; // through the sunrise, clear by 8 h
-		const k = Math.max( sky.state.night, dawn ) * ( 1 - 0.8 * Math.min( 1, app.weather?.target ?? 0 ) );
+		// the look's `nightFog` (world/look.js): with the night, through the sunrise, clear by 8 h
+		const k = sky.state.look.nightFog * ( 1 - 0.8 * Math.min( 1, app.weather?.target ?? 0 ) );
 		app.nightFog = k;
 		if ( valley ) for ( const key in VALLEY_DAY ) valley[ key ].value = THREE.MathUtils.lerp( VALLEY_DAY[ key ], VALLEY_NIGHT[ key ], k );
 		if ( mist ) for ( const key in MIST_DAY ) mist[ key ].value = THREE.MathUtils.lerp( MIST_DAY[ key ], MIST_NIGHT[ key ], k );
@@ -601,7 +607,7 @@ async function main() {
 		rgb.assign( mix( rgb, mix( vec3( luma ), rgb, 0.78 ), greenness ) );
 		rgb.assign( mix( rgb, rgb.mul( rgb ).mul( rgb.mul( - 2.0 ).add( 3.0 ) ), 0.22 ) );
 		// (30% of it at night: almost all of the frame is shadow then, and in full it turned the moonlit grey blue)
-		rgb.addAssign( vec3( - 0.012, 0.0, 0.022 ).mul( luma.oneMinus().pow( 2.0 ) ).mul( sky.night.mul( - 0.7 ).add( 1 ) ) );
+		rgb.addAssign( vec3( - 0.012, 0.0, 0.022 ).mul( luma.oneMinus().pow( 2.0 ) ).mul( lookCool ) );
 		rgb.addAssign( vec3( 0.06, 0.02, - 0.04 ).mul( luma.pow( 2.0 ) ) );
 		rgb.assign( rgb.mul( 0.97 ).add( 0.012 ) ); // lifted blacks
 		// soft vignette
