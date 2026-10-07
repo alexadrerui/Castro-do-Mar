@@ -42,7 +42,7 @@ function tiledNoise( columns, rows, seed ) {
 }
 
 // four puff shapes, one per channel: a ragged disc that is zero on the border
-function sprayPuffTexture( size = 128, seed = 7723 ) {
+export function sprayPuffTexture( size = 128, seed = 7723 ) {
 	const data = new Uint8Array( size * size * 4 );
 	for ( let ch = 0; ch < 4; ch ++ ) {
 		const warp = tiledNoise( 3, 3, seed + ch * 11 );

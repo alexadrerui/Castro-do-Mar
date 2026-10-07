@@ -19,6 +19,7 @@ import { KoiPonds } from './world/koi/ponds.js';
 import { Gulls } from './world/birds/gulls.js';
 import { BirdBatch } from './world/birds/batch.js';
 import { Flock } from './world/birds/flock.js';
+import { Splashes } from './world/birds/splash.js';
 import { WATER_LEVEL } from './world/layout.js';
 import { HeightField } from './world/heightfield.js';
 import { createTerrain, loadDetailData } from './world/terrain.js';
@@ -321,6 +322,12 @@ async function main() {
 		birdGroup.add( birds.mesh );
 		const flock = new Flock( app );
 		app.flock = flock;
+		// the divers' splashes (world/birds/splash.js): one instanced mesh, lit by the rivers' light
+		const splashes = new Splashes( app.rivers?.light ?? { sunDir: uniform( sky.state.sunDir ), sunColor: uniform( new THREE.Color( 1, 0.95, 0.85 ) ), skyColor: hazeColor } );
+		if ( app.rivers ) app.rivers.light.sunDir.value = sky.state.lightDir; // (set by attachWater only when there is water of the editor)
+		flock.splash = splashes;
+		app.splashes = splashes;
+		birdGroup.add( splashes.mesh );
 		app.layers.birds = { label: 'Aves pousadas', object: birds.mesh };
 		// the camera is the "viewer" that flushes them
 		const viewer = { x: 0, y: 0, z: 0, speed: 0 };
@@ -332,6 +339,7 @@ async function main() {
 			birds.begin();
 			flock.update( dt, viewer, birds, camera );
 			birds.commit();
+			splashes.update( flock.paused ? 0 : dt );
 		} );
 	}
 

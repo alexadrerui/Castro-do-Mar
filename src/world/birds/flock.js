@@ -1,16 +1,18 @@
-// Gulls that perch and loaf, terns that hover and dive. Adapted from Tidewater
+// Gulls that perch and loaf, terns that hover and dive, gannets that plunge. Adapted from Tidewater
 // (https://github.com/dgreenheck/tidewater, src/world/wildlife/Birds.js, three.js version at
 // d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
-// Changes: yellow-legged gulls and sandwich terns only (no pelicans or frigatebirds); perches
-// found in this world (the ridges of the roofs, the top of the castro's wall, the shore boulders)
-// instead of the pier, the huts and the boat; the terns' patrol lanes are found over the lake;
-// the viewer is the free camera; a fixed south-west wind; no splash (no spray system here).
+// Changes: yellow-legged gulls, sandwich terns and northern gannets (no pelicans or frigatebirds);
+// perches found in this world (the ridges of the roofs, the top of the castro's wall, the shore
+// boulders) instead of the pier, the huts and the boat; the terns' patrol lanes are found over the
+// lake; the gannets are the pelicans' plunge divers (forage circles over deep water, the dive, the
+// float and the running take-off from the water) moved higher and faster, as a gannet dives; the
+// viewer is the free camera; a fixed south-west wind; the splashes are ours (splash.js).
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../core/noise.js';
 import { BIRD } from './shapes.js';
 import { Flyer } from './flight.js';
-import { setHead, groundPose, standHeight, storePrevious, resetPrevious, setWings } from './pose.js';
-import { TAU, clamp, lerp, smooth, angleDiff, approach } from './kit.js';
+import { setHead, groundPose, standHeight, storePrevious, resetPrevious, setWings, tuckLegs } from './pose.js';
+import { TAU, clamp, lerp, smooth, angleDiff, approach, qYawPitchRoll } from './kit.js';
 import { BUILDINGS, FORT, VILLAGE, WATER_LEVEL } from '../layout.js';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
@@ -19,13 +21,16 @@ const _v = new THREE.Vector3(), _w = new THREE.Vector3();
 const FLUSH = { [ BIRD.GULL ]: 7, [ BIRD.TERN ]: 9 };
 // template -> real size: laughing gull (1.03 m span) -> yellow-legged gull (~1.4 m);
 // royal tern (1.3 m) -> sandwich tern (~0.95 m)
-const SIZE = { [ BIRD.GULL ]: 1.36, [ BIRD.TERN ]: 0.75 };
+const SIZE = { [ BIRD.GULL ]: 1.36, [ BIRD.TERN ]: 0.75, [ BIRD.GANNET ]: 1 };
+// how far each kind is drawn (m): a gannet's white shows a long way over the sea
+const FAR = { gull: 550, tern: 550, gannet: 900 };
 
 export class Flock {
 
 	// app: hf (heightAt), layers.buildings / fort / rocks (the perches are found on them)
-	constructor( app, { gulls = 16, terns = 5, seed = 11 } = {} ) {
+	constructor( app, { gulls = 16, terns = 5, gannets = 4, seed = 11 } = {} ) {
 		this.paused = false;
+		this.splash = null; // splash.js Splashes (main.js): where the divers hit the water
 		this.hf = app.hf;
 		this.rng = mulberry32( seed );
 		this.time = 0;
@@ -66,8 +71,40 @@ export class Flock {
 			a.t = 4 + rng() * 8;
 		} );
 
+		// ---- gannets: circling high over deep water off the coast, plunging
+		this.seas = this.buildSeas();
+		for ( let i = 0; i < gannets && this.seas.length; i ++ ) add( 'gannet', BIRD.GANNET, ( a ) => {
+			const c = this.seas[ i % this.seas.length ];
+			a.f.place( c.x + 30, 22, c.z, rng() * TAU );
+			this.startForage( a, c );
+		} );
+
 		for ( const a of this.agents ) a.f.P.fresh = true;
 	}
+
+	// deep water (> 8 m) 150-700 m from the village, away from each other: the gannets' fishing grounds
+	buildSeas() {
+		const out = [], rng = mulberry32( 77 );
+		for ( let k = 0; k < 400 && out.length < 6; k ++ ) {
+			const a = rng() * TAU, r = 150 + rng() * 550;
+			const x = VILLAGE.x + Math.cos( a ) * r, z = VILLAGE.z + Math.sin( a ) * r;
+			let deep = true;
+			for ( const [ dx, dz ] of [ [ 0, 0 ], [ 40, 0 ], [ - 40, 0 ], [ 0, 40 ], [ 0, - 40 ] ] ) if ( this.hf.heightAt( x + dx, z + dz ) > WATER_LEVEL - 8 ) deep = false;
+			if ( ! deep || out.some( ( o ) => Math.hypot( o.x - x, o.z - z ) < 120 ) ) continue;
+			out.push( { x, z } );
+		}
+		return out;
+	}
+
+	// circle over a fishing ground, 15-30 m up, for a while
+	startForage( a, c ) {
+		a.state = 'forage';
+		a.center = { x: c.x + ( this.rng() - 0.5 ) * 60, z: c.z + ( this.rng() - 0.5 ) * 60, r: 25 + this.rng() * 25, y: WATER_LEVEL + 15 + this.rng() * 15, dir: this.rng() < 0.5 ? - 1 : 1 };
+		a.t = 6 + this.rng() * 10;
+		a.visible = true;
+	}
+
+	splashAt( x, y, z, k ) { this.splash?.emit( x, y, z, k ); }
 
 	// ------------------------------------------------------------------ perches
 
@@ -234,6 +271,7 @@ export class Flock {
 		this.lastViewer = viewer;
 		for ( const a of this.agents ) {
 			if ( a.kind === 'gull' ) this.updateGull( a, dt, viewer );
+			else if ( a.kind === 'gannet' ) this.updateGannet( a, dt, viewer );
 			else this.updateTern( a, dt );
 		}
 		// draw: everything within its draw distance, shrinking away the last stretch
@@ -242,7 +280,7 @@ export class Flock {
 			if ( ! a.visible ) continue;
 			const P = a.f.P;
 			const d = Math.hypot( P.pos[ 0 ] - cp.x, P.pos[ 1 ] - cp.y, P.pos[ 2 ] - cp.z );
-			const far = 550;
+			const far = FAR[ a.kind ];
 			if ( d > far ) continue;
 			const k = a.f.scale0 || ( a.f.scale0 = P.scale );
 			P.scale = k * smooth( far, far * 0.8, d );
@@ -571,6 +609,7 @@ export class Flock {
 				f.y += f.vy * dt;
 				f.animate( dt );
 				if ( f.y < wh + 0.05 ) {
+					this.splashAt( f.x, wh, f.z, 0.35 );
 					a.state = 'under';
 					a.t = 0.35 + this.rng() * 0.3;
 					a.visible = false;
@@ -582,6 +621,7 @@ export class Flock {
 				f.y = wh - 0.3;
 				if ( a.t <= 0 ) {
 					// burst out of the water and climb away
+					this.splashAt( f.x, wh, f.z, 0.15 );
 					a.visible = true;
 					f.P.fresh = true;
 					f.dive = 0;
@@ -594,6 +634,128 @@ export class Flock {
 					a.t = 6 + this.rng() * 10;
 				}
 				break;
+		}
+	}
+
+
+	// ------------------------------------------------------------------ gannets (Tidewater's pelican divers)
+
+	updateGannet( a, dt, viewer ) {
+		const f = a.f;
+		const wh = WATER_LEVEL;
+		switch ( a.state ) {
+			case 'forage': {
+				// circling high over the fishing ground, looking down
+				a.t -= dt;
+				const c = a.center;
+				const ang = Math.atan2( f.z - c.z, f.x - c.x ) + c.dir * 0.5;
+				f.headPitch += ( 0.45 - f.headPitch ) * approach( 2, dt );
+				this.flyTo( a, dt, c.x + Math.cos( ang ) * c.r, c.y, c.z + Math.sin( ang ) * c.r, f.cfg.speed * 0.9, 1, 1.2 );
+				// a dive once it is high enough; or on to another ground
+				if ( a.t <= 0 && f.y > wh + 12 ) {
+					if ( this.rng() < 0.7 ) {
+						a.state = 'dive';
+						a.t = 0;
+						a.twist = this.rng() < 0.5 ? - 1 : 1;
+					} else this.startForage( a, this.seas[ Math.floor( this.rng() * this.seas.length ) ] );
+				}
+				break;
+			}
+			case 'dive': {
+				// the plunge: tip over, wings swept back into an arrow, near vertical, ~24 m/s at the water,
+				// a twist just before it goes in
+				a.t += dt;
+				f.dive += ( 1 - f.dive ) * approach( 3.5, dt );
+				f.flapWant = 0;
+				f.speed = Math.min( 24, f.speed + 14 * dt );
+				f.vy = - f.speed * Math.min( 0.95, 0.3 + a.t * 1.1 );
+				f.gamma = Math.asin( clamp( f.vy / f.speed, - 0.97, 0 ) );
+				const h = Math.max( f.speed * Math.cos( f.gamma ), 0 );
+				f.x += Math.sin( f.yaw ) * h * dt;
+				f.z += Math.cos( f.yaw ) * h * dt;
+				f.y += f.vy * dt;
+				f.twirl = a.twist * smooth( 4, 1, f.y - wh ) * 1.9;
+				f.animate( dt );
+				if ( f.y < wh + 0.3 ) {
+					this.splashAt( f.x, wh, f.z, 1 );
+					a.state = 'under';
+					a.t = 1.5 + this.rng() * 2.5;
+					a.visible = false;
+					f.twirl = 0;
+					f.dive = 0;
+				}
+				break;
+			}
+			case 'under':
+				// chasing the fish under water, out of sight
+				a.t -= dt;
+				f.y = wh - 1;
+				if ( a.t <= 0 ) {
+					this.splashAt( f.x, wh, f.z, 0.2 );
+					a.state = 'float';
+					a.t = 0;
+					a.visible = true;
+					a.floatYaw = f.yaw;
+					f.y = wh;
+					f.P.fresh = true;
+				}
+				break;
+			case 'float': {
+				// bobbing on the water, swallowing, then away
+				a.t += dt;
+				const P = f.P;
+				if ( P.fresh ) resetPrevious( P );
+				else storePrevious( P );
+				f.y += ( wh + 0.04 - f.y ) * approach( 6, dt );
+				a.floatYaw += angleDiff( this.windYaw(), a.floatYaw ) * approach( 0.3, dt );
+				f.yaw = a.floatYaw;
+				qYawPitchRoll( P.q, f.yaw, 0.04 + Math.sin( this.time * 1.3 + a.id ) * 0.04, Math.sin( this.time * 0.9 + a.id ) * 0.05 );
+				P.pos[ 0 ] = f.x; P.pos[ 1 ] = f.y; P.pos[ 2 ] = f.z;
+				a.hp += ( ( a.t < 1.5 ? 0.6 : - 0.2 ) - a.hp ) * approach( 3, dt );
+				setHead( P, 0, a.hp, 0, - 0.02, - 0.03 );
+				P.fold = 1;
+				setWings( P, 0.2, 0, 0.1, 0.5, 0.6, 0.1 );
+				tuckLegs( P );
+				P.tailPitch = - 0.05;
+				P.tailSpread = 0.8;
+				if ( a.t > 4 + ( a.id % 3 ) * 2 || this.threat( viewer, f.x, f.y, f.z ) < 12 ) {
+					a.state = 'watertakeoff';
+					a.t = 0;
+					f.yaw = this.windYaw() + ( this.rng() - 0.5 ) * 0.6;
+					f.speed = 1;
+					f.vy = 0;
+					f.pitch = 0.3;
+					f.fold = 1;
+					f.flap = 0.8;
+					f.phase = 0.3;
+				}
+				break;
+			}
+			case 'watertakeoff': {
+				// running over the water into the wind, hard beats, splashes from the feet and wing tips
+				a.t += dt;
+				f.fold = Math.max( 0, 1 - a.t / 0.3 );
+				f.speed = Math.min( 13, f.speed + dt * 5 );
+				f.legs = a.t < 1.6 ? 1 : 0;
+				f.flapWant = 1.25;
+				f.x += Math.sin( f.yaw ) * f.speed * dt;
+				f.z += Math.cos( f.yaw ) * f.speed * dt;
+				f.vx = Math.sin( f.yaw ) * f.speed; f.vz = Math.cos( f.yaw ) * f.speed;
+				const lift = smooth( 1.1, 2.2, a.t );
+				f.vy = lift * 1.6;
+				f.y = Math.max( f.y + f.vy * dt, wh + 0.12 );
+				f.gamma = 0.12 * lift;
+				f.extraPitch = 0.25 * ( 1 - lift );
+				const prevPhase = f.phase;
+				f.animate( dt );
+				if ( lift < 0.9 && f.phase < prevPhase ) this.splashAt( f.x, wh, f.z, 0.12 );
+				if ( a.t > 2.6 ) {
+					f.extraPitch = 0;
+					f.legs = 0;
+					this.startForage( a, this.seas[ Math.floor( this.rng() * this.seas.length ) ] );
+				}
+				break;
+			}
 		}
 	}
 

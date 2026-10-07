@@ -67,7 +67,7 @@ No topo do painel ficam as **Opções**: qualidade (Baixa, Média, Alta), áudio
 - Chuva com chão e telhados molhados, poças com os anéis das gotas, anéis na água e brilhos dos impactos, tempo fechado e tempestade com raios e trovão.
 
 **Vida**
-- Gaivotas que planam sobre a baía, gaivotas que pousam nos telhados, no muro e nas pedras (e decolam quando a câmera chega perto) e charrões que pairam e mergulham.
+- Gaivotas que planam sobre a baía, gaivotas que pousam nos telhados, no muro e nas pedras (e decolam quando a câmera chega perto), charrões que pairam e mergulham e alcatrazes que mergulham em flecha no mar aberto, com borrifo, boiam e decolam correndo sobre a água.
 - Fumaça nas chaminés.
 
 **Som**
@@ -129,7 +129,7 @@ Rodam no Edge headless com WebGPU, com o servidor de desenvolvimento no ar (`npm
 - `node tools/verify.mjs`: checagem de regressão da imagem em carga fria e com cache, comparada com `tools/verify.baseline.json`. Rode antes de publicar mudanças visuais.
 - `node tools/shoot.mjs <prefixo> [vistas]`: capturas em `shots/`.
 - `node tools/loadtime.mjs`, `shadercost.mjs`, `pipedup.mjs`, `abtest.mjs`: tempo de carga, custo de compilação de cada shader, pipelines criados depois da carga e A/B de tempo de quadro.
-- Testes específicos: `houses.mjs`, `trees.mjs`, `grass.mjs`, `rocks.mjs`, `birds.mjs`, `fish.mjs`, `dive.mjs`, `koi.mjs`, `river.mjs`, `lightning.mjs`, `multiplayer.mjs`, `exposure.mjs`, `touch.mjs`, `dynres.mjs`, `relays.mjs`, `lookhours.mjs`, `lookkeys.mjs`, `terrainedit.mjs`, `objectedit.mjs`, `natureedit.mjs`, `clearing.mjs`.
+- Testes específicos: `houses.mjs`, `trees.mjs`, `grass.mjs`, `rocks.mjs`, `birds.mjs`, `fish.mjs`, `dive.mjs`, `koi.mjs`, `river.mjs`, `lightning.mjs`, `multiplayer.mjs`, `exposure.mjs`, `touch.mjs`, `dynres.mjs`, `relays.mjs`, `gannets.mjs`, `lookhours.mjs`, `lookkeys.mjs`, `terrainedit.mjs`, `objectedit.mjs`, `natureedit.mjs`, `clearing.mjs`.
 
 O `CLAUDE.md` tem as notas técnicas: decisões, armadilhas do three r186 e do WebGPU, e pendências.
 

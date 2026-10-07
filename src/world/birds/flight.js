@@ -1,6 +1,6 @@
 // Copied from Tidewater (https://github.com/dgreenheck/tidewater, src/world/wildlife/Flight.js,
 // three.js version at d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
-// Changes: import paths only.
+// Changes: import paths; the flight of the gannet (BIRD.GANNET, ours).
 import { BIRD, SPECIES } from './shapes.js';
 import { createPose, flapWings, tuckLegs, setHead, storePrevious, resetPrevious } from './pose.js';
 import { TAU, clamp, lerp, angleDiff, approach, qYawPitchRoll } from './kit.js';
@@ -30,6 +30,11 @@ export const FLIGHT = {
 	[ BIRD.FRIGATE ]: {
 		speed: 9, minSpeed: 6, maxBank: 0.55, roll: 1.2, climb: 1.2, sink: 0.45, freq: 2.0, amp: 0.55,
 		glide: { elev: 0.1, sweep: - 0.18, twist: 0.03, elbow: 0.42, wrist: 0.85, hand: - 0.28 }, duty: 0.02,
+	},
+	// the gannet (ours): fast, stiff-winged, a few beats and a long glide, banks little
+	[ BIRD.GANNET ]: {
+		speed: 14, minSpeed: 8, maxBank: 0.7, roll: 2.0, climb: 1.8, sink: 0.6, freq: 3.0, amp: 0.6,
+		glide: { elev: 0.04, sweep: - 0.08, twist: 0.02, elbow: 0.15, wrist: 0.3, hand: - 0.05 }, duty: 0.4,
 	},
 	[ BIRD.SANDERLING ]: {
 		speed: 13, minSpeed: 6, maxBank: 1.0, roll: 4, climb: 2.5, sink: 1.2, freq: 11, amp: 0.8,
