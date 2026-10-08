@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { Fn, uniform, float, vec2, vec3, vec4, exp, mix, smoothstep, screenUV, If, max, min, sin, cos, length, pow, abs, mod, normalize, cross, dot, dFdx, dFdy, select, time } from 'three/tsl';
+import { Fn, uniform, float, vec2, vec3, vec4, exp, mix, smoothstep, screenUV, If, max, min, sin, cos, length, mod, normalize, cross, dot, dFdx, dFdy, select, time, fract } from 'three/tsl';
 
 // Simple underwater look for when the camera dives below WATER_LEVEL: the whole view switches
 // to the water medium (no split at the waterline).
@@ -24,26 +24,49 @@ const CAUSTIC_STRENGTH = 1.3;
 const CAUSTIC_FADE = 0.08; // 1/m: caustics lost per metre of depth (the net also blurs out)
 const TAU = Math.PI * 2;
 
-// Tileable water caustics (after Dave Hoskins' "Tileable Water Caustic", a common shadertoy
-// pattern): a few iterations of a warped sine field; returns ~0 .. 1+ (bright lines on a dark
-// field). uv in tiles, t in seconds.
-const caustic = ( uv, t ) => {
+// Tileable water caustics, ours (07/10/2026; it replaced a port of a Shadertoy pattern that had no
+// licence for commercial use): the bright net that the waves focus onto the bottom drawn as the edges
+// of Voronoi cells, F2 - F1 (the distance to the second nearest cell point minus the nearest: 0 on the
+// border between two cells), turned into thin lines by exp( -edge / width ). Each cell's point orbits
+// on its own phase and the domain is warped by sines of whole periods, so the lines bend and drift;
+// two layers (3 and 2 cells to the tile, at their own speeds) and their crossings brighter. The cell
+// indices wrap at the tile, so the pattern tiles. Calibrated against the old pattern (a numpy
+// prototype of both): the same mean (0.128) and peak (~1.2), so the shading below was left as it was.
+// uv in tiles, t in seconds; returns ~0 .. 1.2 (bright lines on a dark field).
+const CAUSTIC_GAIN = 0.522; // the mean of the old pattern
+const hashCell = ( c, k ) => fract( sin( c.x.mul( 127.1 ).add( c.y.mul( 311.7 ) ).add( k ) ).mul( 43758.5453 ) );
 
-	const p = mod( uv.mul( TAU ), TAU ).sub( 250 ).toVar();
-	const i = vec2( p ).toVar();
-	const c = float( 1 ).toVar();
-	const inten = 0.005;
-	for ( let n = 0; n < 4; n ++ ) {
+const causticLayer = ( uv, t, N, speed, seed, warp ) => {
 
-		const tt = t.mul( 1 - 3.5 / ( n + 1 ) );
-		i.assign( p.add( vec2( cos( tt.sub( i.x ) ).add( sin( tt.add( i.y ) ) ), sin( tt.sub( i.y ) ).add( cos( tt.add( i.x ) ) ) ) ) );
-		c.addAssign( float( 1 ).div( length( vec2( p.x.div( sin( i.x.add( tt ) ).div( inten ) ), p.y.div( cos( i.y.add( tt ) ).div( inten ) ) ) ) ) );
+	// the domain warped by sines of whole periods across the tile (it still tiles)
+	const w = vec2(
+		uv.x.add( sin( uv.y.mul( 2 * TAU ).add( t.mul( 0.7 * speed ) ) ).mul( warp / N ) ),
+		uv.y.add( sin( uv.x.mul( 2 * TAU ).add( t.mul( 0.6 * speed ) ).add( 1.3 ) ).mul( warp / N ) )
+	);
+	const p = w.mul( N );
+	const ip = p.floor().toVar(), fp = p.sub( p.floor() ).toVar();
+	const F1 = float( 8 ).toVar(), F2 = float( 8 ).toVar();
+	for ( let j = - 1; j <= 1; j ++ ) for ( let i = - 1; i <= 1; i ++ ) {
+
+		const c = mod( ip.add( vec2( i, j ) ), N );
+		const a = hashCell( c, seed * 74.7 ), b = hashCell( c, seed * 246.1 + 19.3 );
+		// the cell's point on an orbit of its own
+		const o = vec2( sin( t.mul( speed ).add( a.mul( TAU ) ) ), cos( t.mul( speed * 0.83 ).add( b.mul( TAU ) ) ) ).mul( 0.38 ).add( 0.5 );
+		const d = length( vec2( i, j ).add( o ).sub( fp ) );
+		F2.assign( select( d.lessThan( F1 ), F1, min( F2, d ) ) );
+		F1.assign( min( F1, d ) );
 
 	}
 
-	c.divAssign( 4 );
-	const v = float( 1.17 ).sub( pow( c, 1.4 ) );
-	return pow( abs( v ), 8 );
+	return F2.sub( F1 );
+
+};
+
+const caustic = ( uv, t ) => {
+
+	const l1 = exp( causticLayer( uv, t, 3, 0.9, 1, 0.35 ).div( - 0.07 ) );
+	const l2 = exp( causticLayer( uv.add( vec2( 0.37, 0.11 ) ), t, 2, 0.7, 2, 0.45 ).div( - 0.098 ) );
+	return l1.mul( 0.75 ).add( l2.mul( 0.4 ) ).add( l1.mul( l2 ).mul( 1.2 ) ).mul( CAUSTIC_GAIN );
 
 };
 

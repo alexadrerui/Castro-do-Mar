@@ -161,7 +161,7 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
 - **Makone** (MIT): ideias das ferramentas `tools/verify.mjs` e `tools/houses.mjs`.
 - **[@takram/three-atmosphere](https://github.com/takram-design-engineering/three-geospatial)** (MIT, Copyright (c) 2024 Shota Matsuda, em `licenses/LICENSE-takram-atmosphere.md`): as estrelas (`src/world/stars.js`, com o Yale Bright Star Catalog empacotado em `public/sky/stars.bin`) e a lua (`src/world/sky.js`).
 - Mapa de cor da lua: NASA CGI Moon Kit (LROC), crédito NASA's Scientific Visualization Studio.
-- Cáusticas embaixo d'água a partir do "Tileable Water Caustic" de Dave Hoskins (ver a ressalva em `THIRD_PARTY_NOTICES.md`); hashes sem seno do "Hash without Sine" de Dave Hoskins (MIT).
+- Hashes sem seno do "Hash without Sine" de Dave Hoskins (MIT). (A cáustica embaixo d'água é nossa desde 07/10/2026; antes seguia o "Tileable Water Caustic" dele, sem licença para uso comercial.)
 - [three.js](https://github.com/mrdoob/three.js) e seus exemplos (`webgpu_custom_fog_scattering`, `webgpu_postprocessing_fog`, `webgpu_sculpt`), [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) para os raycasts e [three-bvh-csg](https://github.com/gkjohnson/three-bvh-csg), todos MIT (`licenses/`).
 - Ideias de ferramentas do editor (margens de água, decorações, pincel de natureza) inspiradas no jogo Habitat Creator.
 
@@ -169,4 +169,4 @@ A cada push no `main`, o GitHub Actions (`.github/workflows/deploy.yml`) gera o 
 
 O código e as imagens do Castro do Mar estão sob a licença **MIT** (`LICENSE`): pode usar, modificar, redistribuir e vender, desde que mantenha o aviso de copyright.
 
-As partes vindas de outros projetos (listadas em Créditos) continuam sob as licenças delas, quase todas MIT; as carpas e o lótus são Apache 2.0. Os textos completos estão em `licenses/`, e o `THIRD_PARTY_NOTICES.md` mostra o que veio de onde, as regras de cada licença e uma ressalva: a cáustica embaixo d'água pode ser não comercial (CC BY-NC-SA, o padrão do Shadertoy) e deve ser trocada antes de um uso comercial.
+As partes vindas de outros projetos (listadas em Créditos) continuam sob as licenças delas, quase todas MIT; as carpas e o lótus são Apache 2.0. Os textos completos estão em `licenses/`, e o `THIRD_PARTY_NOTICES.md` mostra o que veio de onde e as regras de cada licença. Tudo permite uso comercial, desde que os avisos sejam mantidos.

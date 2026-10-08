@@ -6,7 +6,6 @@ Resumo para quem vai reutilizar:
 
 - Quase tudo é **MIT**: pode usar, modificar e vender, desde que mantenha os avisos.
 - As carpas e o lótus (`src/world/koi/koi.js`, `lotus.js`) são **Apache 2.0**: além do aviso, é preciso indicar as mudanças feitas nos arquivos.
-- A cáustica embaixo d'água tem uma ressalva (ver no fim).
 
 ## Código portado ou adaptado
 
@@ -56,7 +55,3 @@ Não exigem licença, mas ficam os créditos:
 - Makone: a ideia das ferramentas `tools/verify.mjs` e `tools/houses.mjs`.
 - O jogo Habitat Creator: as ferramentas de margem de água, o editor de objetos e o pincel de natureza.
 - A demo Three.js Sky Pro (preset "Moonlit Night"): só a paleta da noite. É um produto pago e nenhum código dele foi usado.
-
-## Ressalva: a cáustica embaixo d'água
-
-A função `caustic` de `src/post/underwater.js` segue o shader "Tileable Water Caustic" de David Hoskins no Shadertoy (que adapta um efeito de joltz0r do GLSL Sandbox). O shader não declara licença, e o padrão do Shadertoy para esses casos é a **CC BY-NC-SA 3.0**, que não permite uso comercial. Para usar o projeto comercialmente, troque essa função por uma cáustica própria; é um trecho isolado de poucas linhas.
