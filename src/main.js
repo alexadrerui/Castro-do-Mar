@@ -9,6 +9,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { ao as gtao } from 'three/addons/tsl/display/GTAONode.js';
 import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
@@ -37,7 +38,7 @@ import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
-import { Settings } from './core/settings.js';
+import { Settings, QUALITY, startQuality } from './core/settings.js';
 import { Multiplayer, roomFromURL } from './core/multiplayer.js';
 import { Ambience } from './audio/ambience.js';
 import { wind } from './world/wind.js';
@@ -445,7 +446,12 @@ async function main() {
 	// Post: scene pass -> tone map / sRGB -> colour grade (late-afternoon look).
 	const post = new THREE.RenderPipeline( renderer );
 	post.outputColorTransform = false;
-	const scenePass = pass( scene, camera, { samples: 4 } );
+	// anti-aliasing (the offroad's option): MSAA 4x, or none and FXAA on the final image in the 'baixa'
+	// preset (phones). Fixed at load from the stored quality (core/settings.js startQuality): the sample
+	// count is part of every scene pipeline; ?msaa=0|2|4 overrides
+	const msaa = params.has( 'msaa' ) ? Number( params.get( 'msaa' ) ) : QUALITY[ startQuality() ].msaa;
+	app.msaa = msaa;
+	const scenePass = pass( scene, camera, { samples: msaa } );
 	// the eye's adaptation (post/autoExposure.js): a multiplier on the exposure, measured from the scene
 	// after each frame; 1 by day, adaptive from the sunset on (onSunChanged)
 	const exposure = new AutoExposure( scenePass.renderTarget.texture );
@@ -623,7 +629,7 @@ async function main() {
 	const aoStrength = uniform( 0.7 ), aoFar = uniform( 70 ), aoDebug = uniform( 0 ); // debug 1: the occlusion alone
 	let aoNode = null, aoLevel = 'off';
 	app.ao = { strength: aoStrength, far: aoFar, debug: aoDebug, get node() { return aoNode; }, get level() { return aoLevel; } };
-	// The scene pass is multisampled, and its depth a texture_depth_multisampled_2d, which WGSL cannot
+	// With MSAA the scene pass's depth is a texture_depth_multisampled_2d, which WGSL cannot
 	// textureGather (the GTAO's half-resolution path gathers 2x2 depths and keeps the nearest): the
 	// gather is given as the texel itself (a point read at half resolution, the same as the other passes)
 	const makeAO = () => {
@@ -685,7 +691,7 @@ async function main() {
 		const withAO = aoLevel !== 'off';
 		const key = ( paint ? 'p' : focus.enabled ? 'f' : 's' ) + ( bloomOn ? 'b' : '' ) + ( withAO ? 'o' : '' );
 		const input = paint ? paint.node( scenePass.getTextureNode() ) : focus.enabled ? focus.node : scenePass;
-		return outputs[ key ] || ( outputs[ key ] = graded( input, bloomOn, withAO ) );
+		return outputs[ key ] || ( outputs[ key ] = msaa > 0 ? graded( input, bloomOn, withAO ) : fxaa( graded( input, bloomOn, withAO ) ) );
 	};
 	// 'off' | 'low' | 'high' (the quality presets, the panel's "Oclusão de ambiente"; ?ao=low|high)
 	app.setAO = ( level ) => {

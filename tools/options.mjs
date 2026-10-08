@@ -18,7 +18,7 @@ page.on( 'console', ( m ) => { if ( m.type() === 'error' && ! /404|Failed to loa
 const ready = () => page.waitForFunction( () => window.__app && window.__app.ready && window.__app.settings, { timeout: 300000, polling: 500 } );
 const state = () => page.evaluate( () => {
 	const a = window.__app, c = a.camera.position;
-	return { url: location.search, quality: a.settings.quality, pixelRatio: a.pixelRatio, shadows: a.shadowsOn, focus: a.focus.enabled, ao: a.ao.level, aoSeg: document.querySelector( '#o-ao button.on' )?.dataset.ao,
+	return { url: location.search, quality: a.settings.quality, pixelRatio: a.pixelRatio, shadows: a.shadowsOn, focus: a.focus.enabled, ao: a.ao.level, msaa: a.msaa, aoSeg: document.querySelector( '#o-ao button.on' )?.dataset.ao,
 		muted: a.settings.muted, volume: a.settings.volume, thunder: a.lightning.sound, backend: a.backendName, editor: !! a.editor,
 		cam: [ c.x, c.y, c.z ].map( ( v ) => Math.round( v ) ), seg: document.querySelector( '#o-quality button.on' )?.dataset.q,
 		audioBtn: document.getElementById( 'b-audio' ).textContent, editorBtn: document.getElementById( 'b-editor' ).textContent,
@@ -35,7 +35,7 @@ await ready();
 await page.waitForFunction( () => getComputedStyle( document.getElementById( 'loader' ) ).visibility === 'hidden', { timeout: 20000 } );
 await page.evaluate( () => localStorage.removeItem( 'castroDoMar:settings' ) );
 let s = await state(); log( 'start', s );
-check( 'first visit: Média, look untouched (shadows on)', s.quality === 'media' && s.seg === 'media' && s.pixelRatio === 1 && s.shadows && s.ao === 'low' && s.aoSeg === 'low' );
+check( 'first visit: Média, look untouched (shadows on)', s.quality === 'media' && s.seg === 'media' && s.pixelRatio === 1 && s.shadows && s.ao === 'low' && s.aoSeg === 'low' && s.msaa === 4 );
 
 await page.click( '#o-quality button[data-q="baixa"]' ); await settle();
 s = await state(); log( 'Baixa', s );
@@ -55,7 +55,8 @@ const view = ( await state() ).cam;
 
 await page.reload( { waitUntil: 'domcontentloaded' } ); await ready(); await settle( 2000 );
 s = await state(); log( 'reloaded', s );
-check( 'kept after reload: Baixa, muted', s.quality === 'baixa' && s.pixelRatio === 0.75 && s.muted && ! s.thunder );
+check( 'kept after reload: Baixa, muted, no MSAA (FXAA)', s.quality === 'baixa' && s.pixelRatio === 0.75 && s.muted && ! s.thunder && s.msaa === 0 );
+await page.screenshot( { path: `shots/${ prefix }_baixa.png` } );
 
 await page.click( '#o-quality button[data-q="alta"]' ); await settle();
 await page.keyboard.press( 'm' ); await settle( 300 );

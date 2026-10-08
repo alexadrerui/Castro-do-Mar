@@ -13,13 +13,21 @@ const KEY = 'castroDoMar:settings';
 // (nothing stored) is not touched at all.
 export const QUALITY = {
 	// shadowReach: how far trees and rocks cast (m; the hills always, through world/terrainShadow.js);
-	// ao: the ambient occlusion (main.js setAO: 'off' | 'low' | 'high', as the offroad's presets)
-	baixa: { label: 'Baixa', pixelRatio: 0.75, shadows: false, shadowReach: 250, reflections: false, focus: false, bloom: false, ao: 'off' },
-	media: { label: 'Média', pixelRatio: 1, shadows: true, shadowReach: 250, reflections: true, focus: true, bloom: true, ao: 'low' },
-	alta: { label: 'Alta', pixelRatio: 1, shadows: true, shadowReach: 420, reflections: true, focus: true, bloom: true, ao: 'high' }
+	// ao: the ambient occlusion (main.js setAO: 'off' | 'low' | 'high', as the offroad's presets);
+	// msaa: the scene pass's samples, 0 = FXAA instead (main.js). Read at load only (startQuality): the
+	// sample count is part of every scene pipeline, and switching it live would recompile them all
+	baixa: { label: 'Baixa', pixelRatio: 0.75, shadows: false, shadowReach: 250, reflections: false, focus: false, bloom: false, ao: 'off', msaa: 0 },
+	media: { label: 'Média', pixelRatio: 1, shadows: true, shadowReach: 250, reflections: true, focus: true, bloom: true, ao: 'low', msaa: 4 },
+	alta: { label: 'Alta', pixelRatio: 1, shadows: true, shadowReach: 420, reflections: true, focus: true, bloom: true, ao: 'high', msaa: 4 }
 };
 
 const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test( navigator.userAgent );
+
+// the level a load starts with: the stored one or, on a first visit, low on phones (as in the original)
+export function startQuality() {
+	const s = load();
+	return QUALITY[ s.quality ] ? s.quality : isMobile ? 'baixa' : 'media';
+}
 
 function load() {
 	try { return JSON.parse( localStorage.getItem( KEY ) ) ?? {}; } catch ( e ) { return {}; }
@@ -31,8 +39,7 @@ export class Settings {
 		this.app = app;
 		this.listeners = { quality: [], audio: [] };
 		const s = load();
-		// as in the original: phones start low
-		this.quality = QUALITY[ s.quality ] ? s.quality : isMobile ? 'baixa' : 'media';
+		this.quality = startQuality();
 		this.muted = s.muted === true;
 		this.volume = Number.isFinite( s.volume ) ? Math.min( 1, Math.max( 0, s.volume ) ) : 0.8;
 		// the visitor's name in a shared visit (core/multiplayer.js)

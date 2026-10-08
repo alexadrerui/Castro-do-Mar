@@ -142,7 +142,9 @@ export class HUD {
 		};
 		for ( const b of seg.querySelectorAll( 'button' ) ) b.onclick = () => {
 			settings.setQuality( b.dataset.q );
-			this.toast( 'Qualidade ' + QUALITY[ b.dataset.q ].label.toLowerCase() );
+			// the anti-aliasing is fixed at load (main.js msaa)
+			const later = QUALITY[ b.dataset.q ].msaa !== app.msaa ? ' (o anti-serrilhado muda ao recarregar)' : '';
+			this.toast( 'Qualidade ' + QUALITY[ b.dataset.q ].label.toLowerCase() + later );
 		};
 		settings.on( 'quality', ( level, q ) => {
 			showQuality( level );
