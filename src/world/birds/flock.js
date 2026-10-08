@@ -32,7 +32,7 @@ const SHAG_SPEED = 13; // m/s along the loop
 export class Flock {
 
 	// app: hf (heightAt), layers.buildings / fort / rocks (the perches are found on them)
-	constructor( app, { gulls = 16, terns = 5, gannets = 4, shags = 5, seed = 11 } = {} ) {
+	constructor( app, { gulls = 16, soarers = 14, terns = 5, gannets = 4, shags = 5, seed = 11 } = {} ) {
 		this.paused = false;
 		this.splash = null; // splash.js Splashes (main.js): where the divers hit the water
 		this.hf = app.hf;
@@ -91,6 +91,27 @@ export class Flock {
 			a.slot = i;
 			a.f.freqMul = 0.93 + rng() * 0.14; // each its own beat: the line ripples, not in step
 		} );
+
+		// ---- gulls soaring high over the bay, each circling its own thermal and never landing (they
+		// were gulls.js, a mesh animated in the vertex shader: two pipelines more and ~0.4 s of cold
+		// compile on a first visit; here they share the batch's). Circles, radii and heights drawn as
+		// there (centre ( 95, -30 ), 300 x 240 m), with a sequence of their own.
+		{
+			const R = mulberry32( 7 );
+			for ( let i = 0; i < soarers; i ++ ) add( 'gull', BIRD.GULL, ( a ) => {
+				const cx = 95 + ( R() - 0.5 ) * 300, cz = - 30 + ( R() - 0.5 ) * 240, r = 14 + R() * 38;
+				let ground = WATER_LEVEL;
+				for ( let k = 0; k < 16; k ++ ) {
+					const t = k / 16 * TAU;
+					ground = Math.max( ground, this.hf.heightAt( cx + Math.cos( t ) * r, cz + Math.sin( t ) * r ) );
+				}
+				const y = ground + 10 + R() * 32, th = R() * TAU, dir = R() < 0.5 ? - 1 : 1;
+				a.state = 'soar';
+				a.far = 1400; // seen from across the bay
+				a.circle = { x: cx, z: cz, r, dir, y, ph: R() * TAU };
+				a.f.place( cx + Math.cos( th ) * r, y, cz + Math.sin( th ) * r, th + dir * Math.PI / 2 );
+			} );
+		}
 
 		for ( const a of this.agents ) a.f.P.fresh = true;
 	}
@@ -382,7 +403,7 @@ export class Flock {
 			if ( ! a.visible ) continue;
 			const P = a.f.P;
 			const d = Math.hypot( P.pos[ 0 ] - cp.x, P.pos[ 1 ] - cp.y, P.pos[ 2 ] - cp.z );
-			const far = FAR[ a.kind ];
+			const far = a.far ?? FAR[ a.kind ];
 			if ( d > far ) continue;
 			const k = a.f.scale0 || ( a.f.scale0 = P.scale );
 			P.scale = k * smooth( far, far * 0.8, d );
@@ -572,6 +593,14 @@ export class Flock {
 					this.newGullGoal( a );
 				}
 				this.flyTo( a, dt, g.x, g.y, g.z, f.cfg.speed, 1 );
+				break;
+			}
+			case 'soar': {
+				// the high soarers: round their thermal for good, a slow rise and fall on it
+				const c = a.circle;
+				const y = c.y + Math.sin( this.time * 0.11 + c.ph ) * 3;
+				const ang = Math.atan2( f.z - c.z, f.x - c.x ) + c.dir * 0.6;
+				this.flyTo( a, dt, c.x + Math.cos( ang ) * c.r, y, c.z + Math.sin( ang ) * c.r, f.cfg.speed * 0.95, 0.6, 1.6 );
 				break;
 			}
 			case 'circle': {

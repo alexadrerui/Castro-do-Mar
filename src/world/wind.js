@@ -37,11 +37,14 @@ export function windFrom() {
 	return ( Math.atan2( - d.x, d.y ) * 180 / Math.PI + 360 ) % 360;
 }
 
-const hash12 = /*@__PURE__*/ Fn( ( [ p ] ) => {
+// inlined in windNoise, not a function of its own: a layout function called from another one was
+// emitted at a different place in the first shader built than in the later ones (the same material
+// came out as two programs, two pipelines)
+const hash12 = ( p ) => {
 	const p3 = fract( vec3( p.x, p.y, p.x ).mul( 0.1031 ) ).toVar();
 	p3.addAssign( dot( p3, p3.yzx.add( 33.33 ) ) );
 	return fract( p3.x.add( p3.y ).mul( p3.z ) );
-} ).setLayout( { name: 'windHash12', type: 'float', inputs: [ { name: 'p', type: 'vec2' } ] } );
+};
 const vnoise = /*@__PURE__*/ Fn( ( [ p ] ) => {
 	const i = floor( p );
 	const f = fract( p );

@@ -121,10 +121,16 @@ class PlantBuilder {
 			aux[ i * 4 + 2 ] = 0.7 + 0.3 * Math.min( 1, t * 2 ); // a little darker at the ground
 			aux[ i * 4 + 3 ] = - 1; // thin: the same normal on both faces (vegetation.js createFoliageMaterial)
 		}
-		geo.setAttribute( 'aux', new THREE.BufferAttribute( aux, 4 ) );
-		geo.setAttribute( 'uv', new THREE.BufferAttribute( new Float32Array( n * 2 ), 2 ) );
-		geo.computeBoundingSphere();
-		return geo;
+		// the attributes in the trees' order (trees.js Builder: position, normal, uv, color, aux): the
+		// vertex shader numbers them in that order, and another order made a pipeline of its own
+		const out = new THREE.BufferGeometry();
+		out.setAttribute( 'position', geo.attributes.position );
+		out.setAttribute( 'normal', geo.attributes.normal );
+		out.setAttribute( 'uv', new THREE.BufferAttribute( new Float32Array( n * 2 ), 2 ) );
+		out.setAttribute( 'color', geo.attributes.color );
+		out.setAttribute( 'aux', new THREE.BufferAttribute( aux, 4 ) );
+		out.computeBoundingSphere();
+		return out;
 	}
 }
 

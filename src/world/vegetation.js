@@ -40,8 +40,11 @@ export function foliageAtlas() {
 }
 
 // clusters: the leaf-cluster atlas of leafAtlas.js (R coverage, G brightness, B per-leaf random)
-// instead of the canvas atlas (A coverage, R luminance); fern: fronds of trees.js bracken(), the
-// pinnae cut out from the frond uv (s along, t across the leaflet strip); groundShift (terrain.js):
+// instead of the canvas atlas (A coverage, R luminance); fern: fronds of trees.js bracken() (aux.w
+// = 2), the pinnae cut out from the frond uv (s along, t across the leaflet strip): 'only' for a
+// material of fronds alone, true to tell them apart per vertex (one material, one pipeline, for
+// the trees, shrubs, ferns and meadow flowers: the browser's shader cache is at its limit and
+// every pipeline costs ~0.4 s of cold compile on a first visit); groundShift (terrain.js):
 // every plant moved, whole, onto the ground its terrain chunk draws (the far coarse LODs cut below
 // the crests, where the trees hung in the air)
 export function createFoliageMaterial( sunDir, { clusters = null, fern = false, groundShift = null } = {} ) {
@@ -53,8 +56,10 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false, 
 	mat.alphaToCoverage = true;
 	// aux.w: 1 a leaf card, 0 a solid part, -1 a thin opaque surface (meadowFlora.js petals and leaves:
 	// no card texture, but the card's unflipped normal)
-	const card = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w.max( 0 );
-	const thin = fern ? float( 0 ) : attribute( 'aux', 'vec4' ).w.lessThan( - 0.5 ).select( 1, 0 );
+	const auxW = attribute( 'aux', 'vec4' ).w;
+	const isFern = fern === 'only' ? float( 1 ) : fern ? auxW.greaterThan( 1.5 ).select( 1, 0 ) : float( 0 );
+	const card = fern === 'only' ? float( 0 ) : auxW.min( 1 ).max( 0 ).mul( isFern.oneMinus() );
+	const thin = fern === 'only' ? float( 0 ) : auxW.lessThan( - 0.5 ).select( 1, 0 );
 	const tex = texture( clusters ?? foliageAtlas(), uv() );
 	let cover = clusters ? tex.r : tex.a;
 	if ( clusters ) {
@@ -99,7 +104,8 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false, 
 	const lum = clusters ? tex.g.mul( 1.4 ) : tex.r.mul( 1.35 ).add( 0.15 );
 	const cardLum = mix( float( 1 ), lum, card );
 	let leafCol = tint.mul( mix( 0.72, 1.18, n ) ).mul( mix( 0.85, 1.1, nBig ) ).mul( cardLum );
-	if ( clusters ) leafCol = leafCol.mul( mix( vec3( 0.9, 0.95, 1.05 ), vec3( 1.1, 1.06, 0.85 ), tex.b.mul( card ) ) );
+	// (cards only: the fronds keep their colour)
+	if ( clusters ) leafCol = leafCol.mul( mix( vec3( 1 ), mix( vec3( 0.9, 0.95, 1.05 ), vec3( 1.1, 1.06, 0.85 ), tex.b ), card ) );
 	mat.opacityNode = mix( float( 1 ), cover, card );
 	// cards: cut empty texels before shading, and in the shadow pass
 	mat.maskNode = card.lessThan( 0.5 ).or( cover.greaterThan( 0.2 ) );
@@ -118,9 +124,17 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false, 
 		const hwE = max( hw, min( fwS.mul( N * 0.6 ), 0.5 ).mul( select( tt.lessThan( 1 ), 1, 0 ) ) );
 		const pinna = abs( fx ).lessThan( hwE ).and( tt.lessThan( 1 ) ).and( fs.greaterThan( 0.3 ) );
 		// rachis: a thin line along the frond, the whole strip on the bare stalk
-		mat.maskNode = pinna.or( ft.lessThan( 0.06 ) ).or( fs.lessThan( 0.3 ).and( ft.lessThan( 0.5 ) ) );
-		mat.maskShadowNode = mat.maskNode;
-		mat.opacityNode = float( 1 );
+		const frond = pinna.or( ft.lessThan( 0.06 ) ).or( fs.lessThan( 0.3 ).and( ft.lessThan( 0.5 ) ) );
+		if ( fern === 'only' ) {
+			mat.maskNode = frond;
+			mat.maskShadowNode = frond;
+			mat.opacityNode = float( 1 );
+		} else {
+			// per vertex: fronds (aux.w = 2) cut by their pinnae, the rest as above
+			const f = isFern.greaterThan( 0.5 );
+			mat.maskNode = f.and( frond ).or( f.not().and( mat.maskNode ) );
+			mat.maskShadowNode = f.and( frond ).or( f.not().and( mat.maskShadowNode ) );
+		}
 	}
 	const bark = baseCol.mul( mix( 0.75, 1.1, n ) );
 	mat.colorNode = mix( bark, leafCol, leaf ).mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() );
@@ -134,7 +148,7 @@ export function createFoliageMaterial( sunDir, { clusters = null, fern = false, 
 	// solid parts (trunks and branches) keep the usual flip. The meadow flowers' thin petals and
 	// leaves too: curled, they show both faces at once, and in the wind each facet that turned edge-on
 	// flipped its normal, its light jumping between bright and dark from frame to frame (they flickered)
-	mat.normalNode = fern ? normalViewGeometry : normalViewGeometry.mul( select( card.add( thin ).greaterThan( 0.5 ), float( 1 ), faceDirection ) );
+	mat.normalNode = fern === 'only' ? normalViewGeometry : normalViewGeometry.mul( select( card.add( thin ).add( isFern ).greaterThan( 0.5 ), float( 1 ), faceDirection ) );
 	mat.userData.foliage = U; // QA (tools/flicker.mjs): wind 0 holds the plants still
 	return { material: mat, uniforms: U };
 }
@@ -217,8 +231,6 @@ export async function createVegetation( app, progress ) {
 	group.name = 'vegetation';
 
 	const groundShift = app.terrain.groundShift;
-	const { material } = createFoliageMaterial( sunDir, { groundShift } );
-	app.foliageMaterial = material;
 	// GPU bakes: the leaf-cluster atlas (Tidewater's; tile 1 the pine needles) and the octahedral
 	// impostors of the far oaks / pines; after the first load read from the IndexedDB cache
 	const oakHi = oakTree( 0, 11 ), pineHi = pineTree( 0, 12 );
@@ -239,10 +251,11 @@ export async function createVegetation( app, progress ) {
 			.then( ( [ leaf, oak, pine ] ) => cachePut( bakeKey, { leaf, oak, pine }, 'bakes:' ) )
 			.then( () => console.info( 'bakes: cached', bakeKey ) );
 	}
-	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture, groundShift } );
-	app.canopyMaterial = canopy;
-	const { material: fernMat } = createFoliageMaterial( sunDir, { fern: true, groundShift } );
-	app.fernMaterial = fernMat;
+	// one material for every plant (trees, shrubs, bracken, the meadow flowers of meadowFlora.js):
+	// the flowers draw their vertex colour (no card), the fronds are told apart per vertex
+	const { material: canopy } = createFoliageMaterial( sunDir, { clusters: leafAtlas.texture, fern: true, groundShift } );
+	app.canopyMaterial = app.fernMaterial = app.foliageMaterial = canopy;
+	const fernMat = canopy;
 	const oakImpostor = oakAtlas.createMaterial( { bark: OAK_BARK, groundShift } );
 	const pineImpostor = pineAtlas.createMaterial( { bark: PINE_BARK, groundShift } );
 	app.oakImpostors = oakAtlas;

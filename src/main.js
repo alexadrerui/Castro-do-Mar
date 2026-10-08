@@ -19,7 +19,6 @@ import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
 import { KoiPonds } from './world/koi/ponds.js';
-import { Gulls } from './world/birds/gulls.js';
 import { BirdBatch } from './world/birds/batch.js';
 import { Flock } from './world/birds/flock.js';
 import { Splashes } from './world/birds/splash.js';
@@ -246,7 +245,7 @@ async function main() {
 		// the far ring (~1 s to compute) from the IndexedDB cache, keyed by its code and the height function
 		const key = 'horizon:' + hashSources( srcHorizon, srcHeight, srcLayout, srcNoise );
 		const cached = await cacheGet( key );
-		const h = await createHorizon( p, cached?.index?.length ? cached : null );
+		const h = await createHorizon( p, cached?.index?.length ? cached : null, terrain.detailTex );
 		if ( h.userData.bake ) { cachePut( key, h.userData.bake, 'horizon:' ); delete h.userData.bake; }
 		console.info( 'horizon:', cached ? 'from cache' : 'computed' );
 		h.layers.enable( 2 );
@@ -304,8 +303,6 @@ async function main() {
 		app.layers.koi = { label: 'Carpas e lótus', object: koi.group };
 		app.onFrame.push( ( dt ) => koi.update( dt, camera ) );
 	}
-	// Gulls soaring high over the bay (animated in the vertex shader).
-	const gulls = new Gulls( { hf, waterLevel: WATER_LEVEL, count: 14 } );
 	// the birds go to roost as night falls (the sun 2 degrees under the horizon) and come back at dawn:
 	// a group of their own, so the panel's layer buttons still switch each one (app.birdsAwake)
 	const birdGroup = new THREE.Group();
@@ -316,12 +313,8 @@ async function main() {
 		app.birdsAwake = sky.state.elevation > - 2;
 		birdGroup.visible = app.birdsAwake;
 	} );
-	birdGroup.add( gulls.mesh );
-	app.gulls = gulls;
-	app.layers.gulls = { label: 'Gaivotas', object: gulls.mesh };
-	app.onFrame.push( ( dt ) => gulls.update( dt ) );
-	// Gulls that perch on the roofs, the wall and the shore rocks, terns that hover and dive (one
-	// instanced draw from a storage buffer: WebGPU only, like the seabed).
+	// Gulls that perch on the roofs, the wall and the shore rocks or soar high over the bay, terns
+	// that hover and dive (one instanced draw from a storage buffer: WebGPU only, like the seabed).
 	if ( renderer.backend.isWebGPUBackend ) {
 		const birds = new BirdBatch( { capacity: 48 } );
 		// upload the (empty) records now: a storage buffer never uploaded left the precompile of
@@ -337,7 +330,7 @@ async function main() {
 		flock.splash = splashes;
 		app.splashes = splashes;
 		birdGroup.add( splashes.mesh );
-		app.layers.birds = { label: 'Aves pousadas', object: birds.mesh };
+		app.layers.birds = { label: 'Aves', object: birds.mesh };
 		// the camera is the "viewer" that flushes them
 		const viewer = { x: 0, y: 0, z: 0, speed: 0 };
 		app.onFrame.push( ( dt ) => {

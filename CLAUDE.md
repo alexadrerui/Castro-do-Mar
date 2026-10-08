@@ -51,6 +51,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - `smoothstep( a, b, x )` com a > b é indefinido no WGSL (o anel de espuma do borrifo sumia): use `smoothstep( b, a, x ).oneMinus()`.
   - `a.step( b )` não se comportou como `step( a, b )`: use `b.greaterThanEqual( a ).select( 1, 0 )`.
   - Uma função com `setLayout` vira função WGSL própria e não enxerga os uniforms ("struct member nodeUniform0 not found"): as que leem uniforms ficam sem layout.
+  - Função com `setLayout` chamada de dentro de outra com `setLayout` sai num lugar diferente do código no primeiro shader montado: o mesmo material vira dois programas (dois pipelines). Deixe a interna sem layout (ver `wind.js`).
   - Trocar a textura de um `texture()` entre quadros (ping-pong) não chega aos bindings de outro passe: escreva em B lendo A e copie B em A (`copyTextureToTexture`).
   - O emissivo é montado **antes** das luzes: um valor que dependa da sombra recebida vai no `outputNode` (ver contraluz da grama em `docs/vegetacao-pedras.md`).
 - **Nada aninhado dentro da passada da cena** (o `updateBefore` de um nó) com outra câmera e os mesmos materiais/luzes: o three compartilha o buffer de uniforms do grupo "render", e as cordilheiras apareciam de cabeça para baixo sobre a baía. A captura do reflexo roda antes da passada (`captureBefore`).
@@ -83,7 +84,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - Profundidade de campo em meia resolução.
 - Sombras: mapa 4096 → 2048 ou 2 cascatas; menos casters.
 - Vegetação de perto num conjunto em volta da câmera em vez de tiles (menos chamadas).
-- Primeira visita sem cache de shaders: os mais caros são horizonte, aves e gaivotas (~0,4–0,6 s cada).
+- Primeira visita sem cache de shaders (pré-compilação a frio ~7,85 s, pronto a frio ~15,8 s): sobram materiais únicos (terreno, aves, água, fundo do mar, ~0,3–0,6 s cada).
 - Ainda não conferido: o rastro da lua na água. Um objeto original removido no editor só volta editando o JSON.
 
 ## Publicação (GitHub Pages)

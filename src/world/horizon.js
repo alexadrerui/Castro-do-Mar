@@ -1,8 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
-	positionWorld, normalWorld, vec2, vec3, float, color, mix, smoothstep, clamp, mx_fractal_noise_float
+	positionWorld, normalWorld, vec2, vec3, float, color, mix, smoothstep, clamp, texture
 } from 'three/tsl';
-import { makeSimplex, fbm, ridged, ridgedSoft, smoothstep as ss } from '../core/noise.js';
+import { makeSimplex, fbm, ridgedSoft, smoothstep as ss } from '../core/noise.js';
 import { rawHeight } from './heightfield.js';
 import { TERRAIN, VILLAGE } from './layout.js';
 
@@ -26,14 +26,17 @@ export function farHeight( x, z ) {
 	const wx = x + 1600 * fbm( nJ, x * 0.00025, z * 0.00025, 3 );
 	const wz = z + 1600 * fbm( nJ, x * 0.00025 + 7.3, z * 0.00025 - 2.1, 3 );
 
-	// great snowy ranges: 2.8 - 12 km (the lake corridor opens them from 7 km)
-	const m = ss( 2800, 5200, r ) * ( open + ( 1 - open ) * ss( 6500, 9500, r ) );
+	// snowy ranges: a band from 2.8 to ~10 km (the lake corridor opens them from 7 km), fading out
+	// beyond (08/10/2026, the user: they were too big, bare grey walls that did not fit the view)
+	const m = ss( 2800, 5200, r ) * ( open + ( 1 - open ) * ss( 6500, 9500, r ) ) * ( 1 - 0.6 * ss( 9000, 13000, r ) );
 	if ( m > 0 ) {
-		// massif bodies with sharp, jagged alpine crests (ridged) on top
+		// massif bodies with alpine crests on top: rounded ridges (ridgedSoft) raised to a power, so
+		// the summits stay peaked but broad; the squared ridged noise of before rose in needles, thin
+		// spires 1 km tall all along the horizon
 		const body = Math.pow( ss( - 0.4, 0.7, fbm( nJ, wx * 0.0002, wz * 0.0002, 4 ) ), 1.3 );
-		const sharp = ridged( nH, wx * 0.00026, wz * 0.00026, 4 );
+		const sharp = Math.pow( ridgedSoft( nH, wx * 0.00026, wz * 0.00026, 3 ), 2.6 );
 		const env = 0.7 + 0.3 * ss( - 0.3, 0.6, fbm( nJ, x * 0.00012, z * 0.00012, 3 ) );
-		const peak = 2100 * env * bias * ( 0.2 + 0.35 * body + 0.6 * sharp * ( 0.5 + 0.5 * body ) );
+		const peak = 1200 * env * bias * ( 0.2 + 0.35 * body + 0.6 * sharp * ( 0.5 + 0.5 * body ) );
 		h = Math.max( h, - 20 + m * peak );
 	}
 	// forested mountains across the lake, descending to the water (right of
@@ -44,7 +47,7 @@ export function farHeight( x, z ) {
 	if ( shore > 0 ) h = Math.max( h, - 15 + shore * ( 140 + 180 * ( 0.5 + 0.5 * fbm( nH, x * 0.0007, z * 0.0007, 3 ) ) ) );
 	const mid = ss( 1700, 2800, r ) * open * ( 1 - ss( 5500, 7500, r ) );
 	if ( mid > 0 ) {
-		const hills = Math.pow( ridgedSoft( nJ, wx * 0.0009, wz * 0.0009, 4 ), 1.8 ) * 650 * ( 0.45 + 0.55 * fbm( nH, x * 0.0005, z * 0.0005, 3 ) + 0.25 );
+		const hills = Math.pow( ridgedSoft( nJ, wx * 0.0009, wz * 0.0009, 4 ), 1.8 ) * 420 * ( 0.45 + 0.55 * fbm( nH, x * 0.0005, z * 0.0005, 3 ) + 0.25 );
 		// a forested base under every range so none rises straight from water
 		h = Math.max( h, - 25 + mid * ( 70 + hills ) );
 	}
@@ -54,7 +57,9 @@ export function farHeight( x, z ) {
 // cached: { position, normal, index } of an earlier load (main.js keeps them in the IndexedDB cache,
 // keyed by the hash of this code and of the height function); without it the ring is computed
 // (~1 s) and its arrays are left in mesh.userData.bake for the cache.
-export async function createHorizon( onProgress, cached = null ) {
+// detailTex: the terrain's tileable detail texture (terrain.js; R fine fbm, B mid fbm), read for the
+// colour's noise instead of two fractal noises computed per pixel (~0.3 s of cold compile)
+export async function createHorizon( onProgress, cached = null, detailTex = null ) {
 	const geo = new THREE.BufferGeometry();
 	if ( cached ) {
 		geo.setAttribute( 'position', new THREE.BufferAttribute( cached.position, 3 ) );
@@ -62,14 +67,14 @@ export async function createHorizon( onProgress, cached = null ) {
 		geo.setIndex( new THREE.BufferAttribute( cached.index, 1 ) );
 	} else await buildRing( geo, onProgress );
 	geo.computeBoundingSphere();
-	return horizonMesh( geo, onProgress );
+	return horizonMesh( geo, onProgress, detailTex );
 }
 
 async function buildRing( geo, onProgress ) {
 	const cx = TERRAIN.centerX, cz = TERRAIN.centerZ;
 	const half = TERRAIN.size / 2;
 	const A = 1200, R = 300;
-	const r0 = 950, r1 = 19000;
+	const r0 = 950, r1 = 15000;
 	const verts = new Float32Array( A * R * 3 );
 	for ( let j = 0; j < R; j ++ ) {
 		const r = r0 * Math.pow( r1 / r0, j / ( R - 1 ) );
@@ -99,17 +104,19 @@ async function buildRing( geo, onProgress ) {
 	geo.userData.bake = { position: verts, normal: geo.attributes.normal.array, index: idx };
 }
 
-function horizonMesh( geo, onProgress ) {
+function horizonMesh( geo, onProgress, detailTex ) {
 	const mat = new THREE.MeshStandardNodeMaterial();
 	const wp = positionWorld;
 	const slope = float( 1 ).sub( normalWorld.y.clamp( 0, 1 ) );
-	const n1 = mx_fractal_noise_float( wp.xz.mul( 0.0012 ), 4 ).mul( 0.5 ).add( 0.5 );
-	const n2 = mx_fractal_noise_float( wp.mul( 0.006 ), 3 ).mul( 0.5 ).add( 0.5 );
+	// value-noise fbm, stretched to the contrast of the fractal noises it replaces; n2 drifts with
+	// the height so a cliff face is not streaked straight down
+	const n1 = texture( detailTex, wp.xz.div( 3300 ) ).b.sub( 0.5 ).mul( 1.6 ).add( 0.5 ).clamp( 0, 1 );
+	const n2 = texture( detailTex, wp.xz.add( wp.y.mul( 0.7 ) ).div( 2700 ) ).r.sub( 0.5 ).mul( 1.6 ).add( 0.5 ).clamp( 0, 1 );
 	const forest = mix( color( 0x223619 ), color( 0x3b5226 ), n1 );
 	const rock = mix( color( 0x4c4d52 ), color( 0x7f7f84 ), n2 );
-	const snowLine = float( 780 ).add( n1.mul( 350 ) ).add( slope.mul( 250 ) );
-	let col = mix( forest, rock, smoothstep( 0.3, 0.6, slope.add( n2.mul( 0.2 ) ) ).max( smoothstep( 550, 1000, wp.y.add( n1.mul( 200 ) ) ) ) );
-	col = mix( col, color( 0xf4f6fa ), smoothstep( snowLine, snowLine.add( 160 ), wp.y ).mul( smoothstep( 0.7, 0.95, slope ).oneMinus() ) );
+	const snowLine = float( 470 ).add( n1.mul( 210 ) ).add( slope.mul( 150 ) );
+	let col = mix( forest, rock, smoothstep( 0.3, 0.6, slope.add( n2.mul( 0.2 ) ) ).max( smoothstep( 330, 600, wp.y.add( n1.mul( 120 ) ) ) ) );
+	col = mix( col, color( 0xf4f6fa ), smoothstep( snowLine, snowLine.add( 100 ), wp.y ).mul( smoothstep( 0.7, 0.95, slope ).oneMinus() ) );
 	// aerial perspective planes: far ranges fade into blue haze
 	const dist = wp.xz.sub( vec2( VILLAGE.x, VILLAGE.z ) ).length();
 	col = mix( col, color( 0x9fb4d0 ), smoothstep( 3000, 15000, dist ).mul( 0.75 ) );
