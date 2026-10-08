@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2 } from 'three/tsl';
+import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2, rtt, screenSize } from 'three/tsl';
 
 import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
@@ -7,6 +7,8 @@ import { FreeCam } from './controls/freecam.js';
 import { AutoFocus } from './controls/focus.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { ao as gtao } from 'three/addons/tsl/display/GTAONode.js';
+import { depthAwareBlur } from 'three/addons/tsl/display/depthAwareBlur.js';
 import { LensDroplets, discBlur } from './post/lensDroplets.js';
 import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
@@ -611,8 +613,46 @@ async function main() {
 		return mix( src, sceneBlur.rgb, k );
 	};
 
-	const graded = ( input, withBloom ) => Fn( () => {
-		const clouded = clouds ? clouds.apply( scattered( input.rgb ) ) : scattered( input.rgb );
+	// Ambient occlusion (the offroad's "Ambient occlusion" option, MIT, Arz-Gev; three's GTAONode): contact
+	// shading in corners, where a house meets the ground, between rocks, under eaves, inside the crowns.
+	// Normals rebuilt from the depth (no MRT: a normal output would change every material's pipeline),
+	// half resolution. Multiplied into the scene colour first, faded out between 35 and 70 m (farther, the
+	// normals rebuilt from the depth turn to grain and stripes on the hills; the terrain's baked AO takes
+	// over) and under water. Built when first switched on; 'off' leaves it out of the output (no cost).
+	const AO_LEVELS = { off: null, low: { samples: 8, radius: 1.0, strength: 0.7 }, high: { samples: 16, radius: 1.6, strength: 0.85 } };
+	const aoStrength = uniform( 0.7 ), aoFar = uniform( 70 ), aoDebug = uniform( 0 ); // debug 1: the occlusion alone
+	let aoNode = null, aoLevel = 'off';
+	app.ao = { strength: aoStrength, far: aoFar, debug: aoDebug, get node() { return aoNode; }, get level() { return aoLevel; } };
+	// The scene pass is multisampled, and its depth a texture_depth_multisampled_2d, which WGSL cannot
+	// textureGather (the GTAO's half-resolution path gathers 2x2 depths and keeps the nearest): the
+	// gather is given as the texel itself (a point read at half resolution, the same as the other passes)
+	const makeAO = () => {
+		const depthNode = scenePass.getTextureNode( 'depth' );
+		depthNode.gather = () => ( { sample: ( u ) => vec4( depthNode.sample( u ).r ) } );
+		const n = gtao( depthNode, null, camera );
+		n.resolutionScale = 0.5; // ~0.5 ms low, ~0.9 ms high at 1600x900 (tools/gputime.mjs, the village)
+		return n;
+	};
+	// GTAO's noise (one 4x4 rotation pattern, no temporal filter here) as grain on the grass and the
+	// flowers: a depth-aware blur, across at half resolution into a texture and down in the composite
+	let aoBlurred = null;
+	const occluded = ( src ) => {
+		aoNode ??= makeAO();
+		if ( ! aoBlurred ) {
+			const depthTex = scenePass.getTextureNode( 'depth' );
+			const across = rtt( depthAwareBlur( aoNode.getTextureNode(), depthTex, vec2( 2, 0 ).div( screenSize ), camera, 2, 0.5 ), null, null, { resolutionScale: 0.5 } );
+			aoBlurred = depthAwareBlur( across, depthTex, vec2( 0, 2 ).div( screenSize ), camera, 2, 0.5 );
+		}
+		const a = aoBlurred;
+		const depth = scenePass.getTextureNode( 'depth' ).sample( screenUV ).r;
+		const d = length( getViewPosition( screenUV, depth, camProjInv ) );
+		const k = aoStrength.mul( smoothstep( aoFar.mul( 0.5 ), aoFar, d ).oneMinus() ).mul( underwater.on.oneMinus() ).mul( isSky( depth ).select( 0, 1 ) );
+		return mix( src.mul( mix( float( 1 ), a, k ) ), vec3( a ), aoDebug );
+	};
+
+	const graded = ( input, withBloom, withAO ) => Fn( () => {
+		const lit = withAO ? occluded( input.rgb ) : input.rgb;
+		const clouded = clouds ? clouds.apply( scattered( lit ) ) : scattered( lit );
 		const misty0 = mist ? mist.apply( clouded ) : clouded;
 		const misty = valley ? valley.apply( misty0 ) : misty0;
 		const src0 = godrays ? godrays.apply( misty ) : misty;
@@ -642,9 +682,25 @@ async function main() {
 	const outputs = {};
 	let paint = null;
 	const output = () => {
-		const key = ( paint ? 'p' : focus.enabled ? 'f' : 's' ) + ( bloomOn ? 'b' : '' );
+		const withAO = aoLevel !== 'off';
+		const key = ( paint ? 'p' : focus.enabled ? 'f' : 's' ) + ( bloomOn ? 'b' : '' ) + ( withAO ? 'o' : '' );
 		const input = paint ? paint.node( scenePass.getTextureNode() ) : focus.enabled ? focus.node : scenePass;
-		return outputs[ key ] || ( outputs[ key ] = graded( input, bloomOn ) );
+		return outputs[ key ] || ( outputs[ key ] = graded( input, bloomOn, withAO ) );
+	};
+	// 'off' | 'low' | 'high' (the quality presets, the panel's "Oclusão de ambiente"; ?ao=low|high)
+	app.setAO = ( level ) => {
+		// WebGPU only: on the WebGL 2 backend the occlusion came out white (the depth it reads does not match there)
+		const L = AO_LEVELS[ level ] === undefined || ! webgpu ? 'off' : level;
+		aoLevel = L;
+		if ( L !== 'off' ) {
+			const c = AO_LEVELS[ L ];
+			aoNode ??= makeAO();
+			aoNode.samples.value = c.samples;
+			aoNode.radius.value = c.radius;
+			aoStrength.value = c.strength;
+		}
+		post.outputNode = output();
+		post.needsUpdate = true;
 	};
 	app.setPaint = ( on ) => {
 		paint = on ? ( app.paint ??= new Kuwahara() ) : null;
@@ -664,6 +720,8 @@ async function main() {
 		post.outputNode = output();
 		post.needsUpdate = true;
 	};
+	// on by default (the 'media' preset: low); ?ao=off|low|high
+	app.setAO( params.get( 'ao' ) ?? 'low' );
 	app.post = post;
 	// The sea's reflection is captured before the scene pass, not inside it (world/planarReprojection.js
 	// captureBefore): three shares the uniform buffer of the "render" group (camera, lights) between all

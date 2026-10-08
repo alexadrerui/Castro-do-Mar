@@ -18,7 +18,7 @@ page.on( 'console', ( m ) => { if ( m.type() === 'error' && ! /404|Failed to loa
 const ready = () => page.waitForFunction( () => window.__app && window.__app.ready && window.__app.settings, { timeout: 300000, polling: 500 } );
 const state = () => page.evaluate( () => {
 	const a = window.__app, c = a.camera.position;
-	return { url: location.search, quality: a.settings.quality, pixelRatio: a.pixelRatio, shadows: a.shadowsOn, focus: a.focus.enabled,
+	return { url: location.search, quality: a.settings.quality, pixelRatio: a.pixelRatio, shadows: a.shadowsOn, focus: a.focus.enabled, ao: a.ao.level, aoSeg: document.querySelector( '#o-ao button.on' )?.dataset.ao,
 		muted: a.settings.muted, volume: a.settings.volume, thunder: a.lightning.sound, backend: a.backendName, editor: !! a.editor,
 		cam: [ c.x, c.y, c.z ].map( ( v ) => Math.round( v ) ), seg: document.querySelector( '#o-quality button.on' )?.dataset.q,
 		audioBtn: document.getElementById( 'b-audio' ).textContent, editorBtn: document.getElementById( 'b-editor' ).textContent,
@@ -35,11 +35,15 @@ await ready();
 await page.waitForFunction( () => getComputedStyle( document.getElementById( 'loader' ) ).visibility === 'hidden', { timeout: 20000 } );
 await page.evaluate( () => localStorage.removeItem( 'castroDoMar:settings' ) );
 let s = await state(); log( 'start', s );
-check( 'first visit: Média, look untouched (shadows on)', s.quality === 'media' && s.seg === 'media' && s.pixelRatio === 1 && s.shadows );
+check( 'first visit: Média, look untouched (shadows on)', s.quality === 'media' && s.seg === 'media' && s.pixelRatio === 1 && s.shadows && s.ao === 'low' && s.aoSeg === 'low' );
 
 await page.click( '#o-quality button[data-q="baixa"]' ); await settle();
 s = await state(); log( 'Baixa', s );
-check( 'Baixa: 0.75x, no focus', s.quality === 'baixa' && s.pixelRatio === 0.75 && ! s.focus && s.seg === 'baixa' );
+check( 'Baixa: 0.75x, no focus, no AO', s.quality === 'baixa' && s.pixelRatio === 0.75 && ! s.focus && s.seg === 'baixa' && s.ao === 'off' && s.aoSeg === 'off' );
+// the ambient occlusion by hand: the preset goes custom
+await page.click( '#o-ao button[data-ao="high"]' ); await settle( 600 );
+s = await state(); check( 'AO by hand: high, preset custom', s.ao === 'high' && s.aoSeg === 'high' && await page.evaluate( () => document.getElementById( 'o-quality' ).classList.contains( 'custom' ) ) );
+await page.click( '#o-ao button[data-ao="off"]' ); await settle( 600 );
 await page.screenshot( { path: `shots/${ prefix }_panel.png`, clip: { x: 1300, y: 60, width: 300, height: 780 } } );
 
 await page.click( '#b-audio' ); await settle( 300 );
@@ -56,7 +60,7 @@ check( 'kept after reload: Baixa, muted', s.quality === 'baixa' && s.pixelRatio 
 await page.click( '#o-quality button[data-q="alta"]' ); await settle();
 await page.keyboard.press( 'm' ); await settle( 300 );
 s = await state(); log( 'Alta + M', s );
-check( 'Alta: shadows on; M unmutes', s.quality === 'alta' && s.shadows && s.focus && ! s.muted && s.thunder );
+check( 'Alta: shadows on, AO high; M unmutes', s.quality === 'alta' && s.shadows && s.focus && s.ao === 'high' && ! s.muted && s.thunder );
 
 // the editor, on the same view
 await page.evaluate( () => window.__app.goView( 4 ) ); await settle( 2500 );

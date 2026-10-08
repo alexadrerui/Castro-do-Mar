@@ -60,6 +60,15 @@ export class HUD {
 		$( 'c-refl' ).onchange = ( e ) => app.setReflections( e.target.checked );
 		$( 'c-focus' ).onchange = ( e ) => this.setFocus( e.target.checked );
 		$( 'c-bloom' ).onchange = ( e ) => { app.setBloom( e.target.checked ); this.toast( e.target.checked ? 'Brilho ligado' : 'Brilho desligado' ); };
+		// ambient occlusion: off / low / high (main.js setAO)
+		const aoSeg = $( 'o-ao' );
+		this.showAO = ( level ) => { for ( const b of aoSeg.querySelectorAll( 'button' ) ) b.classList.toggle( 'on', b.dataset.ao === level ); };
+		for ( const b of aoSeg.querySelectorAll( 'button' ) ) b.onclick = () => {
+			app.setAO( b.dataset.ao );
+			this.showAO( b.dataset.ao );
+			this.toast( 'Oclusão de ambiente: ' + b.textContent.toLowerCase() );
+		};
+		this.showAO( app.ao?.level ?? 'off' );
 		$( 'c-autoexp' ).checked = app.autoExposure > 0;
 		$( 'c-autoexp' ).onchange = ( e ) => { app.autoExposure = e.target.checked ? 1 : 0; app.onSunChanged(); this.toast( e.target.checked ? 'Exposição automática ligada' : 'Exposição automática desligada' ); };
 		$( 'c-paint' ).checked = !! app.paint && new URLSearchParams( location.search ).get( 'paint' ) === '1';
@@ -140,9 +149,11 @@ export class HUD {
 			$( 'r-res' ).value = app.pixelRatio; $( 'o-res' ).textContent = app.pixelRatio.toFixed( 2 ) + '×';
 			$( 'c-shadows' ).checked = q.shadows; $( 'c-refl' ).checked = q.reflections;
 			$( 'c-focus' ).checked = q.focus; $( 'c-bloom' ).checked = q.bloom;
+			this.showAO( q.ao );
 		} );
 		showQuality( settings.quality );
 		for ( const id of [ 'r-res', 'c-shadows', 'c-refl', 'c-focus', 'c-bloom' ] ) $( id ).addEventListener( 'input', () => seg.classList.add( 'custom' ) );
+		$( 'o-ao' ).addEventListener( 'click', ( e ) => { if ( e.target.dataset.ao ) seg.classList.add( 'custom' ); } );
 
 		// audio: mute (M) and volume, kept in localStorage
 		const audio = $( 'b-audio' );

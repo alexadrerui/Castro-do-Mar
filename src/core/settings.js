@@ -12,10 +12,11 @@ const KEY = 'castroDoMar:settings';
 // Each preset sets the image controls; 'media' is the default look (main.js), so a first visit
 // (nothing stored) is not touched at all.
 export const QUALITY = {
-	// shadowReach: how far trees and rocks cast (m; the hills always, through world/terrainShadow.js)
-	baixa: { label: 'Baixa', pixelRatio: 0.75, shadows: false, shadowReach: 250, reflections: false, focus: false, bloom: false },
-	media: { label: 'Média', pixelRatio: 1, shadows: true, shadowReach: 250, reflections: true, focus: true, bloom: true },
-	alta: { label: 'Alta', pixelRatio: 1, shadows: true, shadowReach: 420, reflections: true, focus: true, bloom: true }
+	// shadowReach: how far trees and rocks cast (m; the hills always, through world/terrainShadow.js);
+	// ao: the ambient occlusion (main.js setAO: 'off' | 'low' | 'high', as the offroad's presets)
+	baixa: { label: 'Baixa', pixelRatio: 0.75, shadows: false, shadowReach: 250, reflections: false, focus: false, bloom: false, ao: 'off' },
+	media: { label: 'Média', pixelRatio: 1, shadows: true, shadowReach: 250, reflections: true, focus: true, bloom: true, ao: 'low' },
+	alta: { label: 'Alta', pixelRatio: 1, shadows: true, shadowReach: 420, reflections: true, focus: true, bloom: true, ao: 'high' }
 };
 
 const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test( navigator.userAgent );
@@ -63,6 +64,7 @@ export class Settings {
 		app.setReflections( q.reflections );
 		app.setFocus( q.focus );
 		app.setBloom( q.bloom );
+		app.setAO( q.ao );
 		for ( const f of this.listeners.quality ) f( this.quality, q );
 	}
 
