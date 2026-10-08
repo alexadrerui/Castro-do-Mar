@@ -48,6 +48,7 @@ import { DynamicResolution } from './core/dynamicRes.js';
 import { TouchControls } from './controls/touch.js';
 import { KEYS as LOOK_KEYS, lookAt, refreshLook } from './world/look.js';
 import { createSunShadows } from './world/sunShadows.js';
+import { createTerrainShadow, SHADOW_LAYER } from './world/terrainShadow.js';
 import { generateFields } from './world/genFields.js';
 import { cacheGet, cachePut, cacheClear, hashSources } from './core/cache.js';
 import { PROXY_LAYER } from './core/proxies.js';
@@ -199,6 +200,11 @@ async function main() {
 	await loader.run( 'terrain', async () => {
 		terrain = createTerrain( hf, mask, ao, sky.state.lightDir, macro, await loadDetailData() );
 		scene.add( terrain.mesh );
+		// the hills' shadows: a coarse grid drawn only into the sun's shadow maps (world/terrainShadow.js)
+		const terrainShadow = createTerrainShadow( terrain.heightTex );
+		scene.add( terrainShadow.mesh );
+		app.shadows.enableLayer( SHADOW_LAYER );
+		app.terrainShadow = terrainShadow;
 		app.terrain = terrain;
 	} );
 
@@ -695,6 +701,7 @@ async function main() {
 		camera.aspect = w / h; camera.updateProjectionMatrix();
 		for ( const f of app.onFrame ) f( 0 );
 		terrain.update( camera );
+		app.terrainShadow.update( camera );
 		focus.snap(); // the lens settled on this view, also with the loop paused
 		app.hud?.updateFocus( focus );
 		if ( app.shadowsOn ) app.shadows.markDirty();
@@ -815,12 +822,10 @@ async function main() {
 		if ( compiled && ! params.has( 'nodiveprep' ) ) prepareDive();
 		// the automatic exposure's two passes, built now (by day they write 1 and then sleep)
 		exposure.warm( renderer );
-		// The sun's shadows off by default (03/10/2026, the user's choice): the terrain drawn into the
-		// three cascades every frame cost ~1.6 ms and took views 0 and 2 from 60 to ~55 FPS in the real
-		// window (tools/fps.mjs). Compiled above all the same, so the panel's "Sombras" (or ?shadows=1)
-		// turns them on without new pipelines. Planned fix: a coarse terrain only for the shadow pass
-		// (CLAUDE.md, Performance).
-		app.setShadows( params.get( 'shadows' ) === '1' );
+		// The sun's shadows: on by default again since the terrain casts through a coarse grid of its own
+		// (world/terrainShadow.js, 07/10/2026; from 03/10 they were off: the terrain drawn into the three
+		// cascades took the village view from 60 to 34-55 FPS). ?shadows=0 (or the quality "Baixa") off.
+		app.setShadows( params.get( 'shadows' ) !== '0' );
 	} );
 
 
@@ -934,6 +939,7 @@ async function main() {
 		app.frameDt = dt;
 		cam.update( dt );
 		terrain.update( camera );
+		app.terrainShadow.update( camera );
 		for ( const f of app.onFrame ) f( dt );
 		focus.update( dt );
 		hud.updateFocus( focus );

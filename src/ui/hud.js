@@ -55,7 +55,7 @@ export class HUD {
 		$( 'b-strike' )?.addEventListener( 'click', () => app.strike?.() );
 		this._range( 'r-fog', 'o-fog', app.fogScale.value, ( v ) => { app.fogScale.value = v; }, ( v ) => v.toFixed( 2 ) + '×' );
 		this._range( 'r-res', 'o-res', app.pixelRatio, ( v ) => app.setPixelRatio( v ), ( v ) => v.toFixed( 2 ) + '×' );
-		$( 'c-shadows' ).checked = app.shadowsOn; // off by default (main.js), ?shadows=1
+		$( 'c-shadows' ).checked = app.shadowsOn; // on by default (main.js), ?shadows=0
 		$( 'c-shadows' ).onchange = ( e ) => app.setShadows( e.target.checked );
 		$( 'c-refl' ).onchange = ( e ) => app.setReflections( e.target.checked );
 		$( 'c-focus' ).onchange = ( e ) => this.setFocus( e.target.checked );

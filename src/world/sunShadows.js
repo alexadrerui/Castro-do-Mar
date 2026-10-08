@@ -14,7 +14,10 @@
 //    layer 1, the proxies of core/proxies.js) go to every cascade;
 //  · the cascade boxes come from the camera projection: redone when the aspect, the fov or the far
 //    plane change (a resize, the dive: underwater the far plane drops to 90 m);
-//  · core/chunked.js shadowSphere: the instanced trees and rocks cast within PROP_REACH of the camera.
+//  · core/chunked.js shadowSphere: the instanced trees and rocks cast within the reach of the camera
+//    (PROP_REACH, or the quality's: setReach);
+//  · the terrain casts through a coarse grid of its own on SHADOW_LAYER (world/terrainShadow.js), not
+//    its chunks.
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { shadowSphere } from '../core/chunked.js';
 
@@ -23,9 +26,10 @@ const CASCADES = 3;
 const MAP = 2048;          // per cascade
 const MARGIN = 400;        // m behind each box along the light: casters up the hill from it
 const NORMAL_BIAS = 0.85;  // texels
-const PROP_REACH = 420;    // m: trees and rocks cast this far (the hills cast out to MAX_FAR; a tree
-                           // shadow past this is lost in the haze, and drawing every far tile into
-                           // the outer cascade cost several ms)
+const PROP_REACH = 250;    // m: trees and rocks cast this far by default (the hills cast out to MAX_FAR;
+                           // a tree shadow past this is lost in the haze, and drawing every far tile
+                           // into the outer cascade cost several ms); the quality "Alta" sets 420
+                           // (core/settings.js, setReach)
 
 export function createSunShadows( { sun, camera, renderer } ) {
 	sun.shadow.mapSize.set( MAP, MAP );
@@ -45,13 +49,16 @@ export function createSunShadows( { sun, camera, renderer } ) {
 	};
 	for ( const s of shadows() ) s.autoUpdate = false;
 	biasByTexel();
-	let aspect = camera.aspect, far = camera.far, fov = camera.fov;
+	let aspect = camera.aspect, far = camera.far, fov = camera.fov, reach = PROP_REACH;
 	return {
 		csm,
 		// redraw the maps on the next render (once a frame, from the main loop)
 		markDirty() { for ( const s of shadows() ) s.needsUpdate = true; },
 		setIntensity( v ) { for ( const s of shadows() ) s.intensity = v; },
 		enableLayer( n ) { for ( const s of shadows() ) s.camera.layers.enable( n ); },
+		// how far trees and rocks cast (m)
+		setReach( m ) { reach = m; },
+		get reach() { return reach; },
 		update() {
 			if ( camera.aspect !== aspect || camera.far !== far || camera.fov !== fov ) {
 				aspect = camera.aspect; far = camera.far; fov = camera.fov;
@@ -59,7 +66,7 @@ export function createSunShadows( { sun, camera, renderer } ) {
 				biasByTexel();
 			}
 			shadowSphere.center.copy( camera.position );
-			shadowSphere.radius = PROP_REACH;
+			shadowSphere.radius = reach;
 		}
 	};
 }

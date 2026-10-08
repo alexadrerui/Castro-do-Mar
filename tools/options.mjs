@@ -35,7 +35,7 @@ await ready();
 await page.waitForFunction( () => getComputedStyle( document.getElementById( 'loader' ) ).visibility === 'hidden', { timeout: 20000 } );
 await page.evaluate( () => localStorage.removeItem( 'castroDoMar:settings' ) );
 let s = await state(); log( 'start', s );
-check( 'first visit: Média, look untouched', s.quality === 'media' && s.seg === 'media' && s.pixelRatio === 1 && ! s.shadows );
+check( 'first visit: Média, look untouched (shadows on)', s.quality === 'media' && s.seg === 'media' && s.pixelRatio === 1 && s.shadows );
 
 await page.click( '#o-quality button[data-q="baixa"]' ); await settle();
 s = await state(); log( 'Baixa', s );

@@ -12,9 +12,10 @@ const KEY = 'castroDoMar:settings';
 // Each preset sets the image controls; 'media' is the default look (main.js), so a first visit
 // (nothing stored) is not touched at all.
 export const QUALITY = {
-	baixa: { label: 'Baixa', pixelRatio: 0.75, shadows: false, reflections: false, focus: false, bloom: false },
-	media: { label: 'Média', pixelRatio: 1, shadows: false, reflections: true, focus: true, bloom: true },
-	alta: { label: 'Alta', pixelRatio: 1, shadows: true, reflections: true, focus: true, bloom: true }
+	// shadowReach: how far trees and rocks cast (m; the hills always, through world/terrainShadow.js)
+	baixa: { label: 'Baixa', pixelRatio: 0.75, shadows: false, shadowReach: 250, reflections: false, focus: false, bloom: false },
+	media: { label: 'Média', pixelRatio: 1, shadows: true, shadowReach: 250, reflections: true, focus: true, bloom: true },
+	alta: { label: 'Alta', pixelRatio: 1, shadows: true, shadowReach: 420, reflections: true, focus: true, bloom: true }
 };
 
 const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test( navigator.userAgent );
@@ -58,6 +59,7 @@ export class Settings {
 		const q = QUALITY[ this.quality ], app = this.app;
 		app.setPixelRatio( Math.min( q.pixelRatio, devicePixelRatio || 1 ) );
 		app.setShadows( q.shadows );
+		app.shadows?.setReach( q.shadowReach );
 		app.setReflections( q.reflections );
 		app.setFocus( q.focus );
 		app.setBloom( q.bloom );

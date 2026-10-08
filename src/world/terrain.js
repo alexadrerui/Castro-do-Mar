@@ -228,9 +228,9 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	for ( const c of chunks ) {
 		const mesh = new THREE.Mesh( c.lods[ 0 ], mat );
 		mesh.receiveShadow = true;
-		// the hills shade the valleys and the ground behind them (the low sun of the late afternoon);
-		// the shadow pass culls the chunks outside the sun's box
-		mesh.castShadow = true;
+		// the chunks cast no shadow: a coarse grid only for the shadow pass stands in for them
+		// (world/terrainShadow.js; drawing the chunks into the three cascades cost ~1.6 ms a frame)
+		mesh.castShadow = false;
 		mesh.layers.enable( 2 );
 		group.add( mesh );
 		c.mesh = mesh;
