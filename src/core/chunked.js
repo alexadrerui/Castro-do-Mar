@@ -22,6 +22,11 @@ const patched = new WeakSet();
 // Where the sun casts shadows, as a sphere (world/sunShadows.js, every frame): the tiles that reach into it
 // cast shadows, both LODs. Huge by default (pages without the main loop).
 export const shadowSphere = new THREE.Sphere( new THREE.Vector3(), 1e9 );
+// the water's reflection draws a tile only within this distance of the camera (to the tile's edge), as
+// the terrain's chunks (terrain.js: 700 m); past it the distant ranges (horizon.js) are what it shows.
+// Without it the reflection drew every tile of the map: 81 of its 163 draws were far impostor tiles,
+// and capturing it every frame cost ~2.3 ms of CPU (07/10/2026)
+const REFLECT_DISTANCE = 700;
 
 // Applies the per-instance matrix before the material's own positionNode (the
 // same order as three.js instancing). The shadow pass copies positionNode, so
@@ -189,6 +194,10 @@ export class ChunkedInstances extends THREE.Group {
 			// both LODs cast while the tile reaches into the sun's shadow box (shadowSphere); by the camera
 			// distance to the tile centre and the hi LOD only, whole 260 m tiles of trees dropped their
 			// shadows at once, and the far part of the box had none. shadowDistance 0: never casts.
+			if ( this.reflect ) {
+				const refl = d < REFLECT_DISTANCE, m = t.lo ?? t.hi; // the reflection draws the cheap LOD
+				if ( refl ) { m.layers.enable( 2 ); t.imp?.layers.enable( 2 ); } else { m.layers.disable( 2 ); t.imp?.layers.disable( 2 ); }
+			}
 			const sh = this.cast && this.shadowDistance > 0 && t.center.distanceTo( shadowSphere.center ) - t.radius < shadowSphere.radius;
 			t.hi.castShadow = sh;
 			if ( t.lo ) t.lo.castShadow = sh;

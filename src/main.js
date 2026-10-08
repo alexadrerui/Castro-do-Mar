@@ -212,7 +212,7 @@ async function main() {
 	await loader.run( 'water', async () => {
 		// the planar reflection is captured every 100 ms (or when the camera moves 2 m) and reprojected
 		// in between (world/planarReprojection.js); ?reflectms=0 captures every frame
-		const water = createWater( terrain.heightTex, sky.state.lightDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 100 ) } );
+		const water = createWater( terrain.heightTex, sky.state.lightDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 0 ) } );
 		scene.add( water.mesh );
 		app.water = water;
 		app.layers.water = { label: 'Água', object: water.mesh };
