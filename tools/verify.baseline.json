@@ -120,7 +120,7 @@
 			"2": {
 				"view": 2,
 				"label": "Vila",
-				"luma": 81,
+				"luma": 80.9,
 				"spread": 57.7,
 				"chroma": 21.8,
 				"top": [
@@ -162,13 +162,13 @@
 			"5": {
 				"view": 5,
 				"label": "Montanhas",
-				"luma": 124.2,
-				"spread": 50.8,
-				"chroma": 42.8,
+				"luma": 97.3,
+				"spread": 56.2,
+				"chroma": 33.6,
 				"top": [
-					81,
-					107,
-					150
+					77,
+					116,
+					164
 				],
 				"clip": 0,
 				"black": 0

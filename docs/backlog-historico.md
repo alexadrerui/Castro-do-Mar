@@ -24,7 +24,7 @@ Movido do CLAUDE.md em 08/10/2026 (texto sem alterações). O CLAUDE.md guarda s
 - [x] Cordilheiras distantes "amarrotadas", translúcidas e com faixa clara na base: o winding da malha de `horizon.js` estava invertido (normais para baixo), então só apareciam as faces de trás.
 - [x] Linha de neve das cordilheiras distantes: 1150 → 780.
 - [x] Vistas 4 (Lago) e 5 (Montanhas) conferidas.
-- [x] **Maciço de granito menor** (08/10/2026, pedido do usuário com captura: "continua muito pontudo"): `heightfield.js` `MASSIF_SCALE` = 0,6 (crista de até 580 → ~350 m; a largura das encostas acompanha a crista) e os rochedos do topo com `ridgedSoft` ao quadrado e 18% da crista (eram `ridged` ao quadrado ^1,2 e 38%: as agulhas). O anel do horizonte lê o mesmo `rawHeight`, então acompanha. Na vista 5 (Montanhas) o maciço agora fica quase todo atrás dos morros. `verify` regravado.
+- [x] **Maciço de granito menor** (08/10/2026, pedido do usuário com captura: "continua muito pontudo"): `heightfield.js` `MASSIF_SCALE` = 0,6 (crista de até 580 → ~350 m; a largura das encostas acompanha a crista) e os rochedos do topo com `ridgedSoft` ao quadrado e 18% da crista (eram `ridged` ao quadrado ^1,2 e 38%: as agulhas). O anel do horizonte lê o mesmo `rawHeight`, então acompanha. A vista 5 (Montanhas) foi refeita para a serra nova: de ( −120, 150, −260 ) para ( −760, 230, −1700 ) (era de ( −80, 90, 60 ) para ( −1400, 700, −900 ), a crista antiga). `verify` regravado.
 
 ### Arte (dos relatórios de QA)
 - [x] Face do penhasco da mina (`fort.js` `rockBlockGeometry`, 02/10/2026):

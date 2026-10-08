@@ -94,7 +94,7 @@ const app = {
 		{ label: 'Vila', pos: [ - 42, 38, 62 ], target: [ - 5, 28, 5 ] },
 		{ label: 'Minas', pos: [ 18, 31, - 14 ], target: [ 46, 29, - 34 ] },
 		{ label: 'Lago', pos: [ 110, 42, - 110 ], target: [ 420, 10, - 520 ] },
-		{ label: 'Montanhas', pos: [ - 80, 90, 60 ], target: [ - 1400, 700, - 900 ] }
+		{ label: 'Montanhas', pos: [ - 120, 150, - 260 ], target: [ - 760, 230, - 1700 ] }
 	],
 	layers: {},
 	onFrame: [],
