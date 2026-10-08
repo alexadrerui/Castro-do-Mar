@@ -568,6 +568,8 @@ async function main() {
 	const VALLEY_NIGHT = { density: 0.008, height: 9, ceiling: 35, pocketStrength: 0.9, sunScatter: 0.5, waterBonus: 0.7 };
 	const MIST_DAY = { density: 0.035, top: WATER_LEVEL + 14 }, MIST_NIGHT = { density: 0.045, top: WATER_LEVEL + 18 };
 	app.nightFog = 0;
+	app.valleyLook = { day: VALLEY_DAY, night: VALLEY_NIGHT }; // the debug panel tunes these (ui/debug.js)
+	app.mistLook = { day: MIST_DAY, night: MIST_NIGHT };
 	app.onFrame.push( () => {
 		// the look's `nightFog` (world/look.js): with the night, through the sunrise, clear by 8 h
 		const k = sky.state.look.nightFog * ( 1 - 0.8 * Math.min( 1, app.weather?.target ?? 0 ) );
@@ -900,6 +902,11 @@ async function main() {
 	// visiting together (core/multiplayer.js): a room from the invite link (?sala=), peer to peer
 	app.mp = new Multiplayer( app );
 	hud.bindMultiplayer( app.mp );
+	// the debug panel (ui/debug.js): #debug (or ?debug) in the address; loaded only then
+	const wantDebug = () => /debug/i.test( location.hash ) || params.has( 'debug' );
+	const openDebug = () => { if ( ! app.debug && ! app._debugLoading ) { app._debugLoading = true; import( './ui/debug.js' ).then( ( m ) => m.createDebugPanel( app ) ); } };
+	if ( wantDebug() ) openDebug();
+	addEventListener( 'hashchange', () => { if ( wantDebug() ) openDebug(); } );
 	// phones and tablets (controls/touch.js): a stick and up / down buttons, shown on the first touch
 	app.touch = new TouchControls( app );
 	const room = roomFromURL();

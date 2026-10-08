@@ -11,10 +11,13 @@
   "license": "MIT",
   "description": "",
   "dependencies": {
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "stats-gl": "^3.6.0",
     "three": "^0.186.1",
     "three-bvh-csg": "^0.0.18",
     "three-mesh-bvh": "^0.9.15",
-    "trystero": "^0.25.4"
+    "trystero": "^0.25.4",
+    "tweakpane": "^4.0.5"
   },
   "devDependencies": {
     "puppeteer-core": "^25.12.0",

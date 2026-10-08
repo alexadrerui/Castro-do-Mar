@@ -105,6 +105,7 @@ Três abas compartilham o botão "Salvar e aplicar". No servidor de desenvolvime
 | `?rain=1` | começa chovendo (0 a 1) |
 | `?paint=1` | começa com a pintura a óleo |
 | `?shadows=0` | sem sombras do sol (ligadas por padrão) |
+| `#debug` | painel de depuração: os ajustes finos de céu, nuvens, névoas, água, grama, sombras, exposição e o editor das horas, e o FPS, a CPU e a GPU (a crase esconde e mostra) |
 | `?autoexp=0` | sem exposição automática à noite |
 | `?clouds=0`, `?mist=0`, `?valley=0`, `?godrays=0`, `?scatter=0`, `?cloudshadow=0`, `?flora=0` | desligam nuvens volumétricas, brétema, névoa de vale, god rays, espalhamento na névoa, sombra das nuvens e flores do prado |
 | `?reflectms=0` | reflexo da água capturado a cada quadro |
@@ -130,7 +131,7 @@ Rodam no Edge headless com WebGPU, com o servidor de desenvolvimento no ar (`npm
 - `node tools/verify.mjs`: checagem de regressão da imagem em carga fria e com cache, comparada com `tools/verify.baseline.json`. Rode antes de publicar mudanças visuais.
 - `node tools/shoot.mjs <prefixo> [vistas]`: capturas em `shots/`.
 - `node tools/loadtime.mjs`, `shadercost.mjs`, `pipedup.mjs`, `abtest.mjs`: tempo de carga, custo de compilação de cada shader, pipelines criados depois da carga e A/B de tempo de quadro.
-- Testes específicos: `houses.mjs`, `trees.mjs`, `grass.mjs`, `rocks.mjs`, `birds.mjs`, `fish.mjs`, `dive.mjs`, `koi.mjs`, `river.mjs`, `lightning.mjs`, `multiplayer.mjs`, `exposure.mjs`, `touch.mjs`, `dynres.mjs`, `relays.mjs`, `gannets.mjs`, `shags.mjs`, `shadows.mjs`, `lookhours.mjs`, `lookkeys.mjs`, `terrainedit.mjs`, `objectedit.mjs`, `natureedit.mjs`, `clearing.mjs`.
+- Testes específicos: `houses.mjs`, `trees.mjs`, `grass.mjs`, `rocks.mjs`, `birds.mjs`, `fish.mjs`, `dive.mjs`, `koi.mjs`, `river.mjs`, `lightning.mjs`, `multiplayer.mjs`, `exposure.mjs`, `touch.mjs`, `dynres.mjs`, `relays.mjs`, `gannets.mjs`, `shags.mjs`, `shadows.mjs`, `debugpanel.mjs`, `lookhours.mjs`, `lookkeys.mjs`, `terrainedit.mjs`, `objectedit.mjs`, `natureedit.mjs`, `clearing.mjs`.
 
 O `CLAUDE.md` tem as notas técnicas: decisões, armadilhas do three r186 e do WebGPU, e pendências.
 
