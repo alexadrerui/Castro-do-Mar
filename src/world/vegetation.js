@@ -6,7 +6,7 @@ import {
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { mineLedgeSpots } from './fort.js';
-import { oakTree, pineTree, birchTree, shrubBush, bracken, OAK_BARK, PINE_BARK } from './trees.js';
+import { oakTree, pineTree, birchTree, shrubBush, bracken, deadTree, fallenLog, hollyBush, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
 import { cacheGet, cachePut, hashSources } from '../core/cache.js';
@@ -254,7 +254,12 @@ export async function createVegetation( app, progress ) {
 		// bake less at the load and 3 pipelines less (the browser's shader cache is at its limit)
 		birch: new ChunkedInstances( { name: 'birch', hi: birchTree( 0, 13 ), lo: birchTree( 1, 13 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
 		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
-		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } )
+		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } ),
+		// the woodland floor after the offroad forest (trees.js): snags, fallen logs, holly; same
+		// material and vertex layout as the rest (no new shader)
+		snag: new ChunkedInstances( { name: 'snag', hi: deadTree( 0, 41 ), lo: deadTree( 1, 41 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
+		log: new ChunkedInstances( { name: 'log', hi: fallenLog( 0, 51 ), lo: fallenLog( 1, 51 ), material: canopy, tile: 260, lodDistance: 70, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 320 } ),
+		holly: new ChunkedInstances( { name: 'holly', hi: hollyBush( 0, 61 ), lo: hollyBush( 1, 61 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } )
 	};
 	for ( const s of Object.values( species ) ) s.addAttribute( 'aTint', 3 );
 
@@ -263,7 +268,9 @@ export async function createVegetation( app, progress ) {
 		pine: [ 0x2f4424, 0x37502a, 0x2a3e20, 0x40582e ],
 		birch: [ 0x5f7231, 0x6b7c36, 0x76833c, 0x5a6a2f ],
 		bush: [ 0x34482a, 0x3c5026, 0x48562a, 0x303f22 ], // gorse / broom: dark, dense greens
-		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ] // bracken: fresh green, some yellowing
+		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ], // bracken: fresh green, some yellowing
+		holly: [ 0x22341c, 0x283a1e, 0x1f3020, 0x2c3f22 ], // holly: very dark, glossy greens
+		snag: [ 0x808080 ], log: [ 0x808080 ] // bark only (the tint colours leaves)
 	};
 	const tmpC = new THREE.Color();
 	const tint = ( sp, rnd ) => {
@@ -298,7 +305,9 @@ export async function createVegetation( app, progress ) {
 	// Jittered-grid scatter over the whole terrain, each cell with its own random sequence (cellRand).
 	const step = 9;
 	const x0 = hf.x0 + 10, x1 = hf.x0 + hf.size - 10, z0 = hf.z0 + 10, z1 = hf.z0 + hf.size - 10;
-	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, fern: 0 };
+	let counts = { oak: 0, pine: 0, birch: 0, bush: 0, fern: 0, snag: 0, log: 0, holly: 0 };
+	// the scatter's trees, for the woodland floor below: [ x, z, species ]
+	const woods = [];
 	// understory: bracken in the woodland patches and the lowlands, gorse / broom on the high open hills
 	const shrub = ( x, z, s, patch, h, R ) => {
 		const fernP = ( 0.25 + 0.45 * patch ) * ( 1 - ss( 90, 220, h ) );
@@ -336,7 +345,7 @@ export async function createVegetation( app, progress ) {
 				// the hamlets' core is open around the track: birches only (the third reference)
 				if ( sp !== 'birch' && HAMLETS.some( ( hm ) => Math.hypot( px - hm.x, pz - hm.z ) < hm.r * 0.5 ) ) sp = 'birch';
 				const s = ( sp === 'pine' ? 0.6 + R() * 0.8 : 0.7 + R() * 0.6 ) * ( 1 - 0.3 * ss( 200, 420, h ) );
-				if ( place( sp, px, pz, s, 0.08, R ) ) counts[ sp ] ++;
+				if ( place( sp, px, pz, s, 0.08, R ) ) { counts[ sp ] ++; woods.push( [ px, pz, sp ] ); }
 			} else if ( r < dens * 0.72 + ( 0.3 + 0.5 * patch ) * steep * altitude * c * 0.9 ) {
 				shrub( px, pz, 0.6 + R() * 0.9, patch, h, R );
 			}
@@ -401,6 +410,50 @@ export async function createVegetation( app, progress ) {
 			}
 		}
 	}
+	// Woodland floor (after the offroad forest): around the scatter's trees, a few dead trees, fallen
+	// logs and holly under the oaks; a random sequence of its own (the rest of the world unchanged).
+	// The nature brush's erasing reads the oak channel for snags and logs, the gorse one for holly.
+	{
+		const R = mulberry32( 4141 );
+		const ok = ( x, z, pad ) => ( Math.hypot( x - VILLAGE.x, z - VILLAGE.z ) < 360 ? clearance( x, z, app.mask, pad ) : editedClearance( x, z, pad ) ) > 0 && ! inLake( x, z ) && hf.heightAt( x, z ) > 2 && hf.slopeAt( x, z ) < 0.75;
+		const near = ( x, z, d0, d1 ) => {
+			const a = R() * Math.PI * 2, d = d0 + R() * ( d1 - d0 );
+			return [ x + Math.cos( a ) * d, z + Math.sin( a ) * d ];
+		};
+		const eul = new THREE.Euler(), lq = new THREE.Quaternion();
+		const placeLog = ( x, z ) => {
+			const len = 0.7 + R() * 0.7, rad = 0.6 + R() * 0.7, yaw = R() * Math.PI * 2;
+			const hx = Math.cos( yaw ) * 3 * len, hz = - Math.sin( yaw ) * 3 * len; // the log lies along its local +x
+			for ( const f of [ - 1, 1 ] ) if ( ! ok( x + hx * f, z + hz * f, 0.3 ) ) return false;
+			const h0 = hf.heightAt( x - hx, z - hz ), h1 = hf.heightAt( x + hx, z + hz ), hm = hf.heightAt( x, z );
+			if ( Math.abs( h1 - h0 ) > 6 * len * 0.4 ) return false;
+			if ( nature && erased( nature, CH.oak, x, z ) ) return false;
+			const r = 0.34 * rad;
+			eul.set( 0, yaw, Math.atan2( h1 - h0, 6 * len ), 'YZX' );
+			lq.setFromEuler( eul );
+			pos.set( x, Math.max( ( h0 + h1 ) / 2, hm ) + r * 0.7, z );
+			sc.set( len, rad, rad );
+			m.compose( pos, lq, sc );
+			species.log.add_( m, [ tint( 'log', R ) ] );
+			return true;
+		};
+		for ( const [ x, z, sp ] of woods ) {
+			const r = R();
+			if ( r < 0.035 ) {
+				const [ sx, sz ] = near( x, z, 4, 9 );
+				if ( ok( sx, sz, 1 ) && ! ( nature && erased( nature, CH.oak, sx, sz ) ) && place( 'snag', sx, sz, 0.9 + R() * 0.5, 0.06, R ) ) counts.snag ++;
+			} else if ( r < 0.13 ) {
+				const [ lx, lz ] = near( x, z, 2.5, 6.5 );
+				if ( placeLog( lx, lz ) ) counts.log ++;
+			}
+			// holly under the oaks (the Galician fragas)
+			if ( sp === 'oak' && R() < 0.16 ) {
+				const [ hx, hz ] = near( x, z, 2.5, 5.5 );
+				if ( ok( hx, hz, 0 ) && ! ( nature && erased( nature, CH.bush, hx, hz ) ) && place( 'holly', hx, hz, 0.6 + R() * 0.7, 0.3, R ) ) counts.holly ++;
+			}
+		}
+	}
+
 	// gorse and bracken on the ledges of the mine cliff (world/fort.js), with their own random sequence
 	const lrnd = mulberry32( 3131 );
 	for ( const p of mineLedgeSpots() ) if ( place( p.kind, p.x, p.z, p.s, 0.3, lrnd, p.y ) ) counts[ p.kind ] ++;

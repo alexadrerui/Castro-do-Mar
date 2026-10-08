@@ -571,3 +571,136 @@ export function birchTree( lod = 0, seed = 13 ) {
 	g.computeBoundingSphere();
 	return g;
 }
+
+// ---------------------------------------------------------------------------
+// Woodland floor after the offroad forest (https://github.com/alexadrerui/offroad,
+// src/world/foliage.js buildDead / buildPlant('bush') and trees.js fallen logs; MIT License,
+// Copyright (c) 2026 Arz-Gev). Rewritten for this project's foliage layout: real bark geometry
+// instead of the bare-twig card, moss and end grain in the vertex colour, the bush as a holly of
+// round-leaf clumps (leaf atlas tile 2).
+// ---------------------------------------------------------------------------
+
+// Dead tree (snag, árbore seca): a grey, weathered bole with a broken top and a few bare, crooked
+// limbs; grown by TreeGenerator like the pine, no leaves. ~8 m tall at scale 1.
+const SNAG_BARK = new THREE.Color( 0x5b554c ), SNAG_DARK = new THREE.Color( 0x332d27 );
+
+export function deadTree( lod = 0, seed = 41 ) {
+	const H = 7.5;
+	_treeGen.parameters = {
+		seed, levels: lod ? 2 : 3, children: lod ? [ 10 ] : [ 11, 4 ], branchAngle: [ 58, 42 ], angleVariance: 20,
+		lengthRatio: 0.5, lengthVariance: 0.5, branchLengthFalloff: 0.55, trunkLength: H, trunkRadius: 0.4,
+		taper: 0.72, taperCurve: 0.75, rootFlare: 0.8, flareFrac: 0.12, radiusExponent: 2.0, minRadius: 0.03,
+		minLength: 0.6, droop: 0.06, upPull: 0.3, gnarl: [ 0.1, 0.22, 0.3 ], radialSegments: lod ? 4 : 7,
+		sectionLength: 0.9, childStart: 0.15, trunkClear: 0.3
+	};
+	const wood = _treeGen.build().geometry;
+	const b = new Builder();
+	// stiff dead wood: only the thin limbs move a little
+	const flex = ( p ) => Math.min( 1, Math.hypot( p.x, p.z ) / 5 ) * smooth( 3, 7, p.y ) * 0.5;
+	// weathered: silver-grey up the bole, darker and damp at the foot
+	const P = wood.attributes.position, N = wood.attributes.normal, base = b.count;
+	const p = new THREE.Vector3(), n = new THREE.Vector3();
+	for ( let i = 0; i < P.count; i ++ ) {
+		p.fromBufferAttribute( P, i ); n.fromBufferAttribute( N, i );
+		const col = SNAG_DARK.clone().lerp( SNAG_BARK, smooth( 0, 1.6, p.y ) * ( 0.85 + 0.15 * hash2( Math.round( p.y * 3 ), i % 7 ) ) );
+		b.vertex( p, n, 0, 0, col, 0, flex( p ), barkAO( p, H ), 0 );
+	}
+	for ( const k of wood.index.array ) b.idx.push( base + k );
+	wood.dispose();
+	const g = b.build();
+	g.translate( 0, - 0.35, 0 );
+	g.computeBoundingSphere();
+	return g;
+}
+
+// Fallen log (tronco caído): along +x, length L, centred on the origin, lying with its axis at
+// y = 0 (the placement lifts it by its radius). Irregular bark tube with a couple of branch stubs,
+// moss on the upper side and pale end grain with growth rings at both broken ends.
+const LOG_BARK = new THREE.Color( 0x4a3d31 ), LOG_MOSS = new THREE.Color( 0x4d5a23 ), LOG_WOOD = new THREE.Color( 0x9c8466 ), LOG_RING = new THREE.Color( 0x6e5a43 );
+
+export function fallenLog( lod = 0, seed = 51, L = 6 ) {
+	const rand = mulberry32( seed );
+	const b = new Builder();
+	const radial = lod ? 7 : 12, rows = lod ? 4 : Math.round( L * 2.5 );
+	const r0 = 0.34, r1 = 0.25;
+	const bumps = [ 0, 1, 2 ].map( () => [ rand() * 6.28, 0.04 + rand() * 0.05, 2 + Math.floor( rand() * 3 ) ] );
+	const radiusAt = ( f, a ) => ( r0 + ( r1 - r0 ) * f ) * ( 1 + bumps.reduce( ( s, [ ph, amp, k ] ) => s + amp * Math.sin( k * a + ph + f * 3 ), 0 ) );
+	const bend = ( rand() - 0.5 ) * 0.25;
+	const centre = ( f ) => new THREE.Vector3( ( f - 0.5 ) * L, 0, bend * Math.sin( f * Math.PI ) );
+	const bark = ( q, n, a ) => {
+		const moss = smooth( 0.5, 0.95, n.y ) * ( 0.35 + 0.45 * hash2( Math.round( q.x * 2 ), Math.round( a * 3 ) ) );
+		return LOG_BARK.clone().multiplyScalar( 0.85 + 0.25 * hash2( Math.round( q.x * 6 ), Math.round( a * 5 ) ) ).lerp( LOG_MOSS, moss );
+	};
+	const ring = [];
+	for ( let j = 0; j <= rows; j ++ ) {
+		const f = j / rows, c = centre( f );
+		const row = [];
+		for ( let i = 0; i <= radial; i ++ ) {
+			const a = ( i / radial ) * Math.PI * 2;
+			const n = new THREE.Vector3( 0, Math.cos( a ), Math.sin( a ) );
+			const q = c.clone().addScaledVector( n, radiusAt( f, a ) );
+			// ao: the underside lies on the ground
+			row.push( b.vertex( q, n, 0, 0, bark( q, n, a ), 0, 0, 0.35 + 0.65 * smooth( - 0.9, 0.6, n.y ), 0 ) );
+		}
+		ring.push( row );
+	}
+	for ( let j = 0; j < rows; j ++ ) for ( let i = 0; i < radial; i ++ ) b.quad( ring[ j ][ i ], ring[ j ][ i + 1 ], ring[ j + 1 ][ i + 1 ], ring[ j + 1 ][ i ] );
+	// broken ends: a fan of pale wood with rings, the rim a little inset (splintered)
+	for ( const [ f, s ] of [ [ 0, - 1 ], [ 1, 1 ] ] ) {
+		const c = centre( f ), n = new THREE.Vector3( s, 0, 0 );
+		const mid = b.vertex( c, n, 0, 0, LOG_RING, 0, 0, 0.8, 0 );
+		const rim = [];
+		for ( let i = 0; i <= radial; i ++ ) {
+			const a = ( i / radial ) * Math.PI * 2, r = radiusAt( f, a );
+			const inner = [];
+			for ( const k of [ 0.45, 0.8, 0.97 ] ) {
+				const q = c.clone().add( new THREE.Vector3( s * 0.02 * ( 1 - k ) * hash2( i, k * 10 ), Math.cos( a ) * r * k, Math.sin( a ) * r * k ) );
+				inner.push( b.vertex( q, n, 0, 0, k === 0.8 ? LOG_RING : LOG_WOOD, 0, 0, 0.8, 0 ) );
+			}
+			rim.push( inner );
+		}
+		for ( let i = 0; i < radial; i ++ ) {
+			const A = rim[ i ], B = rim[ i + 1 ];
+			if ( s > 0 ) { b.idx.push( mid, A[ 0 ], B[ 0 ] ); b.quad( A[ 0 ], A[ 1 ], B[ 1 ], B[ 0 ] ); b.quad( A[ 1 ], A[ 2 ], B[ 2 ], B[ 1 ] ); }
+			else { b.idx.push( mid, B[ 0 ], A[ 0 ] ); b.quad( A[ 0 ], B[ 0 ], B[ 1 ], A[ 1 ] ); b.quad( A[ 1 ], B[ 1 ], B[ 2 ], A[ 2 ] ); }
+		}
+	}
+	// branch stubs, pointing up and sideways
+	if ( lod === 0 ) for ( let k = 0, n = 1 + Math.floor( rand() * 2 ); k < n; k ++ ) {
+		const f = 0.25 + rand() * 0.5, a = ( rand() - 0.5 ) * 1.6;
+		const n0 = new THREE.Vector3( 0, Math.cos( a ), Math.sin( a ) );
+		const from = centre( f ).addScaledVector( n0, radiusAt( f, a ) * 0.6 );
+		const to = from.clone().addScaledVector( n0.clone().add( new THREE.Vector3( ( rand() - 0.5 ) * 0.8, 0, 0 ) ).normalize(), 0.35 + rand() * 0.45 );
+		addBranch( b, from, to, 0.07, 0.035, 5, 1, LOG_BARK, 1, () => 0 );
+	}
+	const g = b.build();
+	g.computeBoundingSphere();
+	return g;
+}
+
+// Holly (acivro, Ilex aquifolium): a dense dome of dark, round-leaved clumps on short stems;
+// offroad's broad-leaf bush, with this project's lobed cards. ~1.9 m tall at scale 1.
+const HOLLY_LOBES = [
+	[ 0.0, 1.15, 0.0, 0.85 ], [ 0.7, 0.75, 0.3, 0.7 ], [ - 0.65, 0.7, 0.45, 0.7 ], [ - 0.2, 0.75, - 0.7, 0.72 ],
+	[ 0.45, 0.65, - 0.55, 0.6 ], [ 0.15, 1.6, 0.1, 0.55 ]
+];
+
+export function hollyBush( lod = 0, seed = 61 ) {
+	const rand = mulberry32( seed );
+	const b = new Builder();
+	const H = 1.9;
+	const crownC = new THREE.Vector3( 0, 0.95, 0 );
+	const crownR = new THREE.Vector3( 1.2, 0.95, 1.2 );
+	const flex = ( p ) => Math.min( 1, p.y / 1.6 ) * 0.7;
+	const lobes = HOLLY_LOBES.map( ( L ) => [ L[ 0 ] + ( rand() - 0.5 ) * 0.25, L[ 1 ] + ( rand() - 0.5 ) * 0.2, L[ 2 ] + ( rand() - 0.5 ) * 0.25, L[ 3 ] * ( 0.85 + rand() * 0.3 ) ] );
+	if ( lod === 0 ) for ( let i = 1; i < 5; i ++ ) {
+		const L = lobes[ i ];
+		addBranch( b, new THREE.Vector3( 0, - 0.1, 0 ), new THREE.Vector3( L[ 0 ] * 0.7, L[ 1 ] * 0.8, L[ 2 ] * 0.7 ), 0.045, 0.02, 3, 1, STEM, H, flex );
+	}
+	const cards = [];
+	lobes.forEach( ( L ) => cards.push( ...lobeCards( L, {
+		count: Math.round( ( lod ? 9 : 17 ) * L[ 3 ] ), size: lod ? 1.0 : 0.8, crownC, crownR, rand, flexFn: flex, tile: 2, flatten: 0.85
+	} ) ) );
+	emitCards( b, cards, crownC );
+	return b.build();
+}
