@@ -1,4 +1,4 @@
-import { makeSimplex, fbm, ridged, smoothstep, lerp, clamp } from '../core/noise.js';
+import { makeSimplex, fbm, ridged, ridgedSoft, smoothstep, lerp, clamp } from '../core/noise.js';
 import { TERRAIN, MASK, VILLAGE, FORT, MINE, SPINE, PATHS, FIELDS, ISLANDS, BUILDINGS, footprintR, HAMLETS } from './layout.js';
 
 const nA = makeSimplex( 890 );
@@ -123,10 +123,13 @@ function spineCoord( x, z ) {
 
 // Crest line of the big granite massif: [x, z, crest height]. The summit
 // sits NNW of the village; the ridge falls to the lake valley eastwards.
+// crest heights at 60% of the first design (08/10/2026, the user: too big and too pointed); the
+// flanks narrow with them (their width follows the crest)
+const MASSIF_SCALE = 0.6;
 const MASSIF = [
 	[ - 1800, - 800, 300 ], [ - 1400, - 1250, 420 ], [ - 950, - 1650, 520 ],
 	[ - 500, - 1950, 580 ], [ - 120, - 2000, 480 ], [ 220, - 1980, 320 ], [ 500, - 1950, 150 ]
-];
+].map( ( [ x, z, h ] ) => [ x, z, h * MASSIF_SCALE ] );
 const LOOKOUT_KNOLL = [ - 170, - 230 ];
 
 function massifCoord( x, z ) {
@@ -181,9 +184,10 @@ export function rawHeight( x, z ) {
 	if ( mr.d < mr.crest * 0.9 ) {
 		// concave flank: gentle green foot, abrupt granite summit with crags
 		const flank = Math.pow( 1 - smoothstep( 0, mr.crest * 0.78, mr.d ), 1.6 );
-		const crag = ridged( nC, x * 0.0035 + 3.1, z * 0.0035 - 1.7, 4 );
+		// crags: rounded ridges (ridgedSoft squared), lower: the squared ridged noise rose in spires
+		const crag = Math.pow( ridgedSoft( nC, x * 0.0035 + 3.1, z * 0.0035 - 1.7, 3 ), 2 );
 		const body = 0.5 + 0.5 * fbm( nB, x * 0.0022 - 4, z * 0.0022 + 2, 3 );
-		massif = mr.crest * flank * ( 0.7 + 0.2 * body ) + flank * flank * mr.crest * 0.38 * Math.pow( crag, 1.2 );
+		massif = mr.crest * flank * ( 0.72 + 0.2 * body ) + flank * flank * mr.crest * 0.18 * crag;
 		massif *= smoothstep( 30, 200, d );
 	}
 	// --- green rocky foothills rising gradually from the village (left of
