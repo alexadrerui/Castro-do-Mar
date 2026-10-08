@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-	positionWorld, normalWorld, vec2, vec3, float, color, mix, smoothstep, clamp, texture
+	positionWorld, normalWorld, vec2, vec3, vec4, float, color, mix, smoothstep, clamp, texture, normalize, cameraViewMatrix
 } from 'three/tsl';
 import { makeSimplex, fbm, ridgedSoft, smoothstep as ss } from '../core/noise.js';
 import { rawHeight } from './heightfield.js';
@@ -90,6 +90,21 @@ async function buildRing( geo, onProgress ) {
 		}
 		if ( j % 20 === 0 ) { onProgress?.( j / R ); await new Promise( ( r ) => setTimeout( r, 0 ) ); }
 	}
+	// soften the creases of the ridged crests (one 3 x 3 pass, weights 4 / 2 / 1, around the ring and
+	// across it), as the offroad vista does: they read less faceted from afar
+	{
+		const src = new Float32Array( A * R );
+		for ( let k = 0; k < A * R; k ++ ) src[ k ] = verts[ k * 3 + 1 ];
+		for ( let j = 0; j < R; j ++ ) for ( let i = 0; i < A; i ++ ) {
+			let sum = 0, w = 0;
+			for ( let b = - 1; b <= 1; b ++ ) for ( let a = - 1; a <= 1; a ++ ) {
+				const jj = Math.min( R - 1, Math.max( 0, j + b ) ), ii = ( i + a + A ) % A;
+				const k = a === 0 && b === 0 ? 4 : a === 0 || b === 0 ? 2 : 1;
+				sum += src[ jj * A + ii ] * k; w += k;
+			}
+			verts[ ( j * A + i ) * 3 + 1 ] = sum / w;
+		}
+	}
 	const idx = new Uint32Array( ( R - 1 ) * A * 6 );
 	let n = 0;
 	for ( let j = 0; j < R - 1; j ++ ) for ( let i = 0; i < A; i ++ ) {
@@ -107,16 +122,41 @@ async function buildRing( geo, onProgress ) {
 function horizonMesh( geo, onProgress, detailTex ) {
 	const mat = new THREE.MeshStandardNodeMaterial();
 	const wp = positionWorld;
-	const slope = float( 1 ).sub( normalWorld.y.clamp( 0, 1 ) );
-	// value-noise fbm, stretched to the contrast of the fractal noises it replaces; n2 drifts with
-	// the height so a cliff face is not streaked straight down
-	const n1 = texture( detailTex, wp.xz.div( 3300 ) ).b.sub( 0.5 ).mul( 1.6 ).add( 0.5 ).clamp( 0, 1 );
-	const n2 = texture( detailTex, wp.xz.add( wp.y.mul( 0.7 ) ).div( 2700 ) ).r.sub( 0.5 ).mul( 1.6 ).add( 0.5 ).clamp( 0, 1 );
-	const forest = mix( color( 0x223619 ), color( 0x3b5226 ), n1 );
+	const tex = ( p, S ) => texture( detailTex, p.div( S ) );
+	// Lighting relief per pixel (after the offroad vista, which adds detail normals from noise
+	// textures to its 16 m normal map): the ring's vertices are 50 - 100 m apart and its smooth
+	// vertex normals left the slopes as bare, even faces. Two scales of the detail texture's fbm
+	// (B ~1.1 km, R ~260 m) read as heights of ~70 m and ~16 m; their gradient (finite differences)
+	// tilts the normal: gullies and spurs catch the sun.
+	const grad = ( S, ch, amp ) => {
+		const e = S / 256;
+		const h0 = tex( wp.xz, S )[ ch ];
+		const hx = tex( wp.xz.add( vec2( e, 0 ) ), S )[ ch ], hz = tex( wp.xz.add( vec2( 0, e ) ), S )[ ch ];
+		return vec2( hx.sub( h0 ), hz.sub( h0 ) ).mul( amp / e );
+	};
+	const g = grad( 1100, 'b', 70 ).add( grad( 260, 'r', 16 ) );
+	const N = normalize( normalWorld.sub( vec3( g.x, 0, g.y ) ) );
+	mat.normalNode = normalize( cameraViewMatrix.mul( vec4( N, 0 ) ).xyz );
+	const slope = float( 1 ).sub( N.y.clamp( 0, 1 ) );
+	// value-noise fbm, stretched to the contrast of the fractal noises it replaced; n2 drifts with
+	// the height so a cliff face is not streaked straight down; mac / mac2 large tints
+	const n1 = tex( wp.xz, 3300 ).b.sub( 0.5 ).mul( 1.6 ).add( 0.5 ).clamp( 0, 1 );
+	const n2 = tex( wp.xz.add( wp.y.mul( 0.7 ) ), 2700 ).r.sub( 0.5 ).mul( 1.6 ).add( 0.5 ).clamp( 0, 1 );
+	const mac = tex( wp.xz, 9000 ).b.sub( 0.5 ).mul( 1.8 ).add( 0.5 ).clamp( 0, 1 );
+	// the offroad's landscape rules: grass and forest patches low down (no forest on steep ground or
+	// high up), rock on the steep faces and the high ground, snow on the high flats only
+	const grass = mix( color( 0x3e5626 ), color( 0x56662f ), n2 );
+	const forest = mix( color( 0x1d3016 ), color( 0x2c4420 ), n1 );
+	const wForest = smoothstep( 0.4, 0.62, n1.mul( 0.6 ).add( mac.mul( 0.4 ) ) )
+		.mul( smoothstep( 0.24, 0.44, slope ).oneMinus() ).mul( smoothstep( 300, 520, wp.y ).oneMinus() );
+	let col = mix( grass, forest, wForest );
 	const rock = mix( color( 0x4c4d52 ), color( 0x7f7f84 ), n2 );
-	const snowLine = float( 470 ).add( n1.mul( 210 ) ).add( slope.mul( 150 ) );
-	let col = mix( forest, rock, smoothstep( 0.3, 0.6, slope.add( n2.mul( 0.2 ) ) ).max( smoothstep( 330, 600, wp.y.add( n1.mul( 120 ) ) ) ) );
-	col = mix( col, color( 0xf4f6fa ), smoothstep( snowLine, snowLine.add( 100 ), wp.y ).mul( smoothstep( 0.7, 0.95, slope ).oneMinus() ) );
+	const wRock = smoothstep( 0.3, 0.48, slope.add( n2.sub( 0.5 ).mul( 0.12 ) ) ).max( smoothstep( 420, 680, wp.y.add( n1.mul( 120 ) ) ) );
+	col = mix( col, rock, wRock );
+	const snowLine = float( 470 ).add( n1.mul( 210 ) );
+	col = mix( col, color( 0xeef1f6 ), smoothstep( snowLine, snowLine.add( 100 ), wp.y ).mul( smoothstep( 0.3, 0.5, slope ).oneMinus() ) );
+	// large tint: dry / lush, brightness
+	col = col.mul( mix( vec3( 1.08, 1.02, 0.86 ), vec3( 0.9, 1.0, 1.04 ), mac ) ).mul( n1.mul( 0.28 ).add( 0.86 ) );
 	// aerial perspective planes: far ranges fade into blue haze
 	const dist = wp.xz.sub( vec2( VILLAGE.x, VILLAGE.z ) ).length();
 	col = mix( col, color( 0x9fb4d0 ), smoothstep( 3000, 15000, dist ).mul( 0.75 ) );
