@@ -46,6 +46,7 @@ const plan = await page.evaluate( ( X, Z ) => {
 	}
 	return pts;
 }, X, Z );
+await page.evaluate( () => { const a = window.__app; if ( a.editorTab !== 'water' ) a.setEditorTab( 'water' ); } ); // the editor opens with no tab
 await page.click( '#terrain-editor [data-tool=river]' );
 await page.evaluate( ( pts ) => {
 	const a = window.__app, ed = a.editor, m = pts[ Math.floor( pts.length / 2 ) ];

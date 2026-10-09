@@ -29,20 +29,23 @@ import { EDITS_N } from '../world/terrainEdits.js';
 import { RiverCourse, sampleCurve } from '../world/riverCourse.js';
 import { RiverEdit } from './riverEdit.js';
 
+// mode: the tab that shows the tool (editor/tabs.js): 'relief' (Relevo) or 'water' (Água: rivers, lakes
+// and the basins dug or filled for them)
 const TOOLS = [
-	{ id: 'raise', label: 'Elevar', hint: 'Levanta o relevo (Shift: baixa)' },
-	{ id: 'lower', label: 'Baixar', hint: 'Afunda o relevo (Shift: levanta)' },
-	{ id: 'smooth', label: 'Suavizar', hint: 'Média com os vizinhos: arredonda arestas e degraus' },
-	{ id: 'flatten', label: 'Aplanar', hint: 'Leva à altura do ponto onde a pincelada começou' },
-	{ id: 'noise', label: 'Ruído', hint: 'Soma ruído fbm: rugosidade natural (Shift: subtrai)' },
-	{ id: 'restore', label: 'Restaurar', hint: 'Desfaz as edições sob o pincel: volta ao relevo procedural' },
-	{ id: 'dig', label: 'Cavar', hint: 'Cava até a profundidade abaixo do nível da água, com margem em rampa até o relevo de antes' },
-	{ id: 'fill', label: 'Aterrar', hint: 'Aterra até a altura acima do nível da água, com margem em rampa até o fundo de antes' },
-	{ id: 'generate', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' },
-	{ id: 'river', label: 'Rio', hint: 'Clique os pontos do curso, da nascente à foz (Backspace tira o último); Enter conclui: o nível desce com o terreno, o leito é escavado (Ctrl+Z desfaz) e a água corre. Esc cancela. Shift+clique: remove o rio. Para mudar um rio pronto: "Editar rio"' },
-	{ id: 'riveredit', label: 'Editar rio', hint: 'Clique num rio pronto para selecioná-lo (o rio sob o cursor fica destacado). Selecionado: arraste os pontos dourados, mude a largura na caixa, Shift+clique num ponto tira, Ctrl+clique no chão põe um ponto; Enter aplica, Esc cancela' },
-	{ id: 'lake', label: 'Encher', hint: 'Clique numa depressão: a água sobe até a borda mais baixa, menos 20 cm (lago com nível próprio, carpas e lótus ao salvar). Shift+clique: remove o lago' }
+	{ id: 'raise', mode: 'relief', label: 'Elevar', hint: 'Levanta o relevo (Shift: baixa)' },
+	{ id: 'lower', mode: 'relief', label: 'Baixar', hint: 'Afunda o relevo (Shift: levanta)' },
+	{ id: 'smooth', mode: 'relief', label: 'Suavizar', hint: 'Média com os vizinhos: arredonda arestas e degraus' },
+	{ id: 'flatten', mode: 'relief', label: 'Aplanar', hint: 'Leva à altura do ponto onde a pincelada começou' },
+	{ id: 'noise', mode: 'relief', label: 'Ruído', hint: 'Soma ruído fbm: rugosidade natural (Shift: subtrai)' },
+	{ id: 'restore', mode: 'relief', label: 'Restaurar', hint: 'Desfaz as edições sob o pincel: volta ao relevo procedural' },
+	{ id: 'generate', mode: 'relief', label: 'Gerar', hint: 'Clique: carimba relevo procedural (Perlin ou Ilha) no círculo' },
+	{ id: 'river', mode: 'water', label: 'Rio', hint: 'Clique os pontos do curso, da nascente à foz (Backspace tira o último); Enter conclui: o nível desce com o terreno, o leito é escavado (Ctrl+Z desfaz) e a água corre. Esc cancela. Shift+clique: remove o rio. Para mudar um rio pronto: "Editar rio"' },
+	{ id: 'riveredit', mode: 'water', label: 'Editar rio', hint: 'Clique num rio pronto para selecioná-lo (o rio sob o cursor fica destacado). Selecionado: arraste os pontos dourados, mude a largura na caixa, Shift+clique num ponto tira, Ctrl+clique no chão põe um ponto; Enter aplica, Esc cancela' },
+	{ id: 'lake', mode: 'water', label: 'Encher', hint: 'Clique numa depressão: a água sobe até a borda mais baixa, menos 20 cm (lago com nível próprio, carpas e lótus ao salvar). Shift+clique: remove o lago' },
+	{ id: 'dig', mode: 'water', label: 'Cavar', hint: 'Cava até a profundidade abaixo do nível da água, com margem em rampa até o relevo de antes' },
+	{ id: 'fill', mode: 'water', label: 'Aterrar', hint: 'Aterra até a altura acima do nível da água, com margem em rampa até o fundo de antes' }
 ];
+const MODE_TITLE = { relief: 'Editor de relevo', water: 'Rios e lagos' };
 const UNDO_MAX = 40;
 const UNDO_CELLS = 4e6; // ~48 MB of history at most
 const HEIGHT_TEX_EVERY = 0.2; // s between height-texture uploads during a stroke (a full upload)
@@ -66,6 +69,8 @@ export class TerrainEditor {
 		this._tmp = new Float32Array( 0 ); // scratch for the smooth brush
 
 		this.tool = 'raise';
+		this.mode = 'relief';   // the tab showing (setMode): relief or water tools
+		this._lastTool = { relief: 'raise', water: 'river' };
 		this.radius = 24;       // m
 		this.strength = 0.5;    // 0..1
 		this.hardness = 0.35;   // 0 = all falloff, 1 = hard edge
@@ -621,6 +626,17 @@ export class TerrainEditor {
 		window.addEventListener( 'beforeunload', ( e ) => { if ( ( this.changed || this.app.objectEditor?.changed || this.app.natureEditor?.changed ) && ! this._saving ) { e.preventDefault(); e.returnValue = ''; } } );
 	}
 
+	// which tab shows this panel (editor/tabs.js): the relief tools, or the water ones (rivers, lakes,
+	// dig and fill), each tab back on the tool it had
+	setMode( mode ) {
+		if ( this.down ) return;
+		if ( mode !== 'water' && this.river.points.length ) this._riverCancel(); // a course half laid
+		this.mode = mode;
+		for ( const e of this.panel.querySelectorAll( '[data-mode]' ) ) e.classList.toggle( 'off', e.dataset.mode !== mode );
+		this.panel.querySelector( '.title' ).textContent = MODE_TITLE[ mode ];
+		if ( TOOLS.find( ( t ) => t.id === this.tool ).mode !== mode ) this.setTool( this._lastTool[ mode ] );
+	}
+
 	setActive( on ) {
 		this.active = on;
 		this.app.freecam.leftLook = ! on;
@@ -690,6 +706,7 @@ export class TerrainEditor {
 			this.changed = false;
 			this._toast( 'Edições salvas em public/. Recarregando…' );
 			// a fresh load builds everything (AO, vegetation, houses) on the edited relief
+			this.app.rememberEditorTab?.(); // the reload opens the same tab again (editor/tabs.js)
 			setTimeout( () => location.reload(), 400 );
 		} catch ( e ) {
 			this._saving = false;
@@ -724,25 +741,25 @@ export class TerrainEditor {
 		el.id = 'terrain-editor';
 		el.className = 'panel';
 		el.innerHTML = `
-			<header><b>Editor de relevo</b><button data-act="toggle" class="small"></button></header>
-			<div class="tools">${ TOOLS.map( ( t ) => `<button data-tool="${ t.id }" title="${ t.hint }">${ t.label }</button>` ).join( '' ) }</div>
+			<header><b class="title">Editor de relevo</b><button data-act="toggle" class="small"></button></header>
+			<div class="tools">${ TOOLS.map( ( t ) => `<button data-tool="${ t.id }" data-mode="${ t.mode }" title="${ t.hint }">${ t.label }</button>` ).join( '' ) }</div>
 			<p class="hint"></p>
 			<label>Tamanho <input data-k="size" type="range" min="3" max="300" step="1"><output></output></label>
 			<label>Força <input data-k="strength" type="range" min="0.02" max="1" step="0.01"><output></output></label>
 			<label>Dureza <input data-k="hardness" type="range" min="0" max="1" step="0.01"><output></output></label>
-			<fieldset class="water">
+			<fieldset class="water" data-mode="water">
 				<legend>Água (Cavar e Aterrar) · nível ${ WATER_LEVEL } m</legend>
 				<label>Profundidade <input data-k="wdepth" type="range" min="0.5" max="30" step="0.5"><output></output></label>
 				<label>Aterro <input data-k="wfill" type="range" min="0.2" max="20" step="0.1"><output></output></label>
 				<label>Margem <input data-k="wshore" type="range" min="0" max="60" step="0.5"><output></output></label>
 			</fieldset>
-			<fieldset class="river">
+			<fieldset class="river" data-mode="water">
 				<legend>Rio</legend>
 				<label>Largura <input data-k="rwidth" type="range" min="2" max="24" step="0.5"><output></output></label>
 				<div class="row"><button data-act="riverDone">Concluir (Enter)</button><button data-act="riverCancel">Cancelar (Esc)</button></div>
 				<div class="row"><button data-act="riverSelect" title="Ferramenta Editar rio: clique num rio pronto, arraste os pontos, mude a largura, aplique">Editar um rio pronto</button></div>
 			</fieldset>
-			<fieldset class="gen">
+			<fieldset class="gen" data-mode="relief">
 				<legend>Procedural (Gerar e Ruído)</legend>
 				<label>Tipo <select data-k="kind"><option value="island">Ilha</option><option value="perlin">Perlin</option></select></label>
 				<label>Frequência <input data-k="freq" type="range" min="0.1" max="8" step="0.05"><output></output></label>
@@ -767,6 +784,7 @@ export class TerrainEditor {
 			#terrain-editor { position: fixed; top: 78px; left: 12px; width: 288px; padding: 10px 12px; z-index: 12; font-size: 12px; color: var(--ink); max-height: calc(100vh - 140px); overflow: auto; }
 			#terrain-editor header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--gold-2); font-size: 13px; }
 			#terrain-editor .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+			#terrain-editor [data-mode].off { display: none; }
 			#terrain-editor button { background: rgba(0,0,0,.35); color: var(--ink); border: 1px solid var(--panel-edge); border-radius: 6px; padding: 5px 4px; cursor: pointer; font: inherit; }
 			#terrain-editor button:hover { border-color: var(--gold); }
 			#terrain-editor button.on { background: rgba(201,164,92,.35); border-color: var(--gold-2); color: #fff; }
@@ -792,6 +810,7 @@ export class TerrainEditor {
 			// editing a laid river is a tool of its own: the course being laid (if any) is dropped
 			if ( id === 'riveredit' && this.tool !== 'riveredit' ) { this._riverCancel(); this.riverEdit?.enter(); }
 			this.tool = id;
+			this._lastTool[ TOOLS.find( ( t ) => t.id === id ).mode ] = id;
 			for ( const b of el.querySelectorAll( '[data-tool]' ) ) b.classList.toggle( 'on', b.dataset.tool === id );
 			this.ui.hint.textContent = TOOLS.find( ( t ) => t.id === id ).hint;
 		};

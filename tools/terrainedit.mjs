@@ -51,7 +51,9 @@ const stroke = async ( pts, holdMs = 600 ) => {
 	for ( const [ x, z ] of pts ) { const s = await toScreen( x, z ); await page.mouse.move( s.x, s.y, { steps: 6 } ); await sleep( holdMs / pts.length ); }
 	await page.mouse.up(); await sleep( 300 );
 };
-const setTool = ( id ) => page.click( `#terrain-editor [data-tool=${ id }]` );
+// the editor opens with no tab (editor/tabs.js): the tab of a tool first
+const openTab = ( t ) => page.evaluate( ( t ) => { const a = window.__app; if ( a.editorTab !== t ) a.setEditorTab( t ); }, t );
+const setTool = async ( id ) => { await openTab( [ 'river', 'riveredit', 'lake', 'dig', 'fill' ].includes( id ) ? 'water' : 'relief' ); await page.click( `#terrain-editor [data-tool=${ id }]` ); };
 
 await shot( '0_start' );
 const h0 = await heightAt( P.x, P.z );

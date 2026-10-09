@@ -99,6 +99,7 @@ try {
 	if ( MOUSE ) {
 		// the tool's button, the view from above over the middle of the course, a real click per point, Enter
 		const planned = r.plan.length;
+		await page.evaluate( () => { const a = window.__app; if ( a.editorTab !== 'water' ) a.setEditorTab( 'water' ); } ); // the editor opens with no tab
 		await page.click( '#terrain-editor [data-tool=river]' );
 		await page.evaluate( ( pts ) => {
 			const a = window.__app, ed = a.editor, m = pts[ Math.floor( pts.length / 2 ) ];
@@ -171,9 +172,13 @@ try {
 			const jump = ( dy ) => page.evaluate( ( d, dy ) => { const a = window.__app; a.views.push( { label: 'r', pos: [ d.x - d.dx * 2, d.y + dy, d.z - d.dz * 2 ], target: [ d.x + d.dx * 6, d.y + dy - 0.13, d.z + d.dz * 6 ] } ); a.setView( a.views.length - 1 ); }, d, dy );
 			await jump( 1.5 ); await sleep( 800 );
 			await jump( - 0.3 ); await sleep( 2500 );
-			const under = await page.evaluate( () => window.__app.underwater.on.value );
+			// 0.3 m under the river's surface: the eye is under water at the river's level; within 1.5 m of the
+			// surface the view is cut at the waterline (post/underwater.js LINE_BAND, 09/10/2026), the full
+			// underwater look only deeper (a river under 1.5 m deep never has it)
+			const uw = await page.evaluate( () => { const u = window.__app.underwater; return { on: u.on.value, line: u.line.value, eye: u.eyeUnder }; } );
 			console.log( 'mergulho em', JSON.stringify( { x: d.x.toFixed( 0 ), z: d.z.toFixed( 0 ), nivel: d.y.toFixed( 2 ), fundo: d.d.toFixed( 2 ) } ) );
-			check( under > 0.5, `mergulho no rio: visão submersa ${ under > 0.5 ? 'ligada' : 'desligada' } (fundo ${ d.d.toFixed( 2 ) } m)` );
+			const ok = uw.eye && ( uw.on > 0.5 || uw.line > 0.5 );
+			check( ok, `mergulho no rio: olho embaixo d'água, ${ uw.on > 0.5 ? 'visão submersa' : uw.line > 0.5 ? "corte da linha d'água" : 'nada ligado' } (fundo ${ d.d.toFixed( 2 ) } m)` );
 			await page.evaluate( ( n ) => window.__app.capture( n ), `${ prefix }_under` );
 		}
 	}
