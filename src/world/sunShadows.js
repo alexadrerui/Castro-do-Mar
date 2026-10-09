@@ -32,12 +32,29 @@ const PROP_REACH = 250;    // m: trees and rocks cast this far by default (the h
                            // into the outer cascade cost several ms); the quality "Alta" sets 420
                            // (core/settings.js, setReach)
 
+const _q = new URLSearchParams( location.search );
+const LAMBDA = Number( _q.get( 'csmLambda' ) ) || ( CASCADES === 2 ? 0.7 : 0.5 );
+
+// three's 'practical' split (a mix of the uniform and the logarithmic ones) with a lambda of our own:
+// the plain 0.5 put the only break of 2 cascades at ~240 m, a near map ~460 m wide (0.22 m texels)
+// where the tree canopies' shadows on the ground near the camera washed out; 0.7 breaks at ~155 m
+// (~205 m wide, as the first of the 3 cascades before 08/10/2026)
+function practicalSplit( n, near, far, out ) {
+	for ( let i = 1; i < n; i ++ ) {
+		const uni = ( near + ( far - near ) * i / n ) / far;
+		const log = near * ( far / near ) ** ( i / n ) / far;
+		out.push( uni + ( log - uni ) * LAMBDA );
+	}
+	out.push( 1 );
+}
+
 export function createSunShadows( { sun, camera, renderer } ) {
 	sun.shadow.mapSize.set( MAP, MAP );
 	sun.shadow.camera.near = 1;
 	sun.shadow.camera.far = MARGIN + 2 * MAX_FAR + 200;
 	sun.shadow.camera.updateProjectionMatrix();
-	const csm = new CSMShadowNode( sun, { cascades: CASCADES, maxFar: MAX_FAR, mode: 'practical', lightMargin: MARGIN } );
+	const csm = new CSMShadowNode( sun, { cascades: CASCADES, maxFar: MAX_FAR, mode: 'custom', lightMargin: MARGIN } );
+	csm.customSplitsCallback = practicalSplit;
 	csm.fade = true;
 	sun.shadow.shadowNode = csm;
 	csm._init( { camera, renderer } ); // three r186 internals: before any build picks another camera
