@@ -20,6 +20,7 @@ import { objectGroup, doorAngle } from '../world/buildings.js';
 import { addProxies } from '../core/proxies.js';
 import { emptyWorldEdits } from '../world/worldEdits.js';
 import { CATALOGUE, CATEGORIES, itemOf } from './catalogue.js';
+import { placeables, placeKey, localMatrix } from '../world/placed.js';
 
 // sizes for the filter, by the larger side of the footprint (public/editor/thumbs.json)
 const SIZES = [ { id: 'p', label: 'Pequenos (até 4 m)', max: 4 }, { id: 'm', label: 'Médios (4 a 12 m)', max: 12 }, { id: 'g', label: 'Grandes (mais de 12 m)', max: Infinity } ];
@@ -43,6 +44,12 @@ export class ObjectEditor {
 		this.edits = app.worldEdits ? JSON.parse( JSON.stringify( app.worldEdits ) ) : emptyWorldEdits();
 		this.groups = new Map();
 		for ( const g of this.root.userData.objects || [] ) this._register( g );
+		// the plants and rocks placed before: groups of their own here (a normal load draws them in the
+		// scatter's instances, world/placed.js)
+		for ( const a of this.edits.added ) {
+			const g = ( a.kind === 'plant' || a.kind === 'rock' ) && this._natureGroup( a );
+			if ( g ) { this.root.add( g ); this._register( g ); }
+		}
 		// the static village is frozen (main.js): this group must pass the world update on to the
 		// object groups, which move
 		this.root.matrixWorldAutoUpdate = true;
@@ -131,7 +138,8 @@ export class ObjectEditor {
 		this.menu.style.display = g ? '' : 'none';
 		if ( g ) {
 			const e = g.userData.entry;
-			const name = g.userData.kind === 'stall' ? 'Barraca' : NAMES[ e.type ] || e.type;
+			const k = g.userData.kind;
+			const name = k === 'plant' || k === 'rock' ? CATALOGUE.find( ( c ) => c.id === itemOf( k, e ) )?.label ?? k : k === 'stall' ? 'Barraca' : NAMES[ e.type ] || e.type;
 			this.menu.querySelector( '.name' ).textContent = `${ name } · ${ g.userData.objId }`;
 		}
 	}
@@ -257,12 +265,18 @@ export class ObjectEditor {
 		while ( this.groups.has( 'a' + n ) || this.edits.added.some( ( q ) => q.id === 'a' + n ) ) n ++;
 		const id = 'a' + n, seed = 100 + n;
 		const rec = { id, kind: item.kind, ...item.entry, x: +p.x.toFixed( 3 ), z: +p.z.toFixed( 3 ), seed, yaw: 0, scale: 1 };
-		// the layout form of the entry, as world/worldEdits.js builds it on the next load
-		const entry = item.kind === 'stall'
-			? Object.assign( [ rec.x, rec.z, 0 ], { _id: id, seed, red: rec.red !== false, added: true } )
-			: { ...rec, _id: id };
-		const g = objectGroup( this.app.buildingMaterials, item.kind, entry, this.hf );
-		addProxies( g ); // its stand-ins in the reflection and the shadow pass
+		let g;
+		if ( item.kind === 'plant' || item.kind === 'rock' ) {
+			g = this._natureGroup( rec );
+			if ( ! g ) { this._toast( 'Este item não está disponível nesta carga.' ); this.arm( null ); return; }
+		} else {
+			// the layout form of the entry, as world/worldEdits.js builds it on the next load
+			const entry = item.kind === 'stall'
+				? Object.assign( [ rec.x, rec.z, 0 ], { _id: id, seed, red: rec.red !== false, added: true } )
+				: { ...rec, _id: id };
+			g = objectGroup( this.app.buildingMaterials, item.kind, entry, this.hf );
+			addProxies( g ); // its stand-ins in the reflection and the shadow pass
+		}
 		g.visible = false;
 		this.root.add( g );
 		this._register( g );
@@ -275,12 +289,27 @@ export class ObjectEditor {
 		this._toast( `${ item.label } posto. Salvar e aplicar grava na vila.` );
 	}
 
+	// a hand-placed plant or rock (world/placed.js): a one-instance mesh of the scatter's own (same
+	// material and pipeline), turned and sized as it was saved, in a group standing on the ground
+	_natureGroup( rec ) {
+		const reg = placeables[ placeKey( rec ) ];
+		if ( ! reg ) return null;
+		const mesh = reg.chunk.single( [ reg.tint( rec.seed ?? 1 ) ], !! reg.lo );
+		localMatrix( rec, reg ).decompose( mesh.position, mesh.quaternion, mesh.scale );
+		const g = new THREE.Group();
+		g.add( mesh );
+		g.position.set( rec.x, this.hf.heightAt( rec.x, rec.z ), rec.z );
+		g.userData = { objId: rec.id, kind: rec.kind, entry: rec };
+		return g;
+	}
+
 	// ------------------------------------------------------------------ picking
 
 	_ray( x, y ) {
 		const r = this.dom.getBoundingClientRect();
 		this._ndc.set( ( x - r.left ) / r.width * 2 - 1, - ( ( y - r.top ) / r.height ) * 2 + 1 );
 		this._raycaster.setFromCamera( this._ndc, this.camera );
+		this._raycaster.layers.enableAll(); // the rocks and the small props are on layer 1
 		return this._raycaster;
 	}
 
@@ -527,8 +556,16 @@ export class ObjectEditor {
 			n[ t ] = ( n[ t ] || 0 ) + 1;
 		}
 		for ( const b of this.lib.querySelectorAll( '[data-item]' ) ) {
-			const k = n[ b.dataset.item ] || 0;
-			b.querySelector( '.have' ).textContent = k ? `${ k } na vila` : 'Nenhum na vila';
+			const item = CATALOGUE.find( ( c ) => c.id === b.dataset.item );
+			let k = n[ item.id ] || 0;
+			if ( item.kind === 'plant' || item.kind === 'rock' ) {
+				// the map's whole scatter of that species or style (the placed ones are groups here); the
+				// variants that share their instances with another item count only the hand-placed ones
+				const reg = placeables[ placeKey( { kind: item.kind, ...item.entry } ) ];
+				const shared = item.id === 'rock-tor-large' || item.id === 'birch-gold';
+				if ( reg && ! shared ) k += reg.chunk.count;
+				b.querySelector( '.have' ).textContent = shared ? ( k ? `${ k } posta${ k > 1 ? 's' : '' } à mão` : 'Nenhuma posta à mão' ) : `${ k.toLocaleString( 'pt-BR' ) } no mapa`;
+			} else b.querySelector( '.have' ).textContent = k ? `${ k } na vila` : 'Nenhum na vila';
 		}
 	}
 

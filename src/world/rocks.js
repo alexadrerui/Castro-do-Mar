@@ -15,6 +15,7 @@ import { buildRockGeometry, ROCK_STYLES } from './granite/geometry.js';
 import { getDetailTexture } from './granite/detail.js';
 import { createGraniteMaterial } from './granite/shading.js';
 import { cloudShade } from './cloudShadow.js';
+import { placeables, addPlaced } from './placed.js';
 
 const nR = makeSimplex( 3131 );
 
@@ -286,6 +287,10 @@ export function createRocks( app, progress ) {
 			}
 		} );
 	}
+
+	// hand-placed rocks (world/placed.js): by style, sunk a quarter of their size as the scatter's
+	for ( const s of variants ) placeables[ 'rock:' + s.name ] = { chunk: s, lo: true, tint: ( seed ) => tint( mulberry32( seed ) ), lift: ( size ) => - 0.25 * size };
+	addPlaced( app, 'rock' );
 
 	for ( const s of [ ...variants, ...gravel ] ) { s.build(); group.add( s ); }
 	app.onFrame.push( () => { for ( const s of [ ...variants, ...gravel ] ) s.update( app.camera ); } );

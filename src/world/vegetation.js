@@ -6,6 +6,7 @@ import {
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { mineLedgeSpots } from './fort.js';
+import { placeables, addPlaced } from './placed.js';
 import { oakTree, pineTree, birchTree, shrubBush, bracken, deadTree, fallenLog, hollyBush, ivyGeometry, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
@@ -513,6 +514,17 @@ export async function createVegetation( app, progress ) {
 			} );
 		}
 	}
+
+	// hand-placed ones (the object editor's library, world/placed.js): what each is drawn with, then the
+	// saved ones into the instances (in the editor they are groups of their own instead)
+	for ( const sp of [ 'oak', 'pine', 'birch', 'gold', 'snag', 'log', 'holly', 'bush', 'fern' ] ) {
+		placeables[ 'plant:' + sp ] = {
+			chunk: species[ sp === 'gold' ? 'birch' : sp ],
+			tint: ( seed ) => sp === 'gold' ? [ 0.47, 0.32, 0.045 ] : tint( sp, mulberry32( seed ) ),
+			lift: ( s ) => sp === 'log' ? 0.24 * s : - 0.25 * s // the log lies on the ground; the rest stand sunk a little
+		};
+	}
+	addPlaced( app, 'plant' );
 
 	for ( const s of Object.values( species ) ) { s.build(); group.add( s ); }
 	app.onFrame.push( () => { for ( const s of Object.values( species ) ) s.update( app.camera ); } );

@@ -3,13 +3,16 @@
 // take (a round house of 4 or 8.8 m, an undyed stall...). Each item's thumbnail is a picture of the
 // object itself, made by tools/thumbs.mjs into public/editor/thumbs/<id>.webp, with its measured
 // footprint and height in public/editor/thumbs.json (the cards' "≈ w × d m" and the drop preview).
-// kind and entry are what objectEditor.place() builds (the layout.js form of BUILDINGS / STALLS / PROPS).
+// kind and entry are what objectEditor.place() builds: the layout.js form of BUILDINGS / STALLS / PROPS,
+// or a plant / rock of the scatter (kinds 'plant' / 'rock', world/placed.js).
 
 export const CATEGORIES = [
 	{ id: 'casas', label: 'Moradias' },
 	{ id: 'campo', label: 'Campo e armazéns' },
 	{ id: 'mercado', label: 'Mercado e ofícios' },
-	{ id: 'entradas', label: 'Defesa e entradas' }
+	{ id: 'entradas', label: 'Defesa e entradas' },
+	{ id: 'arvores', label: 'Árvores e arbustos' },
+	{ id: 'pedras', label: 'Pedras' }
 ];
 
 export const CATALOGUE = [
@@ -37,13 +40,31 @@ export const CATALOGUE = [
 	// defence and gateways
 	{ id: 'lookout', label: 'Torre de vigia', cat: 'entradas', kind: 'building', entry: { type: 'lookout' }, desc: 'Madeira, com plataforma no alto' },
 	{ id: 'gate', label: 'Pórtico', cat: 'entradas', kind: 'prop', entry: { type: 'gate', rot: 0 }, desc: 'Entrada na estrada principal' },
-	{ id: 'arch', label: 'Arco rústico', cat: 'entradas', kind: 'prop', entry: { type: 'arch', rot: 0 }, desc: 'Galhos e hera (a hera cresce ao salvar)' }
+	{ id: 'arch', label: 'Arco rústico', cat: 'entradas', kind: 'prop', entry: { type: 'arch', rot: 0 }, desc: 'Galhos e hera (a hera cresce ao salvar)' },
+	// trees and shrubs: one plant of the scatter's species (world/placed.js; s = its size, ~1 the scatter's mean)
+	{ id: 'oak', label: 'Carvalho', cat: 'arvores', kind: 'plant', entry: { species: 'oak', s: 1.1 }, desc: 'Carvalho-alvarinho, copa larga' },
+	{ id: 'pine', label: 'Pinheiro', cat: 'arvores', kind: 'plant', entry: { species: 'pine', s: 1.1 }, desc: 'Pinheiro-silvestre, alto' },
+	{ id: 'birch', label: 'Bétula', cat: 'arvores', kind: 'plant', entry: { species: 'birch', s: 1 }, desc: 'Tronco branco, folha miúda' },
+	{ id: 'birch-gold', label: 'Bétula dourada', cat: 'arvores', kind: 'plant', entry: { species: 'gold', s: 1.05 }, desc: 'A árvore amarela das referências' },
+	{ id: 'snag', label: 'Árvore seca', cat: 'arvores', kind: 'plant', entry: { species: 'snag', s: 1.1 }, desc: 'Tronco morto, de pé' },
+	{ id: 'log', label: 'Tronco caído', cat: 'arvores', kind: 'plant', entry: { species: 'log', s: 1 }, desc: 'Deitado no chão da mata' },
+	{ id: 'holly', label: 'Azevinho', cat: 'arvores', kind: 'plant', entry: { species: 'holly', s: 0.9 }, desc: 'Arbusto verde-escuro' },
+	{ id: 'gorse', label: 'Tojo', cat: 'arvores', kind: 'plant', entry: { species: 'bush', s: 1 }, desc: 'Arbusto dos montes' },
+	{ id: 'fern', label: 'Feto', cat: 'arvores', kind: 'plant', entry: { species: 'fern', s: 1 }, desc: 'Feto-ordinário, rasteiro' },
+	// rocks: the scatter's granite styles (world/rocks.js), s = size in m
+	{ id: 'rock-tor', label: 'Penedo de granito', cat: 'pedras', kind: 'rock', entry: { rock: 'tor0', s: 2.4 }, desc: 'Arredondado, dos montes' },
+	{ id: 'rock-tor-large', label: 'Penedo grande', cat: 'pedras', kind: 'rock', entry: { rock: 'tor0', s: 5 }, desc: 'Um afloramento inteiro' },
+	{ id: 'rock-boulder', label: 'Matacão', cat: 'pedras', kind: 'rock', entry: { rock: 'tor1', s: 1.8 }, desc: 'Bloco solto, rolado' },
+	{ id: 'rock-block', label: 'Bloco anguloso', cat: 'pedras', kind: 'rock', entry: { rock: 'talus0', s: 1.6 }, desc: 'Arestas vivas, do pé da escarpa' },
+	{ id: 'rock-slab', label: 'Laje de granito', cat: 'pedras', kind: 'rock', entry: { rock: 'talus1', s: 2 }, desc: 'Chata e larga' }
 ];
 
 // the catalogue item an object already in the village counts as (the cards' "na vila"): its type,
 // and for the types with several sizes the nearest one (scale included)
 export function itemOf( kind, entry ) {
 	if ( kind === 'stall' ) return entry.red === false ? 'stall-plain' : 'stall';
+	if ( kind === 'plant' ) return { gold: 'birch-gold', bush: 'gorse' }[ entry.species ] ?? entry.species;
+	if ( kind === 'rock' ) return { tor0: ( entry.s || 1 ) * ( entry.scale || 1 ) > 3.5 ? 'rock-tor-large' : 'rock-tor', tor1: 'rock-boulder', talus0: 'rock-block', talus1: 'rock-slab' }[ entry.rock ];
 	const s = entry.scale || 1;
 	switch ( entry.type ) {
 		case 'round': { const r = entry.r * s; return r >= 7 ? 'round-chief' : r < 4.6 ? 'round-small' : 'round'; }

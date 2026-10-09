@@ -31,6 +31,8 @@ const toScreen = ( x, y, z ) => page.evaluate( ( x, y, z ) => {
 }, x, y, z );
 const click = async ( p ) => { await page.mouse.move( p.x, p.y ); await sleep( 120 ); await page.mouse.down(); await sleep( 60 ); await page.mouse.up(); await sleep( 400 ); };
 
+// render pipelines built, to check that the hand-placed plants and rocks build none (world/placed.js)
+await page.evaluateOnNewDocument( () => { window.__pipes = 0; const D = GPUDevice.prototype; for ( const n of [ 'createRenderPipeline', 'createRenderPipelineAsync' ] ) { const f = D[ n ]; D[ n ] = function ( d ) { window.__pipes ++; return f.call( this, d ); }; } } );
 await page.goto( 'http://localhost:5190/?auto&edit', { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app?.ready && window.__app.objectEditor, { timeout: 300000, polling: 250 } );
 // the loading screen fades out over the page first (it would take the clicks)
@@ -100,7 +102,7 @@ const lib = await page.evaluate( async () => {
 	const pic = el.querySelector( '[data-item=round] img' );
 	return { all, search, cat, catLabel, reset: shown().length, round, size, pic: !! pic && pic.complete && pic.naturalWidth > 0 };
 } );
-check( lib.all === 21 && lib.search.join() === 'skep' && lib.cat.join() === 'lookout,gate,arch' && lib.reset === 21, `biblioteca: busca e categoria (${ JSON.stringify( lib ) })` );
+check( lib.all === 35 && lib.search.join() === 'skep' && lib.cat.join() === 'lookout,gate,arch' && lib.reset === 35, `biblioteca: busca e categoria (${ JSON.stringify( lib ) })` );
 check( /na vila/.test( lib.round ) && / × .* m · .* m alt./.test( lib.size ) && lib.pic, `cartão: contagem, tamanho e miniatura (${ lib.round }; ${ lib.size })` );
 await page.click( '#object-editor [data-item=round]' ); await sleep( 200 );
 const spot = { x: H.x - 18, z: H.z + 6 };
@@ -130,6 +132,43 @@ const dnd = await page.evaluate( ( p ) => {
 check( dnd.ghost && dnd.type === 'well' && Math.hypot( dnd.x - spot2.x, dnd.z - spot2.z ) < 1.5 && ! dnd.armed && dnd.sel === 'a1' && /2 na vila/.test( dnd.have ), `arrastar e soltar: poço onde caiu (${ JSON.stringify( dnd ) })` );
 await page.keyboard.down( 'Control' ); await page.keyboard.press( 'KeyZ' ); await page.keyboard.up( 'Control' ); await sleep( 200 );
 await page.screenshot( { path: `shots/${ prefix }_6_library.png`, clip: { x: 0, y: 100, width: 340, height: 800 } } );
+// 7. nature: an oak put with a click and a boulder dragged in (one-instance meshes of the scatter's own),
+// the oak moved by its record; the map's count on the card
+await page.keyboard.press( 'Escape' ); await sleep( 200 );
+// ground points seen on screen right of the library panel (a click there would land on the panel),
+// with no object under them
+const [ oakSpot, rockSpot ] = await page.evaluate( () => {
+	const a = window.__app, o = a.objectEditor, out = [];
+	for ( const [ sx, sy ] of [ [ 0.62, 0.62 ], [ 0.72, 0.7 ], [ 0.55, 0.75 ], [ 0.8, 0.6 ], [ 0.66, 0.8 ] ] ) {
+		const r = a.renderer.domElement.getBoundingClientRect(), x = r.left + sx * r.width, y = r.top + sy * r.height;
+		if ( o._pickObject( x, y ) ) continue;
+		o.terrain.pointer.x = x; o.terrain.pointer.y = y;
+		const p = o.terrain._pick();
+		if ( p ) out.push( { x: p.x, z: p.z } );
+	}
+	return out;
+} );
+const pipes0 = await page.evaluate( () => window.__pipes );
+await page.evaluate( () => { const q = document.querySelector( '#object-editor .q' ); q.value = 'carvalho'; q.dispatchEvent( new Event( 'input' ) ); } );
+await page.click( '#object-editor [data-item=oak]' ); await sleep( 200 );
+await click( await toScreen( oakSpot.x, await page.evaluate( ( s ) => window.__app.hf.heightAt( s.x, s.z ), oakSpot ), oakSpot.z ) );
+const rp = await toScreen( rockSpot.x, await page.evaluate( ( s ) => window.__app.hf.heightAt( s.x, s.z ), rockSpot ), rockSpot.z );
+const nat = await page.evaluate( ( p ) => {
+	const o = window.__app.objectEditor, oak = o.selected;
+	const card = document.querySelector( '#object-editor [data-item=rock-boulder]' ), cv = window.__app.renderer.domElement, dt = new DataTransfer();
+	card.dispatchEvent( new DragEvent( 'dragstart', { bubbles: true, dataTransfer: dt } ) );
+	cv.dispatchEvent( new DragEvent( 'dragover', { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, dataTransfer: dt } ) );
+	cv.dispatchEvent( new DragEvent( 'drop', { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, dataTransfer: dt } ) );
+	card.dispatchEvent( new DragEvent( 'dragend', { bubbles: true, dataTransfer: dt } ) );
+	const rock = o.selected, mesh = rock?.children[ 0 ];
+	const recs = o.edits.added.filter( ( a ) => a.kind === 'plant' || a.kind === 'rock' ).map( ( a ) => ( { id: a.id, kind: a.kind, sp: a.species || a.rock, x: +a.x.toFixed( 1 ), z: +a.z.toFixed( 1 ) } ) );
+	return { oak: oak?.userData.kind, oakName: document.querySelector( '#object-menu .name' ).textContent, rock: rock?.userData.kind, inst: mesh?.geometry.instanceCount, sameMat: mesh?.material === window.__app.layers.rocks.object.children.find( ( c ) => c.name === 'tor1' ).materialLo, recs, have: document.querySelector( '#object-editor [data-item=oak] .have' ).textContent };
+}, rp );
+check( nat.oak === 'plant' && nat.rock === 'rock' && nat.inst === 1 && nat.sameMat && nat.recs.length === 2 && /no mapa/.test( nat.have ), `natureza: carvalho e matacão postos (${ JSON.stringify( nat ) })` );
+await shot( '7_nature' );
+await sleep( 1500 );
+const newPipes = await page.evaluate( ( p0 ) => window.__pipes - p0, pipes0 );
+check( newPipes === 0, `natureza: nenhum pipeline novo ao pôr o carvalho e o matacão (${ newPipes })` );
 
 if ( doSave ) {
 	const nav = page.waitForNavigation( { waitUntil: 'domcontentloaded', timeout: 120000 } );
@@ -154,6 +193,22 @@ if ( doSave ) {
 	check( Math.abs( after.door - mv.rec.door ) < 1e-4, `porta mantida após mover e recarregar (${ after.door?.toFixed( 3 ) } / ${ mv.rec.door } rad)` );
 	check( after.roofAt > 3, `telhado sobre a posição nova (${ after.roofAt?.toFixed( 1 ) } m acima do chão)` );
 	check( after.n && after.n.type === 'round', `casa adicionada presente: ${ JSON.stringify( after.n ) }` );
+	// the oak and the boulder in the scatter's instances, where they were put
+	const inst = await page.evaluate( () => {
+		const a = window.__app, found = {};
+		for ( const e of a.worldEdits.added.filter( ( q ) => q.kind === 'plant' || q.kind === 'rock' ) ) {
+			const name = e.kind === 'plant' ? e.species : e.rock;
+			let best = 1e9;
+			for ( const L of [ a.layers.vegetation.object, a.layers.rocks.object ] ) L.traverse( ( o ) => {
+				if ( o.parent?.name !== name || ! o.userData.instances ) return;
+				const { matrices, count } = o.userData.instances;
+				for ( let i = 0; i < count; i ++ ) best = Math.min( best, Math.hypot( matrices[ i * 16 + 12 ] - e.x, matrices[ i * 16 + 14 ] - e.z ) );
+			} );
+			found[ name ] = +best.toFixed( 2 );
+		}
+		return found;
+	} );
+	check( inst.oak < 0.05 && inst.tor1 < 0.05, `após recarregar: carvalho e matacão nas instâncias, no lugar (${ JSON.stringify( inst ) })` );
 	await page.evaluate( ( H ) => { const a = window.__app; a.dynamicRes = false; a.views.push( { label: 'e', pos: [ H.x + 10, H.y + 30, H.z + 34 ], target: [ H.x - 6, H.y + 2, H.z ] } ); a.setView( a.views.length - 1 ); }, H );
 	await sleep( 1500 );
 	await shot( '5_reloaded' );

@@ -57,13 +57,17 @@ const res = await page.evaluate( async ( only ) => {
 		// objects (a second copy of three would not render with its renderer).
 		const R = a.renderer, cam = new a.camera.constructor( 28, 1, 0.1, 2000 );
 		const c = b.getCenter( new V() ), rad = Math.max( 0.6, b.getSize( new V() ).length() / 2 );
-		const dist = rad / Math.sin( 14 * Math.PI / 180 ) * 1.02;
+		// the trees' box holds their loose leaf cards: closer, or the tree is small in the picture
+		const dist = rad / Math.sin( 14 * Math.PI / 180 ) * ( item.kind === 'plant' && item.id !== 'log' ? 0.78 : 1.02 );
 		const dir = new V( 0.7, 0.42, 0.58 ).normalize();
 		cam.position.copy( c ).addScaledVector( dir, dist ); cam.lookAt( c ); cam.updateMatrixWorld();
+		cam.layers.enableAll(); // the small props and the rocks are on layer 1
 		const studio = new a.scene.constructor();
 		const key = new a.sky.sun.constructor( 0xfff1dc, 4.2 ); key.position.copy( c ).add( new V( 30, 50, 10 ) ); key.target.position.copy( c );
 		const fill = new a.sky.hemi.constructor( 0xcfe0f5, 0x6a5a40, 2.6 );
 		studio.add( key, key.target, fill );
+		// a placed rock draws with the far material in the editor (ChunkedInstances.single): the near one here
+		if ( item.kind === 'rock' ) g.children[ 0 ].material = a.layers.rocks.object.children.find( ( c ) => c.name === item.entry.rock ).material;
 		const parent = g.parent; studio.add( g );
 		const rt = new a.scenePass.renderTarget.constructor( 512, 512, { samples: 4 } );
 		rt.texture.colorSpace = 'srgb';

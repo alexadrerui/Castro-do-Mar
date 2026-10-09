@@ -205,4 +205,32 @@ export class ChunkedInstances extends THREE.Group {
 	}
 
 	get count() { return this.tiles.reduce( ( s, t ) => s + t.hi.geometry.instanceCount, 0 ); }
+
+	// One plant or rock of its own (the object editor's hand-placed ones, world/placed.js): a one-instance
+	// mesh of the near LOD at the identity, with the tiles' material and attribute layout, so the same
+	// shader and pipeline (a mesh of its own material would build new ones: the shader cache is at its
+	// limit). The caller moves it (its parent group); it is not a tile (no LOD, no update). lo: drawn with
+	// the far material (the rocks: the near one's shadow pipeline is never built at the load, as the
+	// scatter's shadows come from the far tiles; a placed rock casting with it built one more).
+	single( extra = [], lo = false ) {
+		const src = this.hiGeo, geo = new THREE.InstancedBufferGeometry();
+		for ( const k in src.attributes ) geo.setAttribute( k, src.attributes[ k ] );
+		if ( src.index ) geo.setIndex( src.index );
+		const ib = new THREE.InstancedInterleavedBuffer( new Float32Array( new THREE.Matrix4().elements ), 16 );
+		for ( let c = 0; c < 4; c ++ ) geo.setAttribute( 'iM' + c, new THREE.InterleavedBufferAttribute( ib, 4, c * 4 ) );
+		this.extraAttrs.forEach( ( a, k ) => {
+			const v = extra[ k ] ?? 0;
+			geo.setAttribute( a.name, new THREE.InstancedBufferAttribute( new Float32Array( Array.isArray( v ) ? v : Array( a.itemSize ).fill( v ) ), a.itemSize ) );
+		} );
+		geo.instanceCount = 1;
+		if ( ! src.boundingSphere ) src.computeBoundingSphere();
+		if ( ! src.boundingBox ) src.computeBoundingBox();
+		geo.boundingSphere = src.boundingSphere.clone();
+		geo.boundingBox = src.boundingBox.clone();
+		const mesh = new THREE.Mesh( geo, lo ? this.materialLo : this.material );
+		mesh.castShadow = this.cast && this.shadowDistance > 0;
+		mesh.receiveShadow = this.receive;
+		if ( this.layerId ) mesh.layers.set( this.layerId );
+		return mesh;
+	}
 }
