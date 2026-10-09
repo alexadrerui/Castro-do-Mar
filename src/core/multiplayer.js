@@ -55,6 +55,17 @@ const relayList = () => {
 // them only at the next refresh, ~26 s later: hence a shorter period).
 const REFRESH = 45;          // s
 const WAIT_HELP = 40;         // s alone in a room before the panel explains what to check
+// A friend's connection lost (Trystero closes a peer after 5 s in ICE "disconnected": a Wi-Fi hiccup,
+// a machine stalling while another window opens a heavy page): nothing joined the pair again unless
+// one of them was left alone in the room, so in a group of three the two stayed apart for good ("he
+// left" while still there). Now the friend is kept, frozen and marked "reconectando", for GRACE s, and
+// HEAL s later this visitor leaves and joins the room again, and again every HEAL_GAP s while a friend
+// is missing; Trystero keeps the same peer id within a page, so the friend comes back as the same
+// visitor, without a "saiu" / "entrou". Only one side goes first (the larger peer id): both refreshing
+// together, one left as the other came back and they missed each other (1 test in 2); the other side
+// goes after HEAL_SLOW s in case the first is frozen (a hidden tab). At once on coming back to the tab.
+const GRACE = 60;             // s
+const HEAL = 3, HEAL_JITTER = 2, HEAL_SLOW = 15, HEAL_GAP = 20; // s
 // An optional TURN relay (none by default: the free public ones no longer answer, tested 07/10/2026):
 // with it, two visitors behind strict NATs (some mobile and corporate networks) still connect, through
 // it. Build-time variables (.env.local, or the repository's Actions variables in the deploy workflow):
@@ -121,13 +132,22 @@ export class Multiplayer {
 		this.tags = document.createElement( 'div' );
 		this.tags.id = 'mp-tags';
 		document.body.appendChild( this.tags );
-		addEventListener( 'pagehide', () => this.room?.leave() );
+		addEventListener( 'pagehide', () => { try { this.bye?.send( 1 ); } catch ( e ) { /* closing */ } this.room?.leave(); } );
 		// alone for a while: join the room again (see REFRESH). By the wall clock, not the frames: the one
 		// who invites switches to another app to send the link, and the page stops drawing meanwhile; and at
 		// once on coming back after 30 s alone
 		const alone = ( s ) => this.room && ! this.peers.size && ! this._refreshing && performance.now() - this._enteredAt > s * 1000;
-		setInterval( () => { if ( alone( REFRESH ) ) this._refresh(); }, 5000 );
-		addEventListener( 'visibilitychange', () => { if ( ! document.hidden && alone( 30 ) ) this._refresh(); } );
+		setInterval( () => {
+			if ( alone( REFRESH ) ) this._refresh();
+			// friends lost for longer than the grace: gone
+			const t = performance.now();
+			for ( const [ id, p ] of this.peers ) if ( p.lost && t - p.lost > GRACE * 1000 ) this._drop( id );
+		}, 5000 );
+		addEventListener( 'visibilitychange', () => {
+			if ( document.hidden ) return;
+			if ( alone( 30 ) ) this._refresh();
+			else if ( this._anyLost() ) this._heal( 0 );
+		} );
 		app.onFrame.push( ( dt ) => this.update( dt ) );
 	}
 
@@ -141,9 +161,9 @@ export class Multiplayer {
 	// the panel's status line: the room's code, who is here, and while alone what is going on
 	get note() {
 		if ( ! this.room ) return '';
-		const names = [ ...this.peers.values() ].map( ( p ) => p.name ).filter( Boolean );
+		const names = [ ...this.peers.values() ].filter( ( p ) => p.name ).map( ( p ) => escapeHTML( p.name ) + ( p.lost ? ' <span class="mp-warn">(reconectando…)</span>' : '' ) );
 		const head = `Sala <b class="mp-code">${ this.roomId }</b> · `;
-		if ( names.length ) return head + 'com ' + names.map( escapeHTML ).join( ', ' );
+		if ( names.length ) return head + 'com ' + names.join( ', ' );
 		const alone = ( performance.now() - this.joinedAt ) / 1000;
 		const { open, total } = this.relays;
 		if ( ! open ) {
@@ -183,8 +203,16 @@ export class Multiplayer {
 		this.hello = room.makeAction( 'hi' );
 		this.state = room.makeAction( 'st' );
 		this.world = room.makeAction( 'w' );
-		room.onPeerJoin = ( peerId ) => { this._peer( peerId ); this.hello.send( this._helloData(), { target: peerId } ); };
-		room.onPeerLeave = ( peerId ) => this._drop( peerId );
+		// a goodbye before leaving on purpose (Sair da sala, closing the tab): dropped at once, not kept
+		// for the grace of a lost connection
+		this.bye = room.makeAction( 'by' );
+		this.bye.onMessage = ( _, { peerId } ) => this._drop( peerId );
+		room.onPeerJoin = ( peerId ) => {
+			const p = this._peer( peerId );
+			if ( p.lost ) { p.lost = 0; this._changed(); } // back after a lost connection: the same visitor
+			this.hello.send( this._helloData(), { target: peerId } );
+		};
+		room.onPeerLeave = ( peerId ) => this._lose( peerId );
 		this.hello.onMessage = ( h, { peerId } ) => this._onHello( peerId, h );
 		this.state.onMessage = ( s, { peerId } ) => this._onState( peerId, s );
 		this.world.onMessage = ( w, { peerId } ) => this._onWorld( peerId, w );
@@ -197,6 +225,37 @@ export class Multiplayer {
 		this._refreshing = false;
 		if ( this.room !== old || this.roomId !== id ) return; // left or moved meanwhile
 		this._enter( id );
+		// a friend still missing: try again (the heal's own pace)
+		if ( this._anyLost() ) this._heal( HEAL_GAP * 1000 );
+	}
+
+	// a friend's connection closed: kept (frozen, "reconectando") for GRACE s while the room is joined
+	// again (see GRACE); while this visitor is the one refreshing, every friend goes and comes back
+	_lose( peerId ) {
+		const p = this.peers.get( peerId );
+		if ( ! p ) return;
+		if ( ! p.lost ) p.lost = performance.now();
+		this._changed();
+		if ( this._refreshing ) return;
+		const first = String( this._mod?.selfId ?? '' ) > String( peerId );
+		this._heal( ( first ? HEAL + Math.random() * HEAL_JITTER : HEAL_SLOW ) * 1000 );
+	}
+
+	_anyLost() { for ( const p of this.peers.values() ) if ( p.lost ) return true; return false; }
+
+	// join the room again in `ms` if a friend is still missing then (a friend's own refresh brings them
+	// back within a couple of seconds: nothing to do); at most once per HEAL_GAP
+	_heal( ms ) {
+		clearTimeout( this._healT );
+		this._healT = setTimeout( () => {
+			this._healT = null;
+			if ( ! this.room || this._refreshing || ! this._anyLost() ) return;
+			const since = performance.now() - ( this._healedAt || - 1e9 );
+			if ( since < HEAL_GAP * 1000 ) { this._heal( HEAL_GAP * 1000 - since ); return; }
+			this._healedAt = performance.now();
+			console.info( 'multiplayer: a friend lost, joining the room again' );
+			this._refresh();
+		}, ms );
 	}
 
 	// Convidar: open a room if there is none (its id goes into the address), then copy its link
@@ -239,8 +298,10 @@ export class Multiplayer {
 	async leave() {
 		if ( ! this.room ) return;
 		const room = this.room;
+		try { await this.bye.send( 1 ); } catch ( e ) { /* gone already */ }
 		this.room = null;
 		this._left = true;
+		clearTimeout( this._healT );
 		for ( const id of [ ...this.peers.keys() ] ) this._drop( id, true );
 		const url = new URL( location.href ); url.searchParams.delete( 'sala' );
 		history.replaceState( null, '', url.href.replace( /=(?=&|$)/g, '' ) );

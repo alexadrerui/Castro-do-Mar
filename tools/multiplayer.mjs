@@ -1,7 +1,8 @@
 // The shared visit (core/multiplayer.js) with two visitors, each in its own browser profile, as the
 // offroad test does: A clicks Convidar, B opens the link; they must find each other through the public
 // Nostr relays (needs internet), B must fly to A, see A's lantern where A's camera is, follow A's hour and
-// rain, see A's new name, and A must see B leave. Captures shots/<prefixo>_*.png.
+// rain, see A's new name, get over a connection closed by force (it must heal by itself, nobody announced
+// as gone), and A must see B leave. Captures shots/<prefixo>_*.png.
 //   node tools/multiplayer.mjs [prefixo]
 import puppeteer from 'puppeteer-core';
 
@@ -106,6 +107,32 @@ await B.screenshot( { path: `shots/${ prefix }_day.png` } );
 await B.evaluate( () => { document.getElementById( 'side' ).scrollTop = 0; } );
 await settle( 300 );
 await B.screenshot( { path: `shots/${ prefix }_panel.png`, clip: { x: 980, y: 50, width: 300, height: 420 } } );
+
+// a lost connection heals by itself (core/multiplayer.js GRACE / HEAL): B closes its WebRTC
+// connections by force, as Trystero does after 5 s "disconnected" (a Wi-Fi hiccup, a stalled machine);
+// both must find each other again, nobody announced as gone, nobody dropped from the list
+{
+	const toasts = ( P ) => P.evaluate( () => {
+		window.__toasts = [];
+		const hud = window.__app.hud, t = hud.toast.bind( hud );
+		hud.toast = ( m, ms ) => { window.__toasts.push( m ); t( m, ms ); };
+	} );
+	await toasts( A ); await toasts( B );
+	const t1 = Date.now();
+	await B.evaluate( () => { for ( const pc of Object.values( window.__app.mp.room.getPeers() ) ) pc.close(); } );
+	const marked = await waitFor( A, () => [ ...window.__app.mp.peers.values() ].some( ( p ) => p.lost ), null, 15000 );
+	const healed = await waitFor( A, () => { const m = window.__app.mp; return m.peers.size === 1 && ! [ ...m.peers.values() ][ 0 ].lost && Object.keys( m.room.getPeers() ).length === 1; }, null, 40000 )
+		&& await waitFor( B, () => { const m = window.__app.mp; return m.peers.size === 1 && ! [ ...m.peers.values() ][ 0 ].lost && Object.keys( m.room.getPeers() ).length === 1; }, null, 20000 );
+	check( 'A marks B as reconnecting', marked );
+	check( 'the lost connection heals by itself', healed, `(${ ( ( Date.now() - t1 ) / 1000 ).toFixed( 1 ) } s)` );
+	const said = [ ...await A.evaluate( () => window.__toasts ), ...await B.evaluate( () => window.__toasts ) ].filter( ( m ) => /saiu/.test( m ) );
+	check( 'nobody announced as gone', said.length === 0, said.join( ' | ' ) );
+	// and the states flow again: B's lantern follows a move of A
+	await A.evaluate( () => { window.__app.camera.position.x += 3; } );
+	await settle( 1500 );
+	const a2 = await state( A ), b2 = await state( B );
+	check( 'states flow again after the heal', b2.peers[ 0 ]?.at && dist( b2.peers[ 0 ].at, [ a2.cam[ 0 ], a2.cam[ 1 ] - 0.45, a2.cam[ 2 ] ] ) < 0.5, JSON.stringify( b2.peers[ 0 ]?.at ) + ' vs ' + JSON.stringify( a2.cam ) );
+}
 
 // a new name reaches the other side
 await A.evaluate( () => { const i = document.getElementById( 'i-name' ); i.value = 'Alice do Castro'; i.dispatchEvent( new Event( 'change' ) ); } );
