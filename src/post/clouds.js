@@ -84,6 +84,7 @@ export class Clouds {
 		};
 		this.base = uniform( 750 ); this.top = uniform( 2200 ); // the span of the cumulus layers (the main march)
 		this.cirrus = uniform( 1 );                            // the cirrus layer's strength (0: off)
+		this.stepScale = uniform( 1 );  // the main march's step: > 1 cheaper (fewer, longer steps; core/dynamicRes.js)
 		this.fairDensity = 0.2;                                // the cumulus' density (1/m) in fair weather (overcast())
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
@@ -138,7 +139,7 @@ export class Clouds {
 				const hg = ( g ) => float( 1 - g * g ).div( float( 1 + g * g ).sub( cosT.mul( 2 * g ) ).max( 1e-7 ).pow( 1.5 ) ).mul( 1 / ( 4 * Math.PI ) );
 				const phase = ( c ) => hg( 0.7 * c ).add( hg( - 0.2 * c ) ).mul( 0.5 );
 				const sunIrr = this.sunColor.mul( this.sunScale ), skyIrr = this.ambient.mul( this.ambientScale );
-				const step = float( 40 ).add( tStart.mul( 0.012 ) ).toVar();
+				const step = float( 40 ).add( tStart.mul( 0.012 ) ).mul( this.stepScale ).toVar();
 				const r = step.mul( jitter ).mul( 2 ).toVar();
 				Loop( MAX_ITER, () => {
 					If( r.greaterThan( len ), () => { Break(); } );

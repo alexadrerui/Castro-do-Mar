@@ -84,9 +84,15 @@ export class Loader {
 		btn.addEventListener( 'click', go, { once: true } );
 	}
 
+	// the 3D world could not start (no WebGPU nor WebGL 2, or an error in the load): a still picture of
+	// the village behind the card (public/poster.jpg, as Ascent's poster), a plain word and the error
 	fail( err ) {
+		clearInterval( this.tipTimer );
+		this.el.classList.add( 'failed' );
+		this.el.style.setProperty( '--poster', `url(${ import.meta.env.BASE_URL }poster.jpg)` );
 		this.stageEl.textContent = 'Falha: ' + ( err?.message || err );
 		this.stageEl.style.color = '#ff9b85';
+		this.tipEl.textContent = 'Não foi possível abrir a vila em 3D neste navegador. Tente um Chrome ou Edge atualizado, com a aceleração por hardware ligada.';
 		console.error( err );
 	}
 }

@@ -526,6 +526,8 @@ async function main() {
 	const cloudLight = new THREE.Vector3().copy( sky.state.lightDir ), _afterglow = new THREE.Color( 1, 0.32, 0.14 );
 	const clouds = params.get( 'clouds' ) === '0' ? null : new Clouds( { textures: await loadCloudTextures(), scenePass, camera, hazeAmount, hazeColor, sunDir: cloudLight } );
 	app.clouds = clouds;
+	// the dynamic resolution's first step: the clouds' march with twice as long steps (~the same look)
+	if ( clouds ) dynRes.addStage( 'nuvens', ( on ) => { clouds.stepScale.value = on ? 2 : 1; } );
 	if ( ! clouds ) clearCloudMap( renderer ); // no clouds, no cloud shadows
 	// the cirrus of the volumetric clouds replace the sky's flat clouds
 	if ( clouds ) sky.sky.cloudDensity.value = 0;

@@ -18,6 +18,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1210; col
 /* ---------------- loader ---------------- */
 #loader { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; transition: opacity 1.2s ease, visibility 1.2s; }
 #loader.done { opacity: 0; visibility: hidden; }
+/* the load failed: the village's still picture behind the card (ui/loader.js fail) */
+#loader.failed .ld-bg { background: linear-gradient(rgba(10, 14, 12, .55), rgba(10, 14, 12, .8)), var(--poster) center / cover no-repeat, #0a0e0c; }
+#loader.failed .ld-bg::after { display: none; }
+#loader.failed .ld-bar, #loader.failed #ld-steps, #loader.failed #ld-pct { display: none; }
 .ld-bg { position: absolute; inset: 0;
 	background:
 		radial-gradient(1200px 700px at 50% 110%, rgba(60, 90, 42, 0.55), transparent 60%),

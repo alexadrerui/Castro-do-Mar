@@ -69,11 +69,28 @@ export async function createDebugPanel( app ) {
 	perf.addBinding( counters, 'res', { label: 'resolução da cena', readonly: true } );
 	perf.addBinding( counters, 'pixelRatio', { label: 'pixel ratio', readonly: true, format: ( v ) => v.toFixed( 2 ) } );
 	if ( app.dynRes ) perf.addBinding( app, 'dynamicRes', { label: 'resolução dinâmica' } );
+	// frame time over the last 240 frames (as Ascent's ?debug): the median and the 95th percentile,
+	// which shows the hitches an average hides
+	const ft = { p50: 0, p95: 0 };
+	const times = new Float32Array( 240 );
+	let nT = 0, lastT = 0;
+	app.onFrame.push( () => {
+		const t = performance.now();
+		if ( lastT ) times[ nT ++ % times.length ] = t - lastT;
+		lastT = t;
+	} );
+	perf.addBinding( ft, 'p50', { label: 'quadro p50', readonly: true, format: ( v ) => v.toFixed( 1 ) + ' ms' } );
+	perf.addBinding( ft, 'p95', { label: 'quadro p95', readonly: true, format: ( v ) => v.toFixed( 1 ) + ' ms' } );
 	setInterval( () => {
 		const i = app.renderer.info.render;
 		counters.calls = i.drawCalls; counters.triangles = i.triangles;
-		counters.res = Math.round( ( app.dynRes?.scale ?? 1 ) * 100 ) + '%';
+		counters.res = Math.round( ( app.dynRes?.scale ?? 1 ) * 100 ) + '%' + ( app.dynRes?.active.length ? ' · ' + app.dynRes.active.join( ', ' ) : '' );
 		counters.pixelRatio = app.renderer.getPixelRatio();
+		const n = Math.min( nT, times.length );
+		if ( n ) {
+			const sorted = times.slice( 0, n ).sort();
+			ft.p50 = sorted[ Math.floor( n * 0.5 ) ]; ft.p95 = sorted[ Math.min( n - 1, Math.floor( n * 0.95 ) ) ];
+		}
 	}, 500 );
 
 	// ---- the hour and the look's key frames (world/look.js)

@@ -1,6 +1,7 @@
 // The dynamic resolution's rule (core/dynamicRes.js) with made-up frame times, no browser: a slow
 // stretch steps down, a fast one steps back up, a step up that lands slow goes back and is blocked
-// for 60 s, a stall throws its window away. Exits 1 on a failed check.
+// for 60 s, a stall throws its window away; a stage (the clouds) goes on before the first step of
+// resolution and off after the last one back. Exits 1 on a failed check.
 //   node tools/dynres.mjs
 import { DynamicResolution } from '../src/core/dynamicRes.js';
 
@@ -36,5 +37,25 @@ check( 'stalls are ignored', d2.scale === 1 );
 // disabled: back to 100%
 d.enabled = false; d.update( 1 / 60 );
 check( 'disabled: 100%', d.scale === 1 && pass.scale === 1 );
+// a stage: on before the resolution drops, off only after it is back at 100%
+{
+	const p3 = { scale: 1, setResolutionScale( s ) { this.scale = s; } };
+	const d3 = new DynamicResolution( p3 );
+	let cheap = false;
+	d3.addStage( 'nuvens', ( on ) => { cheap = on; } );
+	const run3 = ( fps, seconds ) => { for ( let t = 0; t < seconds; t += 1 / fps ) d3.update( 1 / fps ); };
+	run3( 40, 6 );
+	check( 'stage: first step down switches the stage, resolution stays', cheap && d3.scale === 1, `${ d3.scale * 100 }%` );
+	run3( 40, 6 );
+	check( 'stage: next step drops the resolution', cheap && d3.scale === 0.875, `${ d3.scale * 100 }%` );
+	run3( 30, 60 );
+	check( 'stage: floor at 50% with the stage on', cheap && d3.scale === 0.5 );
+	run3( 60, 60 );
+	check( 'stage: 60 fps for long: 100% and the stage off', ! cheap && d3.scale === 1 && d3.level === 0 );
+	d3.set( 0.75 );
+	check( 'stage: set( 0.75 ) turns it on', cheap && p3.scale === 0.75 );
+	d3.set( 1 );
+	check( 'stage: set( 1 ) turns it off', ! cheap && p3.scale === 1 );
+}
 console.log( fail.length ? 'FAILED: ' + fail.join( '; ' ) : 'all ok' );
 process.exit( fail.length ? 1 : 0 );
