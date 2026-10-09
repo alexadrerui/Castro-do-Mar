@@ -22,6 +22,16 @@ export class HUD {
 			b.onclick = () => app.goView( i );
 			views.appendChild( b );
 		} );
+		// a link that opens the page at this place and hour (main.js app.shareLink: ?cam= and ?hora=)
+		const share = document.createElement( 'button' );
+		share.className = 'wide';
+		share.textContent = 'Copiar link deste ponto';
+		share.title = 'Um link que abre a vila nesta posição da câmera e nesta hora';
+		share.onclick = async () => {
+			const url = app.shareLink();
+			try { await navigator.clipboard.writeText( url ); this.toast( 'Link copiado' ); } catch ( e ) { prompt( 'Copie o link:', url ); }
+		};
+		views.appendChild( share );
 
 		// layers
 		const layers = $( 'layers' );

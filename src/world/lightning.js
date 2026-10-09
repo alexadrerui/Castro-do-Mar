@@ -19,6 +19,7 @@ import {
 	attribute, cameraPosition, cross, float, instanceIndex, mix, normalize, positionGeometry, smoothstep, uniform, uv, vec3, vec4, max, Fn
 } from 'three/tsl';
 import { WATER_LEVEL } from './layout.js';
+import { motion } from '../core/motion.js';
 
 const SLOTS = 2;
 // bolt: up to 8 levels of the main path (257 points) and 7 branches of 6 levels, three layers
@@ -366,7 +367,7 @@ export class Lightning {
 		slot.t.value = 0; slot.active = true; slot.warming = 0;
 		slot.event = this._flash( 1 / ( 1 + dist / 1500 ) );
 		this.count ++;
-		if ( dist < 250 ) this.shake = Math.max( this.shake, 0.014 * Math.pow( 1 - dist / 250, 2 ) + 0.002 );
+		if ( dist < 250 && ! motion.reduced ) this.shake = Math.max( this.shake, 0.014 * Math.pow( 1 - dist / 250, 2 ) + 0.002 );
 		this._thunder( dist );
 		return { x, z, dist: Math.round( dist ) };
 	}

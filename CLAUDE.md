@@ -4,7 +4,7 @@ Recriação procedural (three.js r186, WebGPU + TSL) da vila celta das imagens e
 Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é procedural.
 
 ## Rodar e verificar
-- `npm run dev`: Vite na porta 5190 (`?auto` pula o botão de entrada, `?webgl` força WebGL 2).
+- `npm run dev`: Vite na porta 5190 (`?auto` pula o botão de entrada, `?webgl` força WebGL 2; `?view=minas`, `?cam=x,y,z,tx,ty,tz`, `?hora=18:30` e `?motion=reduce`: ver `docs/opcoes-toque-debug.md`).
 - `node tools/shoot.mjs <prefixo> [vistas...]`: captura headless (Edge + WebGPU) em `shots/`.
   Use `--cam=x,y,z,tx,ty,tz` para uma câmera avulsa. Capturas de várias vistas podem passar de 7 min.
 - `node tools/profile.mjs [--from=x,z] [rumos]`: perfil de alturas do relevo por rumo da bússola.

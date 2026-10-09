@@ -14,7 +14,9 @@
 //   relief (nearest-seed chamfer transform), with the altitude; it pans to the side of the shore;
 // - the wind: height above the ground, the storm, sheltered in the woods;
 // - the birds: a 64 m grid of the trees (vegetation instances) counted at the load;
-// - the fire: the hearths of the houses (buildings.js smoke sources); rivers: their samples and falls.
+// - the fire: the hearths of the houses (buildings.js smoke sources); rivers: their samples and falls;
+// - the heights: an open drone (A, E, A, E: fifths) that rises out of the wind high above the sea
+//   (120-450 m), as Ascent's score opens and thins with the altitude (github.com/hapybeing/Ascent).
 import { WATER_LEVEL } from '../world/layout.js';
 import { wind as worldWind } from '../world/wind.js'; // the panel's wind strength
 
@@ -139,6 +141,27 @@ function forestField( vegetation, hf ) {
 	};
 }
 
+// the heights' drone: soft sines in open fifths (A2 E3 A3 E4), each slightly detuned and breathing
+// on its own slow swell, through a warm low-pass; its gain (g) follows the altitude
+function drone( ctx, out ) {
+	const g = ctx.createGain(); g.gain.value = 0;
+	const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.4;
+	lp.connect( g ).connect( out );
+	for ( const [ f, a ] of [ [ 110, 0.5 ], [ 164.81, 0.35 ], [ 220, 0.3 ], [ 329.63, 0.14 ] ] ) {
+		for ( const det of [ - 3, 3 ] ) {
+			const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; o.detune.value = det + rnd( - 1.5, 1.5 );
+			const v = ctx.createGain(); v.gain.value = a * 0.5;
+			// the swell: an LFO of 0.03-0.08 Hz on this voice's level
+			const lfo = ctx.createOscillator(); lfo.frequency.value = rnd( 0.03, 0.08 );
+			const depth = ctx.createGain(); depth.gain.value = a * 0.35;
+			lfo.connect( depth ).connect( v.gain );
+			o.connect( v ).connect( lp );
+			o.start(); lfo.start( ctx.currentTime + rnd( 0, 10 ) );
+		}
+	}
+	return { g };
+}
+
 // ------------------------------------------------------------------ the mixer
 
 export class Ambience {
@@ -211,7 +234,8 @@ export class Ambience {
 			fallsHiss: loop( B.pink, [ [ 'highpass', 600 ] ] ),
 			crickets: loop( crickets( ctx ), [ [ 'highpass', 2500 ] ] ),
 			fire: loop( fire( ctx ), [ [ 'highpass', 60 ] ] ),
-			under: loop( B.brown, [ [ 'lowpass', 220 ] ], this.master )
+			under: loop( B.brown, [ [ 'lowpass', 220 ] ], this.master ),
+			heights: drone( ctx, this.air )
 		};
 		this.waves = { next: ctx.currentTime + 1, voice: 0 };
 		this.gust = { v: 0.5, target: 0.5, next: 0 };
@@ -277,6 +301,9 @@ export class Ambience {
 		lv.wind = wind;
 		set( L.wind.g, wind * 0.9, 0.6 ); L.wind.f[ 0 ].frequency.setTargetAtTime( 260 + 520 * g.v, t, 0.8 );
 		set( L.whistle.g, wind * 0.12 * exposed * g.v, 0.8 ); L.whistle.f[ 0 ].frequency.setTargetAtTime( 900 + 900 * g.v, t, 1.2 );
+		// the heights: the drone rises with the altitude over the sea, under the wind; less in the rain
+		lv.heights = sstep( 120, 450, p.y - WATER_LEVEL ) * ( 1 - 0.6 * sstep( 0.2, 0.8, rain ) ) * ( under ? 0 : 1 );
+		set( L.heights.g, lv.heights * 0.05, 2.5 );
 		lv.leaves = forest * ( 0.3 + 0.7 * g.v ) * calm;
 		set( L.leaves.g, lv.leaves * 0.2, 0.5 );
 

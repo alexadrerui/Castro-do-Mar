@@ -37,6 +37,7 @@ import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
 import { Rivers } from './world/rivers.js';
 import { installRecovery, restoreAfterRecovery } from './core/recovery.js';
+import { motion } from './core/motion.js';
 import { Settings, QUALITY, startQuality } from './core/settings.js';
 import { Multiplayer, roomFromURL } from './core/multiplayer.js';
 import { Ambience } from './audio/ambience.js';
@@ -348,8 +349,21 @@ async function main() {
 	// ---- camera & controls ----
 	const cam = new FreeCam( camera, canvas, { groundFn: ( x, z ) => hf.heightAt( x, z ), moveSpeed: 22 } );
 	app.freecam = cam;
-	const v0 = app.views[ params.has( 'view' ) ? + params.get( 'view' ) : 0 ];
+	app.motion = motion; // reduced motion (core/motion.js)
+	// the opening view: a link can name one (as Ascent's ?alt=): ?view=2 or ?view=minas (a view's
+	// label, without accents), or ?cam=x,y,z,tx,ty,tz (the panel's "Copiar link deste ponto")
+	const v0 = linkView( app.views ) ?? app.views[ 0 ];
 	cam.jumpTo( new THREE.Vector3( ...v0.pos ), new THREE.Vector3( ...v0.target ) );
+	// a link to this place: the camera (to 0.1 m) and the hour, on the page's own address
+	app.shareLink = () => {
+		const c = camera, d = c.getWorldDirection( new THREE.Vector3() );
+		const t = c.position.clone().addScaledVector( d, 30 );
+		const r = ( v ) => +v.toFixed( 1 );
+		const q = new URLSearchParams();
+		q.set( 'cam', [ ...c.position.toArray(), ...t.toArray() ].map( r ).join( ',' ) );
+		q.set( 'hora', Clock.format( app.clock.hour ) );
+		return location.origin + location.pathname + '?' + q.toString().replace( /%2C/g, ',' ).replace( /%3A/g, ':' );
+	};
 
 	app.goView = ( i ) => {
 		app.focus?.release();
@@ -1023,10 +1037,35 @@ async function main() {
 	loader.finish( () => hud.show(), AUTO );
 	if ( AUTO ) hud.show();
 	app.ready = true;
+	// ?hora=15:30 (or 15.5): the link's hour, after the load (as restoreAfterRecovery puts the sun back)
+	{
+		const h = linkHour();
+		if ( h !== null ) { app.clock.set( h ); app.sky.buildEnv(); }
+	}
 	restoreAfterRecovery( app );
 }
 
 const tmpV = new THREE.Vector3(), tmpC = new THREE.Vector3();
+
+// ?view= (an index or a label) or ?cam=x,y,z,tx,ty,tz: the view a link opens at (null: none)
+function linkView( views ) {
+	const plain = ( s ) => s.normalize( 'NFD' ).replace( /\p{M}/gu, '' ).toLowerCase().trim();
+	const c = ( params.get( 'cam' ) || '' ).split( ',' ).map( Number );
+	if ( c.length === 6 && c.every( Number.isFinite ) ) return { pos: c.slice( 0, 3 ), target: c.slice( 3 ) };
+	const v = params.get( 'view' );
+	if ( v === null ) return null;
+	if ( /^\d+$/.test( v ) ) return views[ + v ] ?? null;
+	return views.find( ( w ) => plain( w.label ) === plain( v ) ) ?? null;
+}
+
+// ?hora=15:30 or ?hora=15.5 (null: none)
+function linkHour() {
+	const s = params.get( 'hora' );
+	if ( ! s ) return null;
+	const m = s.match( /^(\d{1,2})(?::(\d{2}))?$/ );
+	const h = m ? + m[ 1 ] + ( m[ 2 ] ? + m[ 2 ] / 60 : 0 ) : Number( s );
+	return Number.isFinite( h ) && h >= 0 && h <= 24 ? h : null;
+}
 
 // Move the sun + target with the camera, snapped to shadow texels to avoid shimmering.
 export { color, mix, smoothstep, normalize, cameraPosition, dot };

@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { motion } from '../core/motion.js';
 
 // Game-engine style fly camera, modelled after hxtnv/three-freecam:
 //  - right (or left) drag: look      - WASD / arrows: fly     - Q / E: down / up
@@ -166,8 +167,9 @@ export class FreeCam {
 		this.flyTo( this.pivot.clone().addScaledVector( fwd, - 60 ), this.pivot.clone(), 1.2 );
 	}
 
-	// Smoothly fly to position `pos` looking at `target`.
+	// Smoothly fly to position `pos` looking at `target` (with reduced motion: straight there).
 	flyTo( pos, target, duration = 2.2 ) {
+		if ( motion.reduced ) return this.jumpTo( pos, target );
 		const q1 = new THREE.Quaternion().setFromRotationMatrix(
 			new THREE.Matrix4().lookAt( pos, target, new THREE.Vector3( 0, 1, 0 ) ) );
 		this.tween = {

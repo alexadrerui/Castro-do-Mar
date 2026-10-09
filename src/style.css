@@ -91,6 +91,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1210; col
 .grid-btn { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .grid-btn button, .toggles button { font: 500 11.5px Inter, sans-serif; padding: 6px 6px; border-radius: 6px; border: 1px solid rgba(201,164,92,.3); background: rgba(0,0,0,.25); color: var(--ink); cursor: pointer; text-align: left; }
 .grid-btn button:hover, .toggles button:hover { border-color: var(--gold); }
+.grid-btn button.wide { grid-column: 1 / -1; text-align: center; }
 .grid-btn button kbd { float: right; }
 .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .toggles button.off { opacity: .45; text-decoration: line-through; }
@@ -185,3 +186,6 @@ body.clean #touch-ui { display: none; }
 #mp-banner .mp-bell { color: var(--gold-2); font-size: 16px; }
 #mp-banner button { font: 600 12px Inter, sans-serif; padding: 5px 10px; border-radius: 7px; border: 1px solid #e6c987; background: linear-gradient(#b48c45, #7d5f2a); color: #1a140a; cursor: pointer; }
 #mp-banner button.mp-x { background: transparent; color: #cdb98d; border-color: rgba(230,201,135,.35); padding: 4px 8px; }
+
+/* reduced motion (core/motion.js: the system's setting or ?motion=reduce): no spinning or bouncing; the fades stay */
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation: none !important; }
