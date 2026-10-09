@@ -145,3 +145,93 @@ export function gateFootprint( p ) {
 	for ( let lx = - GATE.wall; lx <= GATE.wall; lx += 1.5 ) for ( const lz of [ - 0.4, 0.6, 1.6 ] ) out.push( [ p.x + lx * c + lz * s, p.z - lx * s + lz * c ] );
 	return out;
 }
+
+// ---------------------------------------------------------------------------
+// Rustic archway (ref/ref_entrada.jpg, "Rustic village archway"): unhewn oak logs, a pair on each
+// side, a main beam and a secondary upper beam across, raking struts down to log footings behind,
+// rope lashings at the joints and a horned skull on the right post. ~4 m wide, 3.5 m high. The ivy
+// hanging from the beam and climbing the right post is vegetation (trees.js ivyGeometry, placed by
+// vegetation.js on the same frame: ARCH_IVY_Y above the ground at the middle).
+// Local frame as the gate's: x across the path, +z into the hamlet.
+// ---------------------------------------------------------------------------
+export const ARCH = { half: 2.0, beamY: 3.15 };
+
+// rope lashing: a few turns of a thin ring round a log (axis along `dir`), straw-coloured (the thatch)
+function lashing( L, at, dir, r, turns = 3 ) {
+	const q = new THREE.Quaternion().setFromUnitVectors( V( 0, 0, 1 ), dir.clone().normalize() );
+	for ( let k = 0; k < turns; k ++ ) {
+		const g = new THREE.TorusGeometry( r + 0.02, 0.016, 4, 12 );
+		const off = dir.clone().normalize().multiplyScalar( ( k - ( turns - 1 ) / 2 ) * 0.05 );
+		L.add( 'thatch', g, new THREE.Matrix4().compose( at.clone().add( off ), q, V( 1, 1, 1 ) ) );
+	}
+}
+
+export function rusticArch( L, hf, x, z, rot, seed = 11 ) {
+	const rnd = mulberry32( seed );
+	const c = Math.cos( rot ), s = Math.sin( rot );
+	const ground = ( lx, lz ) => hf.heightAt( x + lx * c + lz * s, z - lx * s + lz * c );
+	const G = new GeoBuilder();
+	const y0 = ground( 0, 0 );
+	const { half: hw, beamY } = ARCH;
+	const log = ( a, b, r ) => G.add( 'woodPost', beam( a, b, r, 7 ) );
+
+	// posts: two logs side by side on each side, leaning a touch
+	for ( const sx of [ - 1, 1 ] ) {
+		for ( const [ dx, r, h ] of [ [ - 0.14, 0.14, 3.75 ], [ 0.14, 0.12, 3.45 ] ] ) {
+			const px = sx * hw + dx * sx, g = ground( px, 0 );
+			log( V( px, g - 0.4, 0 ), V( px + ( rnd() - 0.5 ) * 0.08, y0 + h, ( rnd() - 0.5 ) * 0.08 ), r );
+		}
+		// round both logs of the pair (the rings' axis up the posts)
+		lashing( G, V( sx * hw, y0 + 1.1, 0 ), V( 0, 1, 0 ), 0.27, 3 );
+		lashing( G, V( sx * hw, y0 + 2.2, 0 ), V( 0, 1, 0 ), 0.27, 2 );
+		// raking strut from high on the posts down to a footing log behind
+		const fz = 1.7 + rnd() * 0.3, fx = sx * ( hw + 0.15 );
+		const gf = ground( fx, fz );
+		log( V( sx * hw, y0 + 2.75, 0.12 ), V( fx, gf + 0.12, fz ), 0.1 );
+		log( V( fx - 0.35, gf + 0.05, fz + 0.1 ), V( fx + 0.35, gf + 0.05, fz - 0.1 ), 0.09 );
+		lashing( G, V( sx * hw, y0 + 2.72, 0.12 ), V( 0, 1, 0 ), 0.2, 2 );
+	}
+	// beams: the main one, the secondary upper one a little behind, and a cross brace between them
+	log( V( - hw - 0.75, y0 + beamY, - 0.05 ), V( hw + 0.75, y0 + beamY + ( rnd() - 0.5 ) * 0.1, - 0.05 ), 0.15 );
+	log( V( - hw - 0.4, y0 + beamY + 0.42, 0.22 ), V( hw + 0.55, y0 + beamY + 0.36, 0.22 ), 0.12 );
+	log( V( - hw - 0.1, y0 + beamY - 0.55, 0.05 ), V( 0.4, y0 + beamY + 0.4, 0.12 ), 0.08 );
+	log( V( hw + 0.1, y0 + beamY - 0.6, 0.05 ), V( 0.9, y0 + beamY + 0.05, 0.05 ), 0.08 );
+	for ( const sx of [ - 1, 1 ] ) {
+		lashing( G, V( sx * hw, y0 + beamY, - 0.05 ), V( 1, 0, 0 ), 0.2, 3 );
+		lashing( G, V( sx * hw, y0 + beamY + 0.4, 0.2 ), V( 1, 0, 0 ), 0.17, 2 );
+	}
+	lashing( G, V( 0.4, y0 + beamY + 0.4, 0.15 ), V( 1, 0, 0 ), 0.15, 2 );
+
+	// horned skull on the right post's top as one comes in (local -x: facing +z, +x is on the left;
+	// bone: the undyed canvas), the horns sweeping back
+	{
+		const sx = - hw - 0.14, sy = y0 + 3.1, sz = - 0.2;
+		const skull = new THREE.SphereGeometry( 0.15, 8, 6 ).scale( 0.9, 0.85, 1.1 );
+		G.add( 'canvas', skull, M( sx, sy + 0.12, sz ) );
+		G.add( 'canvas', box( 0.12, 0.24, 0.12 ), M( sx, sy - 0.2, sz - 0.07 ) );
+		G.add( 'doorway', box( 0.04, 0.04, 0.02 ), M( sx - 0.05, sy + 0.12, sz - 0.16 ) );
+		G.add( 'doorway', box( 0.04, 0.04, 0.02 ), M( sx + 0.05, sy + 0.12, sz - 0.16 ) );
+		for ( const k of [ - 1, 1 ] ) {
+			let p = V( sx + k * 0.08, sy + 0.24, sz + 0.02 ), r = 0.045;
+			for ( let i = 0; i < 4; i ++ ) {
+				const q = p.clone().add( V( k * 0.06, 0.12 - i * 0.02, 0.05 + i * 0.03 ) );
+				G.add( 'woodPost', beam( p, q, r, 5 ) );
+				p = q; r *= 0.75;
+			}
+		}
+		// a few feathers hanging beside it
+		for ( let i = 0; i < 3; i ++ ) G.add( 'woodPost', box( 0.035, 0.32, 0.01 ), M( sx - 0.16 - i * 0.03, sy - 0.25 - i * 0.05, sz + 0.05, 0.3 * i ) );
+	}
+
+	for ( const [ k, g ] of G.build() ) L.add( k, g, M( x, 0, z, rot ) );
+	return y0;
+}
+
+// world points an entrance (layout PROPS 'gate' / 'arch') stands on, for the clearances
+export function entranceFootprint( p ) {
+	if ( p.type === 'gate' ) return gateFootprint( p );
+	const c = Math.cos( p.rot || 0 ), s = Math.sin( p.rot || 0 );
+	const out = [];
+	for ( let lx = - 4.4; lx <= 4.4; lx += 1.1 ) for ( const lz of [ - 1, 0.4, 1.8 ] ) out.push( [ p.x + lx * c + lz * s, p.z - lx * s + lz * c ] );
+	return out;
+}

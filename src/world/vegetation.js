@@ -6,7 +6,7 @@ import {
 import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { mineLedgeSpots } from './fort.js';
-import { oakTree, pineTree, birchTree, shrubBush, bracken, deadTree, fallenLog, hollyBush, OAK_BARK, PINE_BARK } from './trees.js';
+import { oakTree, pineTree, birchTree, shrubBush, bracken, deadTree, fallenLog, hollyBush, ivyGeometry, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
 import { cacheGet, cachePut, hashSources } from '../core/cache.js';
@@ -19,7 +19,7 @@ import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
 import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, PATHS, HAMLETS, footprintR } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
-import { gateFootprint } from './gate.js';
+import { entranceFootprint, ARCH } from './gate.js';
 import { wind, windAmount, gustSoft } from './wind.js';
 
 const nV = makeSimplex( 606 );
@@ -174,7 +174,7 @@ export function setLakeTest( fn ) { lakeTest = fn; }
 export const inLake = ( x, z ) => !! lakeTest && lakeTest( x, z );
 
 // Ground radius of a stall or prop (m), before the clearance's margin.
-const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8, gate: 9.5 };
+const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8, gate: 9.5, arch: 2.8 };
 const propR = ( p ) => ( p.type === 'pen' ? Math.hypot( p.w || 6, p.d || 5 ) / 2 : p.type === 'hay' ? p.r || 1.2 : PROP_R[ p.type ] ?? 1.5 ) * ( p.scale || 1 );
 let editedList = null;
 
@@ -193,11 +193,11 @@ export function editedClearance( x, z, pad = 0 ) {
 	return 1;
 }
 
-// the entrance gates (layout.js PROPS, world/gate.js): their frame, side poles and walls, also where
+// the entrances (layout.js PROPS 'gate' / 'arch', world/gate.js): their frame, side poles and walls, also where
 // the object editor never touched them (they stand outside the houses' clearance)
 let gatePts = null;
 export function gateClearance( x, z, pad = 0 ) {
-	gatePts ??= PROPS.filter( ( p ) => p.type === 'gate' && ! p.removed ).flatMap( gateFootprint );
+	gatePts ??= PROPS.filter( ( p ) => ( p.type === 'gate' || p.type === 'arch' ) && ! p.removed ).flatMap( entranceFootprint );
 	for ( const [ gx, gz ] of gatePts ) if ( Math.hypot( x - gx, z - gz ) < 1.6 + pad ) return 0;
 	return 1;
 }
@@ -283,7 +283,9 @@ export async function createVegetation( app, progress ) {
 		// material and vertex layout as the rest (no new shader)
 		snag: new ChunkedInstances( { name: 'snag', hi: deadTree( 0, 41 ), lo: deadTree( 1, 41 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
 		log: new ChunkedInstances( { name: 'log', hi: fallenLog( 0, 51 ), lo: fallenLog( 1, 51 ), material: canopy, tile: 260, lodDistance: 70, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 320 } ),
-		holly: new ChunkedInstances( { name: 'holly', hi: hollyBush( 0, 61 ), lo: hollyBush( 1, 61 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } )
+		holly: new ChunkedInstances( { name: 'holly', hi: hollyBush( 0, 61 ), lo: hollyBush( 1, 61 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
+		// the ivy on the rustic archways (world/gate.js), one per arch on its frame
+		ivy: new ChunkedInstances( { name: 'ivy', hi: ivyGeometry( 0, 71, ARCH.half, ARCH.beamY ), lo: ivyGeometry( 1, 71, ARCH.half, ARCH.beamY ), material: canopy, tile: 260, lodDistance: 90, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 400 } )
 	};
 	for ( const s of Object.values( species ) ) s.addAttribute( 'aTint', 3 );
 
@@ -294,6 +296,7 @@ export async function createVegetation( app, progress ) {
 		bush: [ 0x34482a, 0x3c5026, 0x48562a, 0x303f22 ], // gorse / broom: dark, dense greens
 		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ], // bracken: fresh green, some yellowing
 		holly: [ 0x22341c, 0x283a1e, 0x1f3020, 0x2c3f22 ], // holly: very dark, glossy greens
+		ivy: [ 0x416c2b ], // ivy: deep green (lighter than the holly: it hangs in the open)
 		snag: [ 0x808080 ], log: [ 0x808080 ] // bark only (the tint colours leaves)
 	};
 	const tmpC = new THREE.Color();
@@ -476,6 +479,15 @@ export async function createVegetation( app, progress ) {
 				if ( ok( hx, hz, 0 ) && ! ( nature && erased( nature, CH.bush, hx, hz ) ) && place( 'holly', hx, hz, 0.6 + R() * 0.7, 0.3, R ) ) counts.holly ++;
 			}
 		}
+	}
+
+	// the ivy of the rustic archways, on each arch's frame (the arch stands on the ground at its middle)
+	for ( const p of PROPS ) if ( p.type === 'arch' && ! p.removed ) {
+		q.setFromAxisAngle( up, p.rot || 0 );
+		pos.set( p.x, hf.heightAt( p.x, p.z ), p.z );
+		sc.setScalar( p.scale || 1 );
+		m.compose( pos, q, sc );
+		species.ivy.add_( m, [ tint( 'ivy', mulberry32( 9191 ) ) ] );
 	}
 
 	// gorse and bracken on the ledges of the mine cliff (world/fort.js), with their own random sequence

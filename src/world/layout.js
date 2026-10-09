@@ -169,7 +169,10 @@ export const PROPS = [
 	{ type: 'wood', x: - 40, z: - 42, rot: 0.2 }, { type: 'wood', x: 30, z: - 26, rot: 1.0 },
 	// the entrance gate on the main road, past the last houses (ref/ref_portal.jpg; world/gate.js):
 	// rot turns its local +z into the village (along the road, towards the fort)
-	{ type: 'gate', x: - 5.5, z: 67, rot: 2.159 }
+	{ type: 'gate', x: - 5.5, z: 67, rot: 2.159 },
+	// the rustic archway where the hill trail enters the hamlet (ref/ref_entrada.jpg; world/gate.js),
+	// its local +z into the hamlet; its ivy is vegetation (vegetation.js)
+	{ type: 'arch', x: - 117.6, z: - 186.8, rot: - 2.498 }
 ];
 
 // Islands in the sea / lake. r = radius, h = peak height above water.

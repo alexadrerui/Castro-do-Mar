@@ -1,6 +1,7 @@
 // QA: nothing growing on the paths. Counts the plants, flowers and rocks standing on a path (the
 // terrain mask's path channel, the one that paints the dirt track). Gravel is left out (loose stones
-// on the track are intended), and so is the grass: short, sparse grass on the track is intended
+// on the track are intended), so is the ivy (anchored in the middle of the archways over the
+// tracks: world/gate.js), and so is the grass: short, sparse grass on the track is intended
 // (grass.js, the reference); its coarse density there is only reported.
 //   node tools/pathclear.mjs [--on=0.5] [--shots=prefix]   -> exit code 1 if anything is on a path
 import puppeteer from 'puppeteer-core';
@@ -27,7 +28,7 @@ const out = await page.evaluate( async ( ON, shots ) => {
 		const root = a.layers[ key ]?.object;
 		if ( ! root ) continue;
 		root.traverse( ( o ) => {
-			if ( ! o.tiles || /^gravel/.test( o.name ) ) return;
+			if ( ! o.tiles || /^gravel/.test( o.name ) || o.name === 'ivy' ) return;
 			let n = 0, on = 0;
 			for ( const t of o.tiles ) {
 				const { matrices, count } = t.hi.userData.instances;

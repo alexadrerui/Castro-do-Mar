@@ -704,3 +704,47 @@ export function hollyBush( lod = 0, seed = 61 ) {
 	emitCards( b, cards, crownC );
 	return b.build();
 }
+
+// Ivy (hedra, Hedera helix) on the rustic archway (world/gate.js rusticArch; ref/ref_entrada.jpg):
+// curtains of broad-leaf cards hanging from the main beam, thicker on the right (as one comes in:
+// local -x), a mat on top of the beams and a climber up the right post. In the arch's frame (x across, y up from the ground
+// at its middle, +z into the hamlet); leaf atlas tile 0, the canopy material (no new shader).
+export function ivyGeometry( lod = 0, seed = 71, half = 2.0, beamY = 3.15 ) {
+	const rand = mulberry32( seed );
+	const b = new Builder();
+	const crownC = new THREE.Vector3( 0.4, beamY - 0.4, 0 );
+	const crownR = new THREE.Vector3( 2.8, 1.6, 0.8 );
+	const flex = ( p ) => Math.min( 1, Math.max( 0, beamY - p.y ) / 1.5 ) * 0.6;
+	const cards = [];
+	const size = lod ? 0.75 : 0.55;
+	const card = ( c, n ) => cards.push( { center: c, size: size * ( 0.8 + rand() * 0.4 ), normal: n.normalize(), yaw: rand() * 6.283, lobeC: c, lobeR: 0.5, crownC, crownR, flexFn: flex, tile: 0, clumpC: c, clumpR: 0.5 } );
+	const step = lod ? 0.26 : 0.14;
+	// hanging strands along the main beam (front and back faces), longer and denser to the right
+	for ( let x = - half - 0.6; x <= half + 0.6; x += step * ( 0.7 + rand() * 0.6 ) ) {
+		const right = Math.min( 1, Math.max( 0, ( half - x ) / ( 2 * half ) ) );
+		if ( rand() > 0.6 + 0.4 * right ) continue;
+		const len = 0.25 + rand() * ( 0.5 + 1.15 * right * right );
+		for ( const side of [ - 1, 1 ] ) {
+			if ( side > 0 && rand() < 0.4 ) continue;
+			for ( let y = beamY + 0.05; y > beamY - len; y -= lod ? 0.34 : 0.2 ) {
+				const c = new THREE.Vector3( x + ( rand() - 0.5 ) * 0.12, y, side * ( 0.2 + rand() * 0.08 ) );
+				card( c, new THREE.Vector3( ( rand() - 0.5 ) * 0.6, 0.25 + rand() * 0.3, side ) );
+			}
+		}
+		// the mat over the beams
+		if ( rand() < 0.8 ) card( new THREE.Vector3( x, beamY + 0.2 + rand() * 0.25, 0.08 + ( rand() - 0.5 ) * 0.3 ), new THREE.Vector3( ( rand() - 0.5 ) * 0.5, 1, ( rand() - 0.5 ) * 0.6 ) );
+	}
+	// the climber up the right post: clumps all round it, sparser low down
+	for ( let y = 0.15; y < beamY; y += lod ? 0.3 : 0.16 ) {
+		if ( rand() > 0.45 + 0.55 * y / beamY ) continue;
+		for ( let k = 0; k < ( lod ? 2 : 3 ); k ++ ) {
+			const a = rand() * 6.283;
+			const n = new THREE.Vector3( Math.cos( a ), 0.3, Math.sin( a ) );
+			card( new THREE.Vector3( - half - 0.05 + Math.cos( a ) * 0.32, y, Math.sin( a ) * 0.32 ), n );
+		}
+	}
+	emitCards( b, cards, crownC );
+	const g = b.build();
+	g.computeBoundingSphere();
+	return g;
+}
