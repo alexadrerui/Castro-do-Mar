@@ -775,48 +775,6 @@ export function createRubble( rng, lod ) {
 
 }
 
-// Turtle grass clump (Thalassia testudinum): ribbon blades, bent by the surge in the shader.
-// aData = ( t along the blade, ao, across -1..1, blade random ); blades are two-sided.
-export function createSeagrass( rng, lod ) {
-
-	const b = new MeshBuilder();
-	const n = [ 10, 6, 3 ][ lod ];
-	const segs = [ 5, 3, 2 ][ lod ];
-	for ( let i = 0; i < n; i ++ ) {
-
-		const a = rng() * TAU, r = rng() * 0.05;
-		const x = Math.cos( a ) * r, z = Math.sin( a ) * r;
-		const yaw = rng() * Math.PI;
-		const len = rand( rng, 0.15, 0.32 ), w = rand( rng, 0.008, 0.011 ) * ( lod === 2 ? 1.6 : 1 );
-		const ca = Math.cos( yaw ), sa = Math.sin( yaw );
-		const lean = rand( rng, - 0.15, 0.15 );
-		const bw = rng();
-		const first = b.count, fi = b.index.length;
-		for ( let k = 0; k <= segs; k ++ ) {
-
-			const t = k / segs;
-			const y = t * len;
-			const off = lean * y * t;
-			const ww = w * ( k === segs ? 0.4 : 1 );
-			_n.set( - sa, 0, ca );
-			for ( const s of [ - 1, 1 ] ) {
-
-				_p.set( x + ca * s * ww * 0.5 - sa * off, y, z + sa * s * ww * 0.5 + ca * off );
-				b.vertex( _p, _n, t, 0.6 + 0.4 * t, s, bw );
-
-			}
-
-		}
-
-		for ( let k = 0; k < segs; k ++ ) b.quad( first + k * 2, first + k * 2 + 1, first + k * 2 + 3, first + k * 2 + 2 );
-		b.backfaces( first, fi );
-
-	}
-
-	return b.build();
-
-}
-
 // ---------------------------------------------------------------------------
 // Seagrass meadows and macroalgae (flexible: they sway with the surge in the shader)
 // ---------------------------------------------------------------------------

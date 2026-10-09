@@ -68,35 +68,6 @@ export function qYawPitchRoll( out, yaw, pitch, roll ) {
 
 }
 
-// rotate the vector (x, y, z) by q into out ([ x, y, z ])
-export function qRotate( out, q, x, y, z ) {
-
-	const qx = q[ 0 ], qy = q[ 1 ], qz = q[ 2 ], qw = q[ 3 ];
-	const tx = 2 * ( qy * z - qz * y ), ty = 2 * ( qz * x - qx * z ), tz = 2 * ( qx * y - qy * x );
-	out[ 0 ] = x + qw * tx + qy * tz - qz * ty;
-	out[ 1 ] = y + qw * ty + qz * tx - qx * tz;
-	out[ 2 ] = z + qw * tz + qx * ty - qy * tx;
-	return out;
-
-}
-
-// quaternion that turns the +y axis onto the unit vector n and faces +z along the heading yaw
-// (ground-aligned bodies)
-const _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
-const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3();
-export function qGround( out, yaw, nx, ny, nz ) {
-
-	_y.set( nx, ny, nz );
-	_z.set( Math.sin( yaw ), 0, Math.cos( yaw ) );
-	_x.crossVectors( _y, _z ).normalize();
-	_z.crossVectors( _x, _y );
-	_m.makeBasis( _x, _y, _z );
-	_q.setFromRotationMatrix( _m );
-	out[ 0 ] = _q.x; out[ 1 ] = _q.y; out[ 2 ] = _q.z; out[ 3 ] = _q.w;
-	return out;
-
-}
-
 // ---------------------------------------------------------------- instance records
 
 // Per-instance data of an instanced template: `stride` vec4 per instance in a storage buffer

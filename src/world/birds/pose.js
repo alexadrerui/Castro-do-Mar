@@ -2,7 +2,7 @@
 // three.js version at d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
 // Changes: import paths only.
 import { SPECIES } from './shapes.js';
-import { qAxis, qMul, clamp } from './kit.js';
+import { qAxis, qMul } from './kit.js';
 
 // Pose of one bird as the renderer wants it (see BirdBatch), plus helpers that turn wing / leg /
 // head articulation into it. All vectors are plain arrays; nothing is allocated per frame.
@@ -172,8 +172,6 @@ export function standHeight( sp, bend = 0.9 ) {
 	return - L.hip[ 1 ] + ( L.tibia + L.tarsus ) * bend * 0.93;
 
 }
-
-export const clampAngle = ( a, m ) => clamp( a, - m, m );
 
 // Standing / walking bird: body origin at (x, y + height, z) facing yaw, pitched up by pitch
 // (level body frame -> body frame), feet on the ground plane y. gait: phase of the stride (feet

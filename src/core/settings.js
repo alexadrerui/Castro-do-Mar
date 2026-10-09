@@ -98,6 +98,4 @@ export class Settings {
 		for ( const f of this.listeners.audio ) f( this.muted, this.volume );
 	}
 
-	get webgpuAvailable() { return typeof navigator !== 'undefined' && !! navigator.gpu; }
-
 }

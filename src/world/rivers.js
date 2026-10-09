@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, attribute, texture, positionWorld, cameraPosition, time, vec2, vec3, float, mix, smoothstep, clamp,
-	max, pow, dot, normalize, reflect, length, fract, abs, pmremTexture, mx_noise_float, uniform, normalWorld
+	max, pow, dot, normalize, reflect, fract, abs, pmremTexture, mx_noise_float, uniform, normalWorld
 } from 'three/tsl';
 import { WATER_LEVEL } from './layout.js';
 import { RiverCourse } from './riverCourse.js';

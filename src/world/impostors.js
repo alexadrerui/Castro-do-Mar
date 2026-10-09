@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { bakeTarget, textureFromData, readTarget } from '../core/bakeCache.js';
 import {
 	Fn, float, uniform, vec2, vec3, vec4, attribute, texture, uv, positionGeometry, normalGeometry, positionWorld, cameraPosition, property,
-	normalize, cross, dot, abs, max, mix, floor, clamp, select, sin, cos, color, cameraViewMatrix, positionViewDirection, mx_noise_float, varying
+	normalize, cross, dot, abs, max, mix, floor, clamp, select, sin, cos, cameraViewMatrix, positionViewDirection, mx_noise_float, varying
 } from 'three/tsl';
 import { cloudShade } from './cloudShadow.js';
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-	Fn, Loop, float, vec2, vec3, vec4, uniform, screenUV, screenCoordinate, interleavedGradientNoise, rtt, exp, length, min, max
+	Fn, Loop, float, vec2, vec3, vec4, uniform, screenUV, screenCoordinate, interleavedGradientNoise, rtt, exp, length, min
 } from 'three/tsl';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { isSky } from '../core/depth.js';

@@ -1,18 +1,15 @@
 // Copied from Tidewater (https://github.com/dgreenheck/tidewater, src/world/fish/CreatureGeometry.js,
 // three.js version at d32799f). MIT License, Copyright (c) 2026 DRG Software Solutions LLC.
-// Unchanged apart from this header and the import path (only the ray is used here).
+// Unchanged apart from this header and the import path; the turtle, never used here, removed (09/10/2026).
 import * as THREE from 'three/webgpu';
 import { PART } from './geometry.js';
 
-// Rays and the green sea turtle, in the fish frame (nose +z, back +y, total length 1 from the
+// Rays, in the fish frame (nose +z, back +y, total length 1 from the
 // snout at z = +0.5) so they share the fish batch, material and swimming data:
 //  - rays: a flat disc (PART.DISC) whose margins undulate (stingray) or flap (eagle ray) in the
 //    vertex shader, eyes and spiracles on top, a whip tail (PART.WHIP, swings sideways).
 //    aData: x = position along the body, z = distance from the midline (0 .. 1 at the wing tip),
 //    w = 1 on the back, -1 on the belly.
-//  - turtle: domed carapace (PART.CARAPACE, pattern coordinates in z / w), plastron, head and
-//    neck (PART.SKIN), flippers (PART.FLIPPER: z = distance from the shoulder, w = flipper id
-//    0 / 1 front left / right, 2 / 3 hind) that stroke about their shoulders.
 
 const TAU = Math.PI * 2;
 
@@ -204,100 +201,3 @@ export function rayGeometry( { lod = 0, eagle = false } = {} ) {
 
 }
 
-// Green sea turtle (carapace length ~0.72 of the total length 1, head forward).
-export function turtleGeometry( { lod = 0 } = {} ) {
-
-	const A = new Acc();
-	const L = 0.72, W = 0.56, Hc = 0.2, zc = - 0.02;
-	const nA = lod ? 14 : 30, nR = lod ? 3 : 7;
-	// carapace: heart-shaped dome; plastron: flat below
-	const rim = ( a ) => {
-
-		const s = Math.sin( a ), c = Math.cos( a );
-		const r = 1 / Math.sqrt( ( s * s ) / ( W * W / 4 ) + ( c * c ) / ( L * L / 4 ) );
-		return r * ( 1 - 0.12 * Math.pow( Math.max( 0, - c ), 3 ) ) * ( 1 + 0.04 * Math.max( 0, c ) );
-
-	};
-
-	for ( const top of [ true, false ] ) {
-
-		const rows = [];
-		const centre = A.v( 0, top ? Hc : - 0.07, zc, 0.5 - zc, top ? PART.CARAPACE : PART.SKIN, 0, top ? 0 : 2 );
-		for ( let k = 1; k <= nR; k ++ ) {
-
-			const s = k / nR;
-			const row = [];
-			for ( let j = 0; j < nA; j ++ ) {
-
-				const a = j / nA * TAU;
-				const r = rim( a ) * s;
-				const x = Math.sin( a ) * r, z = zc + Math.cos( a ) * r;
-				const y = top ? Hc * Math.pow( 1 - s * s, 0.6 ) * ( 1 - 0.1 * Math.cos( a ) ) - 0.02 * s * s : - 0.07 * ( 1 - s * s * s ) - 0.015;
-				row.push( A.v( x, y, z, 0.5 - z, top ? PART.CARAPACE : PART.SKIN, x / ( W / 2 ), top ? ( z - zc ) / ( L / 2 ) : 2 ) );
-
-			}
-
-			rows.push( row );
-
-		}
-
-		for ( let j = 0; j < nA; j ++ ) {
-
-			const j1 = ( j + 1 ) % nA;
-			if ( top ) A.idx.push( centre, rows[ 0 ][ j ], rows[ 0 ][ j1 ] );
-			else A.idx.push( centre, rows[ 0 ][ j1 ], rows[ 0 ][ j ] );
-			for ( let k = 0; k < nR - 1; k ++ ) {
-
-				const a = rows[ k ][ j ], b = rows[ k ][ j1 ], c = rows[ k + 1 ][ j1 ], d = rows[ k + 1 ][ j ];
-				if ( top ) A.idx.push( a, d, b, b, d, c );
-				else A.idx.push( a, b, d, b, c, d );
-
-			}
-
-		}
-
-	}
-
-	// head and neck (w = 1: head skin)
-	const sides = lod ? 5 : 9;
-	tube( A, [
-		[ 0, 0.0, zc + L / 2 - 0.08, 0.075, 0.75 ], [ 0, 0.01, zc + L / 2 + 0.02, 0.065, 0.8 ], [ 0, 0.02, zc + L / 2 + 0.1, 0.07, 0.85 ],
-		[ 0, 0.02, zc + L / 2 + 0.16, 0.06, 0.8 ], [ 0, 0.0, zc + L / 2 + 0.2, 0.03, 0.7 ],
-	], sides, PART.SKIN, () => [ 0, 1 ] );
-	// eyes
-	if ( lod === 0 ) for ( const s of [ 1, - 1 ] ) {
-
-		const ex = s * 0.052, ez = zc + L / 2 + 0.13;
-		tube( A, [ [ ex, 0.035, ez + 0.012, 0.004 ], [ ex * 1.08, 0.037, ez, 0.013 ], [ ex, 0.035, ez - 0.012, 0.004 ] ], 6, PART.EYE, () => [ 0, 0 ] );
-
-	}
-
-	// flippers: flattened tapered tubes from the shoulders (w = flipper id, z = distance along)
-	const flipper = ( id, x0, z0, dir, len, width ) => {
-
-		const pts = [];
-		const n = lod ? 4 : 8;
-		for ( let i = 0; i <= n; i ++ ) {
-
-			const t = i / n;
-			// paddle: widest a third of the way out, curving back toward the tip
-			const w = width * ( 0.55 + 0.9 * Math.sin( Math.PI * Math.min( 1, 0.15 + t * 0.95 ) ) ) * ( 1 - 0.7 * t * t );
-			const x = x0 + dir[ 0 ] * len * t, z = z0 + dir[ 2 ] * len * t - len * 0.25 * t * t;
-			pts.push( [ x, - 0.03 - t * 0.02, z, w, 0.22 ] );
-
-		}
-
-		tube( A, pts, lod ? 4 : 7, PART.FLIPPER, ( i, t ) => [ t, id ] );
-
-	};
-
-	const s2 = Math.SQRT1_2;
-	flipper( 0, 0.2, zc + 0.2, [ s2 * 1.2, 0, s2 * 0.2 ], 0.48, 0.07 );
-	flipper( 1, - 0.2, zc + 0.2, [ - s2 * 1.2, 0, s2 * 0.2 ], 0.48, 0.07 );
-	flipper( 2, 0.16, zc - 0.28, [ 0.8, 0, - 0.6 ], 0.2, 0.06 );
-	flipper( 3, - 0.16, zc - 0.28, [ - 0.8, 0, - 0.6 ], 0.2, 0.06 );
-	// short tail
-	tube( A, [ [ 0, - 0.02, zc - L / 2 + 0.02, 0.035, 0.6 ], [ 0, - 0.03, zc - L / 2 - 0.08, 0.004, 0.6 ] ], lod ? 3 : 5, PART.SKIN, () => [ 0, 1 ] );
-	return A.build();
-
-}

@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { fog, uniform, positionWorld, positionView, length, float, exp, color, mix, smoothstep, max, Fn, normalize, cameraPosition, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2, rtt, screenSize } from 'three/tsl';
+import { fog, uniform, positionWorld, positionView, length, float, exp, mix, smoothstep, max, Fn, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2, rtt, screenSize } from 'three/tsl';
 
 import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
@@ -1045,8 +1045,6 @@ async function main() {
 	restoreAfterRecovery( app );
 }
 
-const tmpV = new THREE.Vector3(), tmpC = new THREE.Vector3();
-
 // ?view= (an index or a label) or ?cam=x,y,z,tx,ty,tz: the view a link opens at (null: none)
 function linkView( views ) {
 	const plain = ( s ) => s.normalize( 'NFD' ).replace( /\p{M}/gu, '' ).toLowerCase().trim();
@@ -1067,5 +1065,3 @@ function linkHour() {
 	return Number.isFinite( h ) && h >= 0 && h <= 24 ? h : null;
 }
 
-// Move the sun + target with the camera, snapped to shadow texels to avoid shimmering.
-export { color, mix, smoothstep, normalize, cameraPosition, dot };

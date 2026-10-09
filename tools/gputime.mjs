@@ -1,7 +1,7 @@
 // GPU time per frame from timestamp queries resolved every frame (as stats-gl does in the #debug panel;
 // app.gpuProfile resolved once after many frames and read ~0.1 ms). Variants are applied in turn on the
 // same page and view, interleaved over rounds, to compare costs with the machine's noise averaged out.
-//   node tools/gputime.mjs [view=0] "name::js" "name::js" ... [--rounds=3] [--frames=90] [--params=...]
+//   node tools/gputime.mjs [view=0] "name::js" "name::js" ... [--rounds=3] [--frames=90] [--params=...] [--port=5190]
 import puppeteer from 'puppeteer-core';
 
 const args = process.argv.slice( 2 );
@@ -15,7 +15,7 @@ const browser = await puppeteer.launch( {
 	defaultViewport: { width: 1600, height: 900 }
 } );
 const page = await browser.newPage();
-await page.goto( `http://localhost:5190/?auto&perf${ opt( 'params', '' ) ? '&' + opt( 'params', '' ) : '' }`, { waitUntil: 'domcontentloaded' } );
+await page.goto( `http://localhost:${ opt( 'port', 5190 ) }/?auto&perf${ opt( 'params', '' ) ? '&' + opt( 'params', '' ) : '' }`, { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app?.ready, { timeout: 300000, polling: 500 } );
 await page.evaluate( ( v ) => { const a = window.__app; a.dynamicRes = false; a.renderer.setPixelRatio( 1 ); a.setView( v ); }, view );
 await new Promise( ( r ) => setTimeout( r, 3000 ) );

@@ -33,7 +33,7 @@ let s = await state(); console.log( JSON.stringify( s ) );
 check( 'button opens the settings', s.panel );
 check( 'defaults: 1 / 5.5 / 1 / 218 SO / 1', s.strength === '1' && s.speed === '5.5' && s.freq === '1' && s.dir === '218' && /SO/.test( s.outDir ) && s.turb === '1' );
 await slide( 'r-wstrength', 2 ); await slide( 'r-wspeed', 12 ); await slide( 'r-wfreq', 2 ); await slide( 'r-wturb', 0.5 );
-// the uniforms the materials read, through the app's own module (window.__app.windUniforms)
+// the uniforms the materials read, through the app's own module (window.__app.wind)
 const u = await page.evaluate( () => { const w = window.__app.wind; return w && { strength: w.strength.value, speed: w.speed.value, freq: w.freq.value, turb: w.turb.value }; } );
 console.log( 'uniforms', JSON.stringify( u ) );
 check( 'sliders drive the wind', u && u.strength === 2 && u.speed === 12 && u.freq === 2 && u.turb === 0.5 );

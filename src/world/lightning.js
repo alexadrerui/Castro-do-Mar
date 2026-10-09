@@ -16,7 +16,7 @@
 // storm (0..1, strikes when > 0, driven by world/weather.js), sound, paused. QA: tools/lightning.mjs.
 import * as THREE from 'three/webgpu';
 import {
-	attribute, cameraPosition, cross, float, instanceIndex, mix, normalize, positionGeometry, smoothstep, uniform, uv, vec3, vec4, max, Fn
+	attribute, cameraPosition, cross, float, mix, normalize, positionGeometry, smoothstep, uniform, uv, vec3, vec4, max, Fn
 } from 'three/tsl';
 import { WATER_LEVEL } from './layout.js';
 import { motion } from '../core/motion.js';

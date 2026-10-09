@@ -6,7 +6,6 @@
 let reversed = false;
 
 export function setReversedDepth( on ) { reversed = !! on; }
-export const isReversedDepth = () => reversed;
 
 // the sky (the cleared depth): 1 normally, 0 reversed
 export const isSky = ( depth ) => ( reversed ? depth.lessThanEqual( 0.00001 ) : depth.greaterThanEqual( 0.99999 ) );

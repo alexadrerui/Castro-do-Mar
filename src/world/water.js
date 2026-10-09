@@ -2,7 +2,7 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, cameraPosition, time, reflector,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, pow, dot, normalize, reflect, length, sin,
-	mx_noise_float, pmremTexture, vec4, exp
+	mx_noise_float, pmremTexture, exp
 } from 'three/tsl';
 import { PlanarReprojection } from './planarReprojection.js';
 import { rainRipples } from './rainImpacts.js';
