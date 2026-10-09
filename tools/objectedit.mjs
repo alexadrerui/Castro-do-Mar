@@ -83,15 +83,53 @@ await page.keyboard.down( 'Control' ); await page.keyboard.press( 'KeyZ' ); awai
 const un = await page.evaluate( () => { const o = window.__app.objectEditor, g = o.groups.get( 'b10' ); return { vis: g.visible, x: g.position.x, rec: o.edits.objects.b10 }; } );
 check( un.vis && Math.abs( un.x - mv.x ) < 0.01 && ! un.rec?.removed, `desfazer a remoção: de volta na posição movida (x ${ un.x.toFixed( 1 ) })` );
 
-// 5. add a round house from the catalogue on open ground nearby
+// 5. the library: search, category filter, counts, then a round house picked and placed with a click
+// on open ground nearby (the ghost box under the pointer first)
 await page.keyboard.press( 'Escape' ); await sleep( 200 );
-await page.click( '#object-editor [data-cat="Casa redonda"]' ); await sleep( 200 );
+const lib = await page.evaluate( async () => {
+	const el = document.getElementById( 'object-editor' ), q = el.querySelector( '.q' ), fc = el.querySelector( '.f-cat' );
+	const shown = () => [ ...el.querySelectorAll( '.card' ) ].filter( ( b ) => ! b.hidden ).map( ( b ) => b.dataset.item );
+	const all = shown().length;
+	q.value = 'colmeia'; q.dispatchEvent( new Event( 'input' ) );
+	const search = shown();
+	q.value = ''; q.dispatchEvent( new Event( 'input' ) );
+	fc.value = 'entradas'; fc.dispatchEvent( new Event( 'change' ) );
+	const cat = shown(), catLabel = fc.selectedOptions[ 0 ].textContent;
+	el.querySelector( '[data-act=reset]' ).click();
+	const round = el.querySelector( '[data-item=round] .have' ).textContent, size = el.querySelector( '[data-item=round] .size' ).textContent;
+	const pic = el.querySelector( '[data-item=round] img' );
+	return { all, search, cat, catLabel, reset: shown().length, round, size, pic: !! pic && pic.complete && pic.naturalWidth > 0 };
+} );
+check( lib.all === 21 && lib.search.join() === 'skep' && lib.cat.join() === 'lookout,gate,arch' && lib.reset === 21, `biblioteca: busca e categoria (${ JSON.stringify( lib ) })` );
+check( /na vila/.test( lib.round ) && / × .* m · .* m alt./.test( lib.size ) && lib.pic, `cartão: contagem, tamanho e miniatura (${ lib.round }; ${ lib.size })` );
+await page.click( '#object-editor [data-item=round]' ); await sleep( 200 );
 const spot = { x: H.x - 18, z: H.z + 6 };
 const gy = await page.evaluate( ( s ) => window.__app.hf.heightAt( s.x, s.z ), spot );
-await click( await toScreen( spot.x, gy, spot.z ) );
+const sp = await toScreen( spot.x, gy, spot.z );
+await page.mouse.move( sp.x, sp.y ); await sleep( 200 );
+const gh = await page.evaluate( () => { const g = window.__app.objectEditor.ghost; return { vis: g.visible, x: g.position.x, z: g.position.z, w: g.scale.x }; } );
+check( gh.vis && Math.hypot( gh.x - spot.x, gh.z - spot.z ) < 1.5 && gh.w > 5, `caixa-fantasma sob o cursor (${ JSON.stringify( gh ) })` );
+await click( sp );
 const ad = await page.evaluate( () => { const o = window.__app.objectEditor; return { sel: o.selected?.userData.objId, added: o.edits.added.map( ( a ) => ( { id: a.id, type: a.type, x: +a.x.toFixed( 1 ), z: +a.z.toFixed( 1 ) } ) ), meshes: o.selected?.children.length }; } );
 check( ad.sel === 'a0' && ad.added.length === 1 && ad.added[ 0 ].type === 'round' && ad.meshes > 2, `catálogo: casa redonda adicionada ${ JSON.stringify( ad ) }` );
 await shot( '4_added' );
+// 6. drag and drop: a well card dropped on the ground (the HTML drag events, as the browser sends them)
+await page.keyboard.press( 'Escape' ); await sleep( 200 );
+const spot2 = { x: H.x - 26, z: H.z - 4 };
+const sp2 = await toScreen( spot2.x, await page.evaluate( ( s ) => window.__app.hf.heightAt( s.x, s.z ), spot2 ), spot2.z );
+const dnd = await page.evaluate( ( p ) => {
+	const card = document.querySelector( '#object-editor [data-item=well]' ), cv = window.__app.renderer.domElement, dt = new DataTransfer();
+	card.dispatchEvent( new DragEvent( 'dragstart', { bubbles: true, dataTransfer: dt } ) );
+	cv.dispatchEvent( new DragEvent( 'dragover', { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, dataTransfer: dt } ) );
+	const ghost = window.__app.objectEditor.ghost.visible;
+	cv.dispatchEvent( new DragEvent( 'drop', { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, dataTransfer: dt } ) );
+	card.dispatchEvent( new DragEvent( 'dragend', { bubbles: true, dataTransfer: dt } ) );
+	const o = window.__app.objectEditor, a = o.edits.added.at( -1 );
+	return { ghost, sel: o.selected?.userData.objId, type: a?.type, x: +a?.x.toFixed( 1 ), z: +a?.z.toFixed( 1 ), armed: !! o.armed, have: document.querySelector( '#object-editor [data-item=well] .have' ).textContent };
+}, sp2 );
+check( dnd.ghost && dnd.type === 'well' && Math.hypot( dnd.x - spot2.x, dnd.z - spot2.z ) < 1.5 && ! dnd.armed && dnd.sel === 'a1' && /2 na vila/.test( dnd.have ), `arrastar e soltar: poço onde caiu (${ JSON.stringify( dnd ) })` );
+await page.keyboard.down( 'Control' ); await page.keyboard.press( 'KeyZ' ); await page.keyboard.up( 'Control' ); await sleep( 200 );
+await page.screenshot( { path: `shots/${ prefix }_6_library.png`, clip: { x: 0, y: 100, width: 340, height: 800 } } );
 
 if ( doSave ) {
 	const nav = page.waitForNavigation( { waitUntil: 'domcontentloaded', timeout: 120000 } );

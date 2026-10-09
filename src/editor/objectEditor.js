@@ -1,8 +1,11 @@
 // Object editor (?edit, tab "Objetos"): select, move, turn, resize, remove and add the village
 // objects (houses, market stalls, props), after the decoration editor of the Habitat Creator game:
 // a click selects; the object gets a selection box, three's TransformControls gizmo and a small
-// floating menu beside it (1 Move, 2 Rotate, 3 Scale, x close, Remove). A catalogue adds new
-// objects: pick one, then click on the ground.
+// floating menu beside it (1 Move, 2 Rotate, 3 Scale, x close, Remove). The library (the Habitat
+// Creator's decoration catalogue; items in editor/catalogue.js) adds new objects: a search, the
+// category and size filters with their counts, cards with a picture of the object, its size and how
+// many the village has; drag a card onto the village, or pick it and click on the ground. While one
+// is picked a cyan box of its footprint follows the pointer on the ground.
 //
 // The edits go to public/world-edits.json (world/worldEdits.js) with "Salvar e aplicar" (shared with
 // the relief editor). The next load builds the whole village from the edited lists: the building
@@ -16,25 +19,12 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { objectGroup, doorAngle } from '../world/buildings.js';
 import { addProxies } from '../core/proxies.js';
 import { emptyWorldEdits } from '../world/worldEdits.js';
+import { CATALOGUE, CATEGORIES, itemOf } from './catalogue.js';
 
-const CATALOGUE = [
-	{ label: 'Casa redonda', kind: 'building', entry: { type: 'round', r: 5 } },
-	{ label: 'Casa longa', kind: 'building', entry: { type: 'long', w: 6.5, l: 10, rot: 0 } },
-	{ label: 'Cabana', kind: 'building', entry: { type: 'hut', r: 2.5 } },
-	{ label: 'Celeiro', kind: 'building', entry: { type: 'granary', r: 1.6 } },
-	{ label: 'Torre de vigia', kind: 'building', entry: { type: 'lookout' } },
-	{ label: 'Casa do castro', kind: 'building', entry: { type: 'castro', r: 9.5, rot: 0 } },
-	{ label: 'Barraca', kind: 'stall', entry: { red: true } },
-	{ label: 'Cercado', kind: 'prop', entry: { type: 'pen', w: 6, d: 5, rot: 0 } },
-	{ label: 'Palheiro', kind: 'prop', entry: { type: 'hay', r: 1.2 } },
-	{ label: 'Poço', kind: 'prop', entry: { type: 'well' } },
-	{ label: 'Carroça', kind: 'prop', entry: { type: 'cart', rot: 0 } },
-	{ label: 'Varal', kind: 'prop', entry: { type: 'rack', rot: 0 } },
-	{ label: 'Colmeia', kind: 'prop', entry: { type: 'skep' } },
-	{ label: 'Lenha', kind: 'prop', entry: { type: 'wood', rot: 0 } },
-	{ label: 'Pórtico', kind: 'prop', entry: { type: 'gate', rot: 0 } },
-	{ label: 'Arco rústico', kind: 'prop', entry: { type: 'arch', rot: 0 } }
-];
+// sizes for the filter, by the larger side of the footprint (public/editor/thumbs.json)
+const SIZES = [ { id: 'p', label: 'Pequenos (até 4 m)', max: 4 }, { id: 'm', label: 'Médios (4 a 12 m)', max: 12 }, { id: 'g', label: 'Grandes (mais de 12 m)', max: Infinity } ];
+const fmt = ( v ) => v < 10 ? v.toFixed( 1 ).replace( '.', ',' ) : String( Math.round( v ) );
+const plain = ( s ) => s.normalize( 'NFD' ).replace( /\p{M}/gu, '' ).toLowerCase();
 const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', castro: 'Casa do castro', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha', gate: 'Pórtico', arch: 'Arco rústico' };
 const MODES = [ 'translate', 'rotate', 'scale' ];
 const UNDO_MAX = 60;
@@ -94,8 +84,17 @@ export class ObjectEditor {
 		this.box.visible = false;
 		this.box.frustumCulled = false;
 		app.scene.add( this.box );
+		// where a picked library item would go: its footprint's box on the ground under the pointer
+		this.ghost = new THREE.LineSegments( new THREE.EdgesGeometry( new THREE.BoxGeometry( 1, 1, 1 ).translate( 0, 0.5, 0 ) ), new THREE.LineBasicMaterial( { color: 0x5fd0e8, depthTest: false, transparent: true } ) );
+		this.ghost.renderOrder = 998;
+		this.ghost.visible = false;
+		this.ghost.frustumCulled = false;
+		app.scene.add( this.ghost );
+		this.sizes = {};         // item id -> { w, d, h } (m), from public/editor/thumbs.json
+		this.filter = { q: '', cat: '', size: '' };
 
 		this._buildUI();
+		this._loadSizes();
 		this._bind();
 		app.onFrame.push( () => this.update() );
 	}
@@ -232,9 +231,23 @@ export class ObjectEditor {
 
 	arm( item ) {
 		this.armed = item;
-		for ( const b of this.panel.querySelectorAll( '[data-cat]' ) ) b.classList.toggle( 'on', item && b.dataset.cat === item.label );
+		for ( const b of this.panel.querySelectorAll( '[data-item]' ) ) b.classList.toggle( 'on', !! item && b.dataset.item === item.id );
 		this.panel.querySelector( '.armed' ).textContent = item ? `Clique no chão para pôr: ${ item.label } (Esc cancela)` : '';
-		if ( item ) this.select( null );
+		if ( item ) {
+			this.select( null );
+			const s = this.sizes[ item.id ] || { w: 4, d: 4, h: 3 };
+			this.ghost.scale.set( s.w, s.h, s.d );
+		} else this.ghost.visible = false;
+	}
+
+	// the ghost box under the pointer while an item is picked (or dragged over the village)
+	_ghostAt( x, y ) {
+		if ( ! this.armed ) { this.ghost.visible = false; return null; }
+		this.terrain.pointer.x = x; this.terrain.pointer.y = y;
+		const p = this.terrain._pick();
+		this.ghost.visible = !! p;
+		if ( p ) this.ghost.position.set( p.x, this.hf.heightAt( p.x, p.z ), p.z );
+		return p;
 	}
 
 	place( p ) {
@@ -259,6 +272,7 @@ export class ObjectEditor {
 		this._push( before, this._snap( g ) );
 		this.arm( null );
 		this.select( g );
+		this._toast( `${ item.label } posto. Salvar e aplicar grava na vila.` );
 	}
 
 	// ------------------------------------------------------------------ picking
@@ -312,12 +326,28 @@ export class ObjectEditor {
 			down = null;
 			if ( moved > 5 || dt > 400 || this.dragging ) return; // a drag: the camera looked around
 			if ( this.armed ) {
-				this.terrain.pointer.x = e.clientX; this.terrain.pointer.y = e.clientY;
-				const p = this.terrain._pick();
+				const p = this._ghostAt( e.clientX, e.clientY );
 				if ( p ) this.place( p );
 				return;
 			}
 			this.select( this._pickObject( e.clientX, e.clientY ) );
+		} );
+		this.dom.addEventListener( 'pointermove', ( e ) => { if ( this.active && this.armed ) this._ghostAt( e.clientX, e.clientY ); } );
+		this.dom.addEventListener( 'pointerleave', () => { this.ghost.visible = false; } );
+		// a library card dropped on the village (HTML drag and drop: the card's dragstart picked it)
+		this.dom.addEventListener( 'dragover', ( e ) => {
+			if ( ! this.active || ! this._dragItem ) return;
+			e.preventDefault();
+			e.dataTransfer.dropEffect = 'copy';
+			this._ghostAt( e.clientX, e.clientY );
+		} );
+		this.dom.addEventListener( 'dragleave', () => { this.ghost.visible = false; } );
+		this.dom.addEventListener( 'drop', ( e ) => {
+			if ( ! this.active || ! this._dragItem ) return;
+			e.preventDefault();
+			const p = this._ghostAt( e.clientX, e.clientY );
+			this._dragItem = null;
+			if ( p ) this.place( p ); else this.arm( null );
 		} );
 		// capture phase: with a selection, 1 2 3 are the gizmo modes (not the camera views)
 		window.addEventListener( 'keydown', ( e ) => {
@@ -341,20 +371,52 @@ export class ObjectEditor {
 		el.className = 'panel';
 		el.style.display = 'none';
 		el.innerHTML = `
-			<header><b>Objetos da vila</b></header>
-			<p class="hint">Clique num objeto para selecionar: aparecem a caixa, as alças e o menu ao lado. Arraste o espaço vazio para olhar.</p>
-			<div class="cat">${ CATALOGUE.map( ( c ) => `<button data-cat="${ c.label }">${ c.label }</button>` ).join( '' ) }</div>
+			<header><b>Biblioteca da vila</b></header>
+			<input type="search" class="q" placeholder="Buscar no catálogo" spellcheck="false" />
+			<div class="filters"><select class="f-cat" title="Categoria"></select><select class="f-size" title="Tamanho"></select></div>
+			<div class="count"><span></span><button data-act="reset" class="link">Limpar filtros</button></div>
+			<p class="hint">Arraste para a vila, ou escolha e clique no chão.</p>
+			<div class="lib"></div>
 			<p class="armed"></p>
 			<div class="row"><button data-act="undo">Desfazer</button><button data-act="redo">Refazer</button></div>
 			<div class="row"><button data-act="save" class="primary">Salvar e aplicar</button></div>
-			<p class="keys">Clique: selecionar · 1 mover · 2 girar · 3 escalar · Delete: remover · Esc: soltar · Ctrl+Z/Y</p>`;
+			<p class="keys">1 mover · 2 girar · 3 escalar · Delete: remover · Esc: soltar · Ctrl+Z/Y</p>`;
 		document.body.appendChild( el );
 		this.panel = el;
-		for ( const b of el.querySelectorAll( '[data-cat]' ) ) b.onclick = () => this.arm( this.armed?.label === b.dataset.cat ? null : CATALOGUE.find( ( c ) => c.label === b.dataset.cat ) );
+		this.lib = el.querySelector( '.lib' );
+		const thumbs = `${ import.meta.env.BASE_URL }editor/thumbs/`;
+		this.lib.innerHTML = CATALOGUE.map( ( c ) => `
+			<button class="card" data-item="${ c.id }" draggable="true" title="${ c.label }: ${ c.desc }">
+				<span class="pic"><img src="${ thumbs }${ c.id }.webp" alt="" draggable="false" loading="lazy" onerror="this.remove()" /></span>
+				<b>${ c.label }</b>
+				<small class="size"></small>
+				<small class="have"></small>
+			</button>` ).join( '' );
+		for ( const b of this.lib.querySelectorAll( '[data-item]' ) ) {
+			const item = CATALOGUE.find( ( c ) => c.id === b.dataset.item );
+			b.onclick = () => this.arm( this.armed?.id === item.id ? null : item );
+			b.addEventListener( 'dragstart', ( e ) => {
+				this._dragItem = item;
+				this.arm( item );
+				e.dataTransfer.setData( 'text/plain', item.id );
+				e.dataTransfer.effectAllowed = 'copy';
+				const img = b.querySelector( 'img' );
+				if ( img ) e.dataTransfer.setDragImage( img, 40, 40 );
+			} );
+			// dropped elsewhere (or cancelled): nothing picked
+			b.addEventListener( 'dragend', () => { if ( this._dragItem ) { this._dragItem = null; this.arm( null ); } } );
+		}
+		const q = el.querySelector( '.q' ), fc = el.querySelector( '.f-cat' ), fs = el.querySelector( '.f-size' );
+		q.oninput = () => { this.filter.q = q.value; this._filter(); };
+		fc.onchange = () => { this.filter.cat = fc.value; this._filter(); };
+		fs.onchange = () => { this.filter.size = fs.value; this._filter(); };
+		el.querySelector( '[data-act=reset]' ).onclick = () => { this.filter = { q: '', cat: '', size: '' }; q.value = ''; this._filter(); };
+		this.ui = { q, fc, fs };
+		this._filter();
 		el.querySelector( '[data-act=undo]' ).onclick = () => this.undoStep();
 		el.querySelector( '[data-act=redo]' ).onclick = () => this.redoStep();
 		el.querySelector( '[data-act=save]' ).onclick = () => this.terrain.save();
-		this.ui = { undo: el.querySelector( '[data-act=undo]' ), redo: el.querySelector( '[data-act=redo]' ) };
+		Object.assign( this.ui, { undo: el.querySelector( '[data-act=undo]' ), redo: el.querySelector( '[data-act=redo]' ) } );
 
 		// the floating menu beside the selection
 		const menu = document.createElement( 'div' );
@@ -375,9 +437,22 @@ export class ObjectEditor {
 
 		const style = document.createElement( 'style' );
 		style.textContent = `
-			#object-editor { position: fixed; top: 122px; left: 12px; width: 288px; padding: 10px 12px; z-index: 12; font-size: 12px; color: var(--ink); }
+			#object-editor { position: fixed; top: 122px; left: 12px; bottom: 12px; width: 304px; max-width: calc(100vw - 24px); padding: 10px 12px; z-index: 12; font-size: 12px; color: var(--ink); display: flex; flex-direction: column; box-sizing: border-box; }
 			#object-editor header { color: var(--gold-2); font-size: 13px; margin-bottom: 6px; }
-			#object-editor .cat { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+			#object-editor .q { width: 100%; box-sizing: border-box; padding: 7px 9px; border-radius: 7px; border: 1px solid var(--panel-edge); background: rgba(0,0,0,.35); color: var(--ink); font: 12px Inter, system-ui, sans-serif; margin-bottom: 6px; }
+			#object-editor .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+			#object-editor select { min-width: 0; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--panel-edge); background: rgba(0,0,0,.35); color: var(--ink); font: 12px Inter, system-ui, sans-serif; }
+			#object-editor .count { display: flex; justify-content: space-between; align-items: center; color: var(--ink-dim); margin: 2px 0; }
+			#object-editor button.link { background: none; border: none; color: var(--gold-2); text-decoration: underline; padding: 0; }
+			#object-editor .lib { flex: 1; min-height: 120px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; align-content: start; padding-right: 2px; }
+			#object-editor .card { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 6px; border-radius: 8px; background: rgba(0,0,0,.28); }
+			#object-editor .card[hidden] { display: none; }
+			#object-editor .card .pic { display: block; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: radial-gradient(circle at 50% 40%, rgba(201,164,92,.18), rgba(0,0,0,.2)); margin-bottom: 3px; }
+			#object-editor .card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+			#object-editor .card b { font-weight: 600; font-size: 11.5px; line-height: 1.2; }
+			#object-editor .card small { color: var(--ink-dim); font-size: 10.5px; line-height: 1.25; }
+			#object-editor .card .have { color: var(--gold-2); }
+			#object-editor .card.on { outline: 2px solid var(--gold-2); }
 			#object-editor .armed { color: var(--gold-2); min-height: 16px; margin: 6px 0; }
 			#object-editor .row { display: flex; gap: 4px; margin-top: 5px; } #object-editor .row button { flex: 1; }
 			#object-editor .hint, #object-editor .keys { color: var(--ink-dim); margin: 6px 0; line-height: 1.35; }
@@ -401,6 +476,60 @@ export class ObjectEditor {
 		if ( ! this.ui ) return;
 		this.ui.undo.disabled = ! this.undo.length;
 		this.ui.redo.disabled = ! this.redo.length;
+		this._counts();
+	}
+
+	// ------------------------------------------------------------------ library
+
+	// the footprints and heights measured by tools/thumbs.mjs (absent: no sizes, the size filter waits)
+	async _loadSizes() {
+		try {
+			const res = await fetch( `${ import.meta.env.BASE_URL }editor/thumbs.json` );
+			if ( res.ok ) this.sizes = await res.json();
+		} catch ( e ) { /* no file: the cards go without sizes */ }
+		for ( const b of this.lib.querySelectorAll( '[data-item]' ) ) {
+			const s = this.sizes[ b.dataset.item ];
+			b.querySelector( '.size' ).textContent = s ? `${ fmt( s.w ) } × ${ fmt( s.d ) } m · ${ fmt( s.h ) } m alt.` : '';
+		}
+		this._filter();
+	}
+
+	// what the search and the filters leave, and the counts of each choice under the others
+	_filter() {
+		const { q, cat, size } = this.filter;
+		const words = plain( q ).split( /\s+/ ).filter( Boolean );
+		const sizeOf = ( c ) => { const s = this.sizes[ c.id ]; if ( ! s ) return ''; const m = Math.max( s.w, s.d ); return SIZES.find( ( z ) => m <= z.max ).id; };
+		const match = ( c, use ) => ( ! words.length || words.every( ( w ) => plain( `${ c.label } ${ c.desc } ${ CATEGORIES.find( ( k ) => k.id === c.cat ).label }` ).includes( w ) ) )
+			&& ( ! use.cat || c.cat === use.cat ) && ( ! use.size || sizeOf( c ) === use.size );
+		let n = 0;
+		for ( const b of this.lib.querySelectorAll( '[data-item]' ) ) {
+			const ok = match( CATALOGUE.find( ( c ) => c.id === b.dataset.item ), this.filter );
+			b.hidden = ! ok; if ( ok ) n ++;
+		}
+		const count = ( use ) => CATALOGUE.filter( ( c ) => match( c, use ) ).length;
+		this.ui.fc.innerHTML = `<option value="">Todas · ${ count( { cat: '', size } ) }</option>` + CATEGORIES.map( ( k ) => `<option value="${ k.id }">${ k.label } · ${ count( { cat: k.id, size } ) }</option>` ).join( '' );
+		this.ui.fc.value = cat;
+		const sized = Object.keys( this.sizes ).length > 0;
+		this.ui.fs.disabled = ! sized;
+		this.ui.fs.innerHTML = `<option value="">Tamanhos · ${ count( { cat, size: '' } ) }</option>` + ( sized ? SIZES.map( ( z ) => `<option value="${ z.id }">${ z.label } · ${ count( { cat, size: z.id } ) }</option>` ).join( '' ) : '' );
+		this.ui.fs.value = size;
+		this.panel.querySelector( '.count span' ).textContent = `${ n } ${ n === 1 ? 'item' : 'itens' }`;
+		this.panel.querySelector( '[data-act=reset]' ).style.visibility = q || cat || size ? '' : 'hidden';
+	}
+
+	// how many of each the village has now (the objects still standing, added ones included)
+	_counts() {
+		if ( ! this.lib ) return;
+		const n = {};
+		for ( const g of this.groups.values() ) {
+			if ( ! g.visible ) continue;
+			const t = itemOf( g.userData.kind, g.userData.entry );
+			n[ t ] = ( n[ t ] || 0 ) + 1;
+		}
+		for ( const b of this.lib.querySelectorAll( '[data-item]' ) ) {
+			const k = n[ b.dataset.item ] || 0;
+			b.querySelector( '.have' ).textContent = k ? `${ k } na vila` : 'Nenhum na vila';
+		}
 	}
 
 	exportFile() {
