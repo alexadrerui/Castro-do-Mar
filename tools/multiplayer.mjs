@@ -3,10 +3,11 @@
 // Nostr relays (needs internet), B must fly to A, see A's lantern where A's camera is, follow A's hour and
 // rain, see A's new name, get over a connection closed by force (it must heal by itself, nobody announced
 // as gone), and A must see B leave. Captures shots/<prefixo>_*.png.
-//   node tools/multiplayer.mjs [prefixo]
+//   node tools/multiplayer.mjs [prefixo] [--webgl-b] (B with WebGL 2: the "(WebGL)" mark beside its name)
 import puppeteer from 'puppeteer-core';
 
 const prefix = process.argv.slice( 2 ).find( ( x ) => ! x.startsWith( '--' ) ) || 'mp';
+const WEBGL_B = process.argv.includes( '--webgl-b' ); // B draws with WebGL 2: A must see it marked
 const BASE = ( process.argv.find( ( a ) => a.startsWith( '--base=' ) ) || '--base=http://localhost:5190/' ).slice( 7 );
 const browser = await puppeteer.launch( {
 	executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', headless: 'new', protocolTimeout: 900000,
@@ -58,7 +59,7 @@ const late = +( ( process.argv.find( ( x ) => x.startsWith( '--late=' ) ) || '--
 if ( late ) { console.log( `A alone for ${ late } s` ); await settle( late * 1000 ); }
 console.log( 'B: loading from the link' );
 const t0 = Date.now();
-const B = await visitor( 'B', link + '&auto' );
+const B = await visitor( 'B', link + '&auto' + ( WEBGL_B ? '&webgl' : '' ) );
 await B.evaluate( () => window.__app.settings.setName( 'Bruno' ) );
 const met = await waitFor( A, () => [ ...window.__app.mp.peers.values() ].some( ( p ) => p.name ) ) && await waitFor( B, () => [ ...window.__app.mp.peers.values() ].some( ( p ) => p.name ) );
 check( 'they find each other', met, `(${ ( ( Date.now() - t0 ) / 1000 ).toFixed( 1 ) } s from B's page opening)` );
@@ -69,6 +70,12 @@ await settle( 3500 );
 a = await state( A ); let b = await state( B );
 console.log( 'A', JSON.stringify( a ) ); console.log( 'B', JSON.stringify( b ) );
 check( 'B sees Alice', b.peers[ 0 ]?.name === 'Alice' && /Alice/.test( b.note ) && /Alice/.test( b.list ) );
+// the renderer beside the names: "(WebGL)" for a visitor without WebGPU, nothing between WebGPU ones
+if ( WEBGL_B ) {
+	const aS = await state( A );
+	check( 'A sees B marked (WebGL)', /\(WebGL\)/.test( aS.note ) && /\(WebGL\)/.test( aS.list ), aS.note + ' | ' + aS.list );
+	check( 'B (WebGL) sees no mark on A', ! /WebGL/.test( b.note + b.list ), b.note );
+} else check( 'no WebGL mark between WebGPU visitors', ! /WebGL/.test( b.note + b.list ) && ! /WebGL/.test( ( await state( A ) ).list ), b.note );
 const banner = await A.evaluate( () => { const el = document.getElementById( 'mp-banner' ); return el.hidden ? '' : el.textContent; } );
 check( 'A: the banner announces the arrival', /entrou na visita/.test( banner ), banner );
 await A.screenshot( { path: `shots/${ prefix }_banner.png`, clip: { x: 280, y: 40, width: 720, height: 90 } } );

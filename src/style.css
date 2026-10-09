@@ -178,6 +178,7 @@ body.clean #touch-ui { display: none; }
 .mp-join input.txt { margin-top: 0; flex: 1; min-width: 0; }
 .mp-code { font-family: ui-monospace, Consolas, monospace; letter-spacing: .06em; color: var(--gold-2); }
 .mp-warn { color: #f0c36a; font-weight: 600; }
+.mp-webgl { color: #9fb4d0; font-size: 0.92em; cursor: help; }
 #mp-banner { position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-radius: 12px; background: rgba(20,16,8,.86); border: 1px solid #e6c987; box-shadow: 0 8px 30px rgba(0,0,0,.45), 0 0 24px rgba(230,201,135,.25); color: #f3e3bd; font: 500 14px Inter, sans-serif; white-space: nowrap; max-width: calc(100vw - 32px); }
 #mp-banner[hidden] { display: none; }
 #mp-banner.show { animation: mp-in .45s cubic-bezier(.2,.9,.3,1.2); }

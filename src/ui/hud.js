@@ -243,8 +243,8 @@ export class HUD {
 			tip.innerHTML = mp.note;
 			list.replaceChildren( ...[ ...mp.peers ].filter( ( [ , p ] ) => p.name ).map( ( [ id, p ] ) => {
 				const b = document.createElement( 'button' );
-				b.textContent = '➜ ' + p.name;
-				b.title = 'Voar até ' + p.name;
+				b.textContent = '➜ ' + p.name + ( p.webgl ? ' (WebGL)' : '' );
+				b.title = 'Voar até ' + p.name + ( p.webgl ? '. Sem WebGPU no navegador: não vê o fundo do mar, os peixes nem as aves (Chrome ou Edge atualizados resolvem)' : '' );
 				b.onclick = () => mp.goTo( id );
 				return b;
 			} ) );

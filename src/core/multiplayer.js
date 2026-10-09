@@ -65,6 +65,8 @@ const WAIT_HELP = 40;         // s alone in a room before the panel explains wha
 // together, one left as the other came back and they missed each other (1 test in 2); the other side
 // goes after HEAL_SLOW s in case the first is frozen (a hidden tab). At once on coming back to the tab.
 const GRACE = 60;             // s
+// beside a friend's name when they draw with WebGL 2: they see no seabed, fish or flock (main.js)
+const WEBGL_MARK = ' <span class="mp-webgl" title="Sem WebGPU neste navegador: não vê o fundo do mar, os peixes nem as aves. Chrome ou Edge atualizados resolvem.">(WebGL)</span>';
 const HEAL = 3, HEAL_JITTER = 2, HEAL_SLOW = 15, HEAL_GAP = 20; // s
 // An optional TURN relay (none by default: the free public ones no longer answer, tested 07/10/2026):
 // with it, two visitors behind strict NATs (some mobile and corporate networks) still connect, through
@@ -161,7 +163,7 @@ export class Multiplayer {
 	// the panel's status line: the room's code, who is here, and while alone what is going on
 	get note() {
 		if ( ! this.room ) return '';
-		const names = [ ...this.peers.values() ].filter( ( p ) => p.name ).map( ( p ) => escapeHTML( p.name ) + ( p.lost ? ' <span class="mp-warn">(reconectando…)</span>' : '' ) );
+		const names = [ ...this.peers.values() ].filter( ( p ) => p.name ).map( ( p ) => escapeHTML( p.name ) + ( p.webgl ? WEBGL_MARK : '' ) + ( p.lost ? ' <span class="mp-warn">(reconectando…)</span>' : '' ) );
 		const head = `Sala <b class="mp-code">${ this.roomId }</b> · `;
 		if ( names.length ) return head + 'com ' + names.join( ', ' );
 		const alone = ( performance.now() - this.joinedAt ) / 1000;
@@ -332,8 +334,10 @@ export class Multiplayer {
 
 	// ---------------------------------------------------------------- peers
 
+	// webgl: this visitor draws with WebGL 2 (no WebGPU in the browser): no seabed, fish or flock there
+	// (main.js), shown beside the name so the others know why they see less
 	_helloData() {
-		return { name: this.name, since: performance.now() - this.joinedAt, world: this.shareWorld ? this._worldNow() : null };
+		return { name: this.name, since: performance.now() - this.joinedAt, world: this.shareWorld ? this._worldNow() : null, webgl: this.app.backendName !== 'WebGPU' };
 	}
 
 	_peer( peerId ) {
@@ -370,6 +374,8 @@ export class Multiplayer {
 		const first = ! p.name;
 		p.name = String( h?.name ?? '' ).slice( 0, 24 ) || 'Visitante';
 		p.since = +h?.since || 0;
+		p.webgl = !! h?.webgl;
+		p._d = null; // the tag is redrawn with the renderer mark
 		p.tag.textContent = p.name;
 		if ( first ) this._arrived( peerId, p.name );
 		// the newcomer takes the world of whoever has been in the room longer
@@ -540,7 +546,7 @@ export class Multiplayer {
 				p.tag.style.transform = `translate(${ ( ( v.x * 0.5 + 0.5 ) * w ).toFixed( 1 ) }px, ${ ( ( 0.5 - v.y * 0.5 ) * h ).toFixed( 1 ) }px) translate(-50%, -100%)`;
 				p.tag.style.opacity = ( 1 - 0.6 * THREE.MathUtils.smoothstep( dist, 60, 600 ) ).toFixed( 2 );
 				const d = dist < 1000 ? Math.round( dist ) + ' m' : ( dist / 1000 ).toFixed( 1 ) + ' km';
-				if ( p._d !== d ) { p._d = d; p.tag.innerHTML = `${ escapeHTML( p.name ) }<small>${ d }</small>`; }
+				if ( p._d !== d ) { p._d = d; p.tag.innerHTML = `${ escapeHTML( p.name ) }${ p.webgl ? ' <small>WebGL</small>' : '' }<small>${ d }</small>`; }
 			}
 		}
 	}
