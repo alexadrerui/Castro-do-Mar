@@ -234,7 +234,7 @@ export class Ambience {
 
 		// the state of the world
 		const ground = app.hf.heightAt( p.x, p.z ), wl = app.rivers?.levelAt( p.x, p.z ) ?? app.lakes?.levelAt( p.x, p.z ) ?? WATER_LEVEL;
-		const under = app.underwater?.on.value > 0.5;
+		const under = app.underwater?.eyeUnder ?? false; // the ears go under with the eye (not the waterline band)
 		const alt = p.y - Math.max( ground, wl );
 		const rain = app.weather?.level ?? 0, night = app.sky.state.night ?? 0;
 		const day = app.birdsAwake ? 1 - night : 0, hour = app.clock?.hour ?? 15;

@@ -498,9 +498,10 @@ async function main() {
 		const wl = app.rivers.levelAt( camera.position.x, camera.position.z ) ?? app.lakes.levelAt( camera.position.x, camera.position.z );
 		cam.waterLevel = wl;
 		underwater.update( camera, wl );
-		lens.update( dt, underwater.on.value > 0.5 );
+		lens.update( dt, underwater.eyeUnder );
 		snow.update( camera, underwater.on.value > 0.5, wl );
-		underside.update( underwater.on.value > 0.5, wl );
+		// the surface seen from below: also at the waterline (the part of the view under the cut)
+		underside.update( underwater.on.value > 0.5 || underwater.line.value > 0.5, wl );
 	} );
 
 	// Bloom (as in three's ocean example): a soft glow around what is brighter than white in the

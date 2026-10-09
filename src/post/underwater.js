@@ -1,8 +1,11 @@
 import * as THREE from 'three/webgpu';
 import { Fn, uniform, float, vec2, vec3, vec4, exp, mix, smoothstep, screenUV, If, max, min, sin, cos, length, mod, normalize, cross, dot, dFdx, dFdy, select, time, fract } from 'three/tsl';
 
-// Simple underwater look for when the camera dives below WATER_LEVEL: the whole view switches
-// to the water medium (no split at the waterline).
+// Underwater look for when the camera dives below WATER_LEVEL. Near the surface the view is cut
+// at the waterline (the idea of Ascent, github.com/hapybeing/Ascent): each pixel is under water
+// when its point on the near plane (the lens) lies below the surface, which gets a few cm of
+// moving waves and a bright meniscus line along the cut. The near plane stays at the scene's 1 m
+// within LINE_BAND of the surface, so the cut falls exactly where the water mesh is clipped.
 //  - light reaching a point: absorbed along its way down from the surface (per channel, red
 //    first), so deeper ground and seabed life get darker and bluer-green whatever the camera
 //    depth (the world position is rebuilt from the depth buffer);
@@ -19,6 +22,9 @@ const SCATTER = 0.07; // 1/m: visibility of roughly 30-40 m
 const DEPTH_FALLOFF = 0.06; // 1/m: murk light lost per metre below the surface
 const UNDER_FAR = 90; // m: camera far plane while under water
 const UNDER_NEAR = 0.05; // m: and its near plane (far / near = 1800: depth precision to spare)
+// m: the waterline cut is drawn while the camera is within this distance of the surface (the near
+// plane's corners reach ~1.4 m from the eye at the 1 m near plane: past it the cut is off screen)
+const LINE_BAND = 1.5;
 const CAUSTIC_TILE = 3.2; // m: size of the caustic pattern tile
 const CAUSTIC_STRENGTH = 1.3;
 const CAUSTIC_FADE = 0.08; // 1/m: caustics lost per metre of depth (the net also blurs out)
@@ -74,7 +80,11 @@ export class Underwater {
 
 	constructor( scenePass, waterLevel = 0 ) {
 
-		this.on = uniform( 0 ).setName( 'uwOn' );
+		this.on = uniform( 0 ).setName( 'uwOn' ); // 1: the whole view is under water
+		this.line = uniform( 0 ).setName( 'uwLine' ); // 1: near the surface, cut per pixel
+		this.level = uniform( waterLevel ).setName( 'uwLevel' );
+		this.near = uniform( 1 ).setName( 'uwNear' );
+		this.eyeUnder = false; // the eye itself is below the surface (lens drops, surface from below)
 		this.depth = uniform( 0 ).setName( 'uwDepth' ); // camera depth below the surface (m)
 		this.murk = uniform( new THREE.Color( 0x1d4f52 ) ).setName( 'uwMurk' ); // lit water colour
 		this.viewZ = scenePass.getViewZNode();
@@ -96,7 +106,10 @@ export class Underwater {
 		const d = waterLevel - camera.position.y;
 		// under water nothing shows beyond ~80 m (the murk leaves < 0.5 %): a near far plane culls
 		// the village, the mountains and the horizon (the depth buffer's far value reads as murk)
-		const under = d > 0;
+		// fully under water only past the waterline band: inside it the cut shows both worlds, with the
+		// scene's own near / far planes
+		const under = d > LINE_BAND;
+		const line = ! under && d > - LINE_BAND;
 		if ( under !== this._under ) {
 
 			if ( under ) {
@@ -116,9 +129,13 @@ export class Underwater {
 		}
 
 		this.on.value = under ? 1 : 0;
+		this.line.value = line ? 1 : 0;
+		this.eyeUnder = d > 0;
 		this.depth.value = Math.max( d, 0 );
 		this.waterLevel = waterLevel;
-		if ( d > 0 ) {
+		this.level.value = waterLevel;
+		this.near.value = camera.near;
+		if ( under || line ) {
 
 			camera.updateMatrixWorld();
 			this.camWorld.value.copy( camera.matrixWorld );
@@ -147,19 +164,29 @@ export class Underwater {
 	apply( rgb ) {
 
 		const on = this.on, depth = this.depth, murk = this.murk, viewZ = this.viewZ;
-		const camWorld = this.camWorld, projInv = this.projInv, W = this.waterLevel;
+		const camWorld = this.camWorld, projInv = this.projInv, W = this.level;
+		const line = this.line, near = this.near;
 		const sunDir = this.sunDir, sunK = this.sunK, debug = this.debug;
 		return Fn( () => {
 
 			const col = vec3( rgb ).toVar();
-			If( on.greaterThan( 0.5 ), () => {
+			If( on.greaterThan( 0.5 ).or( line.greaterThan( 0.5 ) ), () => {
 
+				const above = vec3( rgb );
 				const vz = viewZ.min( - 1e-3 );
 				const dist = vz.negate().min( 400 );
 				// world position of this pixel: the view ray through it, scaled to its depth
 				const ndc = vec2( screenUV.x.mul( 2 ).sub( 1 ), screenUV.y.mul( - 2 ).add( 1 ) );
 				const ray = projInv.mul( vec4( ndc, 1, 1 ) );
 				const dirV = ray.xyz.div( ray.w );
+				// waterline: height of this pixel's point on the near plane over the (waving) surface
+				const lensW = camWorld.mul( vec4( dirV.mul( near.div( dirV.z.negate() ) ), 1 ) ).xyz;
+				const p = lensW.xz;
+				const wave = sin( p.x.mul( 1.7 ).add( p.y.mul( 0.8 ) ).add( time.mul( 1.6 ) ) ).mul( 0.022 )
+					.add( sin( p.x.mul( - 0.9 ).add( p.y.mul( 2.6 ) ).add( time.mul( 2.3 ) ) ).mul( 0.012 ) )
+					.add( sin( p.x.mul( 4.1 ).sub( p.y.mul( 1.3 ) ).add( time.mul( 3.7 ) ) ).mul( 0.005 ) );
+				const s = W.add( wave ).sub( lensW.y ); // > 0: under water
+				const m = select( on.greaterThan( 0.5 ), float( 1 ), smoothstep( - 0.003, 0.003, s ) );
 				const posV = dirV.mul( vz.div( dirV.z ) );
 				const posW = camWorld.mul( vec4( posV, 1 ) ).xyz;
 				const pointDepth = max( float( W ).sub( posW.y ), 0 ).min( 60 );
@@ -188,6 +215,14 @@ export class Underwater {
 				const glow = mix( float( 1.35 ), float( 0.55 ), smoothstep( 0.0, 1.0, screenUV.y ) );
 				const water = vec3( murk ).mul( light ).mul( glow );
 				col.assign( mix( col.mul( lightDown ).mul( trans ), water, fogAmt ) );
+				// the cut: under water below the line; along it a thin film of water on the lens, bright
+				// where the light runs along the meniscus and darker just under it
+				// (squares as products: pow of a negative base is NaN)
+				const sm = s.div( 0.012 ), sf = s.sub( 0.03 ).div( 0.025 );
+				const meniscus = exp( sm.mul( sm ).negate() ).mul( line );
+				const film = exp( sf.mul( sf ).negate() ).mul( line );
+				col.assign( mix( above, col, m ) );
+				col.assign( col.mul( film.mul( - 0.25 ).add( 1 ) ).add( vec3( 0.75, 0.85, 0.85 ).mul( meniscus ).mul( float( 0.25 ).add( sunK.mul( 0.6 ) ) ) ) );
 				If( debug.greaterThan( 0.5 ), () => {
 
 					col.assign( select( debug.lessThan( 1.5 ), vec3( float( 1 ).add( net.sub( 0.35 ).mul( k ) ).mul( 0.5 ) ), select( debug.lessThan( 2.5 ), vec3( up ), vec3( pointDepth.div( 10 ) ) ) ) );
