@@ -31,9 +31,10 @@ const CATALOGUE = [
 	{ label: 'Carroça', kind: 'prop', entry: { type: 'cart', rot: 0 } },
 	{ label: 'Varal', kind: 'prop', entry: { type: 'rack', rot: 0 } },
 	{ label: 'Colmeia', kind: 'prop', entry: { type: 'skep' } },
-	{ label: 'Lenha', kind: 'prop', entry: { type: 'wood', rot: 0 } }
+	{ label: 'Lenha', kind: 'prop', entry: { type: 'wood', rot: 0 } },
+	{ label: 'Pórtico', kind: 'prop', entry: { type: 'gate', rot: 0 } }
 ];
-const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', castro: 'Casa do castro', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha' };
+const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', castro: 'Casa do castro', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha', gate: 'Pórtico' };
 const MODES = [ 'translate', 'rotate', 'scale' ];
 const UNDO_MAX = 60;
 

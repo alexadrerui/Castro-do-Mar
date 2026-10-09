@@ -6,12 +6,12 @@
 			"0": {
 				"view": 0,
 				"label": "Panorâmica",
-				"luma": 106.5,
-				"spread": 47.5,
-				"chroma": 26.9,
+				"luma": 112,
+				"spread": 50.6,
+				"chroma": 28,
 				"top": [
 					127,
-					149,
+					150,
 					174
 				],
 				"clip": 0,
@@ -20,13 +20,13 @@
 			"1": {
 				"view": 1,
 				"label": "Aérea",
-				"luma": 49.1,
-				"spread": 17.9,
-				"chroma": 18,
+				"luma": 49.2,
+				"spread": 18,
+				"chroma": 18.2,
 				"top": [
-					35,
-					49,
-					50
+					37,
+					51,
+					51
 				],
 				"clip": 0,
 				"black": 0
@@ -34,13 +34,13 @@
 			"2": {
 				"view": 2,
 				"label": "Vila",
-				"luma": 77.7,
-				"spread": 54.5,
-				"chroma": 21.1,
+				"luma": 80.9,
+				"spread": 57.7,
+				"chroma": 21.8,
 				"top": [
-					155,
-					165,
-					174
+					156,
+					169,
+					180
 				],
 				"clip": 0,
 				"black": 0
@@ -48,9 +48,9 @@
 			"3": {
 				"view": 3,
 				"label": "Minas",
-				"luma": 86,
-				"spread": 38.2,
-				"chroma": 23.9,
+				"luma": 87.3,
+				"spread": 40.2,
+				"chroma": 23.7,
 				"top": [
 					101,
 					116,
@@ -62,8 +62,8 @@
 			"4": {
 				"view": 4,
 				"label": "Lago",
-				"luma": 119.6,
-				"spread": 43.6,
+				"luma": 125.1,
+				"spread": 45.8,
 				"chroma": 36.5,
 				"top": [
 					131,
@@ -76,13 +76,13 @@
 			"5": {
 				"view": 5,
 				"label": "Montanhas",
-				"luma": 115.4,
-				"spread": 48.2,
-				"chroma": 42.5,
+				"luma": 97.3,
+				"spread": 56.1,
+				"chroma": 33.6,
 				"top": [
-					81,
-					107,
-					150
+					77,
+					116,
+					164
 				],
 				"clip": 0,
 				"black": 0
@@ -107,8 +107,8 @@
 				"view": 1,
 				"label": "Aérea",
 				"luma": 49,
-				"spread": 17.8,
-				"chroma": 18,
+				"spread": 17.7,
+				"chroma": 18.1,
 				"top": [
 					35,
 					49,
@@ -121,8 +121,8 @@
 				"view": 2,
 				"label": "Vila",
 				"luma": 80.9,
-				"spread": 57.7,
-				"chroma": 21.8,
+				"spread": 57.8,
+				"chroma": 21.7,
 				"top": [
 					156,
 					169,
@@ -136,7 +136,7 @@
 				"label": "Minas",
 				"luma": 87.3,
 				"spread": 40.2,
-				"chroma": 23.8,
+				"chroma": 23.7,
 				"top": [
 					101,
 					116,

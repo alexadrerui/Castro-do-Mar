@@ -166,7 +166,10 @@ export const PROPS = [
 	{ type: 'cart', x: 8, z: 5, rot: 1.0 }, { type: 'cart', x: - 108, z: 70, rot: 0.2 },
 	{ type: 'rack', x: 78, z: 6, rot: 0.4 }, { type: 'rack', x: 74, z: 18, rot: 0.2 },
 	{ type: 'skep', x: - 57, z: 47 }, { type: 'skep', x: - 55.5, z: 48.2 }, { type: 'skep', x: - 58.2, z: 49 },
-	{ type: 'wood', x: - 40, z: - 42, rot: 0.2 }, { type: 'wood', x: 30, z: - 26, rot: 1.0 }
+	{ type: 'wood', x: - 40, z: - 42, rot: 0.2 }, { type: 'wood', x: 30, z: - 26, rot: 1.0 },
+	// the entrance gate on the main road, past the last houses (ref/ref_portal.jpg; world/gate.js):
+	// rot turns its local +z into the village (along the road, towards the fort)
+	{ type: 'gate', x: - 5.5, z: 67, rot: 2.159 }
 ];
 
 // Islands in the sea / lake. r = radius, h = peak height above water.

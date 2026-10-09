@@ -19,6 +19,7 @@ import { pathDistance } from './heightfield.js';
 import { NATURE, CH, erased, forPainted, texelSeed } from './natureEdits.js';
 import { BUILDINGS, STALLS, PROPS, FORT, MINE, FIELDS, VILLAGE, MASK, TOWER, PATHS, HAMLETS, footprintR } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
+import { gateFootprint } from './gate.js';
 import { wind, windAmount, gustSoft } from './wind.js';
 
 const nV = makeSimplex( 606 );
@@ -173,7 +174,7 @@ export function setLakeTest( fn ) { lakeTest = fn; }
 export const inLake = ( x, z ) => !! lakeTest && lakeTest( x, z );
 
 // Ground radius of a stall or prop (m), before the clearance's margin.
-const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8 };
+const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8, gate: 9.5 };
 const propR = ( p ) => ( p.type === 'pen' ? Math.hypot( p.w || 6, p.d || 5 ) / 2 : p.type === 'hay' ? p.r || 1.2 : PROP_R[ p.type ] ?? 1.5 ) * ( p.scale || 1 );
 let editedList = null;
 
@@ -192,8 +193,18 @@ export function editedClearance( x, z, pad = 0 ) {
 	return 1;
 }
 
+// the entrance gates (layout.js PROPS, world/gate.js): their frame, side poles and walls, also where
+// the object editor never touched them (they stand outside the houses' clearance)
+let gatePts = null;
+export function gateClearance( x, z, pad = 0 ) {
+	gatePts ??= PROPS.filter( ( p ) => p.type === 'gate' && ! p.removed ).flatMap( gateFootprint );
+	for ( const [ gx, gz ] of gatePts ) if ( Math.hypot( x - gx, z - gz ) < 1.6 + pad ) return 0;
+	return 1;
+}
+
 export function clearance( x, z, mask, pad = 0 ) {
 	if ( editedClearance( x, z, pad ) <= 0 ) return 0;
+	if ( gateClearance( x, z, pad ) <= 0 ) return 0;
 	const [ path, dirt, field ] = sampleMask( mask, x, z );
 	if ( path > 0.05 || field > 0.2 ) return 0;
 	let free = 1 - ss( 0.3, 0.8, dirt );

@@ -3,6 +3,7 @@ import { GeoBuilder, box, post, beam, ringWall, coneRoof, gableRoof, gableWall, 
 import { mulberry32 } from '../core/noise.js';
 import { BUILDINGS, STALLS, WALLS, FIELDS, VILLAGE, PROPS, PATHS, FORT, footprintR, HAMLETS } from './layout.js';
 import { buildCastroHouse, CASTRO_HOUSE } from './castroHouse.js';
+import { entranceGate, gateFootprint } from './gate.js';
 
 const V = ( x, y, z ) => new THREE.Vector3( x, y, z );
 const M = ( x, y, z, ry = 0, s = 1 ) => new THREE.Matrix4().compose( V( x, y, z ), new THREE.Quaternion().setFromAxisAngle( V( 0, 1, 0 ), ry ), V( s, s, s ) );
@@ -179,6 +180,7 @@ function laneFree( x, z, pi, segs, extra = [], near = LANE_NEAR ) {
 	for ( const b of BUILDINGS ) if ( Math.hypot( x - b.x, z - b.z ) < footprintR( b, 0.7 ) + ( b.awning ? 4.2 : 1.5 ) ) return false;
 	for ( const s of STALLS ) if ( ! s.removed && Math.hypot( x - s[ 0 ], z - s[ 1 ] ) < 4.2 ) return false;
 	for ( const p of PROPS ) if ( Math.hypot( x - p.x, z - p.z ) < ( p.type === 'pen' ? 5 : 2.5 ) ) return false;
+	for ( const p of PROPS ) if ( p.type === 'gate' && ! p.removed && gateFootprint( p ).some( ( [ gx, gz ] ) => Math.hypot( x - gx, z - gz ) < 2.2 ) ) return false;
 	if ( Math.hypot( x - FORT.x, z - FORT.z ) < FORT.radius + 4 ) return false;
 	for ( const w of WALLS ) for ( let i = 1; i < w.length; i ++ ) if ( segD( x, z, w[ i - 1 ], w[ i ] ) < 2 ) return false;
 	for ( const s of segs ) if ( s.pi !== pi && segD( x, z, s.a, s.b ) < s.w * 0.6 + 1.4 ) return false;
@@ -516,7 +518,7 @@ function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
 		} else if ( kind === 'prop' && entry0.type === 'pen' ) {
 			// pen() turns the other way round (u cos - v sin)
 			entry = { ...entry0, rot: ( entry0.rot || 0 ) - yaw, w: entry0.w * sc, d: entry0.d * sc }; yaw = 0; sc = 1;
-		} else if ( kind === 'prop' && ( entry0.type === 'cart' || entry0.type === 'rack' || entry0.type === 'wood' ) ) {
+		} else if ( kind === 'prop' && ( entry0.type === 'cart' || entry0.type === 'rack' || entry0.type === 'wood' || entry0.type === 'gate' ) ) {
 			entry = { ...entry0, rot: ( entry0.rot || 0 ) + yaw }; yaw = 0;
 		}
 	}
@@ -548,6 +550,7 @@ function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
 		else if ( p.type === 'rack' ) dryingRack( L, x, y, z, p.rot );
 		else if ( p.type === 'skep' ) skep( L, x, y, z );
 		else if ( p.type === 'wood' ) woodpile( L, x, y, z, p.rot, 12 );
+		else if ( p.type === 'gate' ) entranceGate( L, hf, x, z, p.rot || 0 );
 	}
 	const anchor = V( x, hf.heightAt( x, z ), z );
 	let T = null;
