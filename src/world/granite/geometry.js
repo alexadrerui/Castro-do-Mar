@@ -102,6 +102,10 @@ export const ROCK_STYLES = [
 	{ name: 'spire', scale: [ 0.75, 1.45, 0.8 ], planes: 12, cut: [ 0.58, 0.84 ], soft: 0.05, rough: 0.05 },
 	// granite corestone (tor block): few joints, deeply rounded edges, a flattened base
 	{ name: 'tor', scale: [ 1.15, 0.78, 1.0 ], planes: 7, cut: [ 0.7, 0.92 ], soft: 0.18, rough: 0.035 },
+	// offroad's boulders (https://github.com/alexadrerui/offroad, src/world/props.js addRock; MIT, Copyright
+	// (c) 2026 Arz-Gev): a sphere cut by 5-8 planes close to its surface, sharp facets and a lumpier fbm
+	// (only placed by hand, editor/catalogue.js)
+	{ name: 'facet', scale: [ 1.0, 0.72, 1.0 ], planes: 7, cut: [ 0.74, 0.96 ], soft: 0.015, rough: 0.09 },
 ];
 
 // radius of the rock surface along unit direction (x, y, z)

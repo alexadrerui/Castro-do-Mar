@@ -102,7 +102,7 @@ const lib = await page.evaluate( async () => {
 	const pic = el.querySelector( '[data-item=round] img' );
 	return { all, search, cat, catLabel, reset: shown().length, round, size, pic: !! pic && pic.complete && pic.naturalWidth > 0 };
 } );
-check( lib.all === 35 && lib.search.join() === 'skep' && lib.cat.join() === 'lookout,gate,arch' && lib.reset === 35, `biblioteca: busca e categoria (${ JSON.stringify( lib ) })` );
+check( lib.all === 43 && lib.search.join() === 'skep' && lib.cat.join() === 'lookout,gate,arch' && lib.reset === 43, `biblioteca: busca e categoria (${ JSON.stringify( lib ) })` );
 check( /na vila/.test( lib.round ) && / × .* m · .* m alt./.test( lib.size ) && lib.pic, `cartão: contagem, tamanho e miniatura (${ lib.round }; ${ lib.size })` );
 await page.click( '#object-editor [data-item=round]' ); await sleep( 200 );
 const spot = { x: H.x - 18, z: H.z + 6 };

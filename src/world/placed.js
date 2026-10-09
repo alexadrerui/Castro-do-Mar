@@ -27,14 +27,15 @@ export function localMatrix( e, reg, out = new THREE.Matrix4() ) {
 	return out.compose( _p, _q, _s );
 }
 
-// a normal load: the placed ones of this kind into their instances (before build())
-export function addPlaced( app, kind ) {
+// a normal load: the placed ones drawn by these registry keys (the caller's own, registered just
+// before) into their instances, before build()
+export function addPlaced( app, keys ) {
 	if ( new URLSearchParams( location.search ).has( 'edit' ) ) return; // the editor makes groups of them
 	const m = new THREE.Matrix4(), t = new THREE.Matrix4();
 	for ( const e of app.worldEdits?.added ?? [] ) {
-		if ( e?.kind !== kind || ! Number.isFinite( e.x ) || ! Number.isFinite( e.z ) ) continue;
+		if ( ( e?.kind !== 'plant' && e?.kind !== 'rock' ) || ! Number.isFinite( e.x ) || ! Number.isFinite( e.z ) ) continue;
+		if ( ! keys.includes( placeKey( e ) ) ) continue;
 		const reg = placeables[ placeKey( e ) ];
-		if ( ! reg ) { console.warn( 'placed: unknown', placeKey( e ) ); continue; }
 		localMatrix( e, reg, m ).premultiply( t.makeTranslation( e.x, app.hf.heightAt( e.x, e.z ), e.z ) );
 		reg.chunk.add_( m, [ reg.tint( e.seed ?? 1 ) ] );
 	}

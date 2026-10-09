@@ -26,7 +26,7 @@ import { placeables, placeKey, localMatrix } from '../world/placed.js';
 const SIZES = [ { id: 'p', label: 'Pequenos (até 4 m)', max: 4 }, { id: 'm', label: 'Médios (4 a 12 m)', max: 12 }, { id: 'g', label: 'Grandes (mais de 12 m)', max: Infinity } ];
 const fmt = ( v ) => v < 10 ? v.toFixed( 1 ).replace( '.', ',' ) : String( Math.round( v ) );
 const plain = ( s ) => s.normalize( 'NFD' ).replace( /\p{M}/gu, '' ).toLowerCase();
-const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', castro: 'Casa do castro', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha', gate: 'Pórtico', arch: 'Arco rústico' };
+const NAMES = { round: 'Casa redonda', long: 'Casa longa', hut: 'Cabana', granary: 'Celeiro', lookout: 'Torre de vigia', castro: 'Casa do castro', pen: 'Cercado', hay: 'Palheiro', well: 'Poço', cart: 'Carroça', rack: 'Varal', skep: 'Colmeia', wood: 'Lenha', gate: 'Pórtico', arch: 'Arco rústico', ruin: 'Ruína de pedra' };
 const MODES = [ 'translate', 'rotate', 'scale' ];
 const UNDO_MAX = 60;
 
@@ -562,9 +562,10 @@ export class ObjectEditor {
 				// the map's whole scatter of that species or style (the placed ones are groups here); the
 				// variants that share their instances with another item count only the hand-placed ones
 				const reg = placeables[ placeKey( { kind: item.kind, ...item.entry } ) ];
-				const shared = item.id === 'rock-tor-large' || item.id === 'birch-gold';
+				// (and the ones only ever placed by hand: the spruce, the faceted rocks)
+				const shared = [ 'rock-tor-large', 'birch-gold', 'rock-facet-large', 'rock-facet', 'rock-group', 'spruce' ].includes( item.id );
 				if ( reg && ! shared ) k += reg.chunk.count;
-				b.querySelector( '.have' ).textContent = shared ? ( k ? `${ k } posta${ k > 1 ? 's' : '' } à mão` : 'Nenhuma posta à mão' ) : `${ k.toLocaleString( 'pt-BR' ) } no mapa`;
+				b.querySelector( '.have' ).textContent = shared ? `Postos à mão: ${ k }` : `${ k.toLocaleString( 'pt-BR' ) } no mapa`;
 			} else b.querySelector( '.have' ).textContent = k ? `${ k } na vila` : 'Nenhum na vila';
 		}
 	}

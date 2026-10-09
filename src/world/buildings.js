@@ -61,6 +61,63 @@ function well( B, x, y, z ) {
 	B.add( 'wood', post( 0.14, 0.26 ), M( x, y + 0.45, z ) );
 }
 
+// A ruined stone house, after offroad's hut (https://github.com/alexadrerui/offroad, src/world/props.js
+// buildHut; MIT License, Copyright (c) 2026 Arz-Gev): dry-stone walls laid in 0.55 m segments whose tops
+// crumble, a doorway in the front and a window at the back, the east wall down to rubble, the west
+// gable rising to the ridge with the chimney stack beside it, one roof beam still across and one fallen
+// inside, stones scattered around. 6.4 x 4.6 m; rot turns it (its front faces local +z). The village's
+// stone and timber materials (no new shader). Only placed from the editor's library.
+function ruin( B, hf, x, z, rot, rnd ) {
+	const base = hf.heightAt( x, z );
+	const cos = Math.cos( rot ), sin = Math.sin( rot );
+	const toWorld = ( lx, lz ) => [ x + lx * cos + lz * sin, z - lx * sin + lz * cos ];
+	const stone = ( lx, lz, w, h, d, y0 = 0, tilt = 0, mat = 'stone' ) => {
+		if ( h < 0.08 ) return;
+		const g = box( w, h, d );
+		if ( tilt ) g.rotateZ( tilt );
+		const [ wx, wz ] = toWorld( lx, lz );
+		const gy = Math.min( hf.heightAt( wx, wz ), base ) - 0.15;
+		B.add( mat, g, M( wx, gy + y0, wz, rot ) );
+	};
+	const W = 6.4, D = 4.6, T = 0.5, SEG = 0.55;
+	// a wall along local x (front / back) or z (sides), segment by segment with a ruined top
+	const wall = ( x0, z0, x1, z1, hFn ) => {
+		const len = Math.hypot( x1 - x0, z1 - z0 ), n = Math.max( 1, Math.round( len / SEG ) ), along = x1 !== x0;
+		for ( let k = 0; k < n; k ++ ) {
+			const t = ( k + 0.5 ) / n, lx = x0 + ( x1 - x0 ) * t, lz = z0 + ( z1 - z0 ) * t;
+			const [ h0, h1 ] = hFn( t, lx, lz );
+			const sw = len / n + 0.02;
+			if ( h1 > h0 ) stone( lx, lz, along ? sw : T, h1 - h0, along ? T : sw, h0 );
+		}
+	};
+	const rough = () => ( rnd() - 0.5 ) * 0.35;
+	// front with a doorway, falling away towards the east corner
+	wall( - W / 2, D / 2, W / 2, D / 2, ( t, lx ) => Math.abs( lx + 0.6 ) < 0.55 ? [ 0, 0 ] : [ 0, Math.max( 0.3, 2.1 - Math.max( 0, t - 0.55 ) * 3.2 + rough() ) ] );
+	// back with a window
+	wall( - W / 2, - D / 2, W / 2, - D / 2, ( t, lx ) => Math.abs( lx - 0.8 ) < 0.5 ? [ 0, 0.95 ] : [ 0, 2.0 + rough() * 0.8 ] );
+	// west gable: rises to the ridge, partly collapsed
+	wall( - W / 2, - D / 2 + T / 2, - W / 2, D / 2 - T / 2, ( t ) => [ 0, Math.min( 2.1 + ( 1 - Math.abs( t - 0.5 ) * 2 ) * 1.4, t > 0.75 ? 2.0 : 9 ) + rough() * 0.5 ] );
+	// east wall: mostly down to rubble height
+	wall( W / 2, - D / 2 + T / 2, W / 2, D / 2 - T / 2, ( t ) => [ 0, 0.5 + t * 0.7 + rough() ] );
+	// chimney stack at the west gable
+	stone( - W / 2 - 0.15, - 0.9, 0.9, 4.1, 0.9, 0, 0, 'stoneDark' );
+	// rubble: fallen stones around the low walls
+	for ( let k = 0; k < 26; k ++ ) {
+		const a = rnd() * Math.PI * 2, r = 2.5 + rnd() * 2.8;
+		const lx = Math.cos( a ) * r * 1.3 + 1.2, lz = Math.sin( a ) * r;
+		if ( Math.abs( lx ) < W / 2 - 0.4 && Math.abs( lz ) < D / 2 - 0.4 ) continue;
+		const sz = 0.2 + rnd() * 0.25;
+		stone( lx, lz, sz * 1.4, sz, sz, - 0.05, ( rnd() - 0.5 ) * 0.6, rnd() < 0.4 ? 'stoneDark' : 'stone' );
+	}
+	// roof beams: one still spanning the gable to the front wall, one fallen inside
+	const beamAt = ( lx0, ly0, lz0, lx1, ly1, lz1, r ) => {
+		const [ ax, az ] = toWorld( lx0, lz0 ), [ bx, bz ] = toWorld( lx1, lz1 );
+		B.add( 'woodPost', beam( V( ax, base + ly0, az ), V( bx, base + ly1, bz ), r ) );
+	};
+	beamAt( - W / 2 + 0.2, 3.3, 0, W / 2 - 0.6, 1.9, 0.1, 0.13 );
+	beamAt( - 1.4, 0.15, - 1.2, 1.6, 0.55, 0.9, 0.12 );
+}
+
 function oxCart( B, x, y, z, ry ) {
 	const L = new GeoBuilder();
 	L.add( 'wood', box( 1.4, 0.12, 2.4 ), M( 0, 0.75, 0 ) );
@@ -518,7 +575,7 @@ function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
 		} else if ( kind === 'prop' && entry0.type === 'pen' ) {
 			// pen() turns the other way round (u cos - v sin)
 			entry = { ...entry0, rot: ( entry0.rot || 0 ) - yaw, w: entry0.w * sc, d: entry0.d * sc }; yaw = 0; sc = 1;
-		} else if ( kind === 'prop' && ( entry0.type === 'cart' || entry0.type === 'rack' || entry0.type === 'wood' || entry0.type === 'gate' || entry0.type === 'arch' ) ) {
+		} else if ( kind === 'prop' && ( entry0.type === 'cart' || entry0.type === 'rack' || entry0.type === 'wood' || entry0.type === 'gate' || entry0.type === 'arch' || entry0.type === 'ruin' ) ) {
 			entry = { ...entry0, rot: ( entry0.rot || 0 ) + yaw }; yaw = 0;
 		}
 	}
@@ -552,6 +609,7 @@ function buildObject( kind, entry0, hf, stallRnd = null, stallIndex = 0 ) {
 		else if ( p.type === 'wood' ) woodpile( L, x, y, z, p.rot, 12 );
 		else if ( p.type === 'gate' ) entranceGate( L, hf, x, z, p.rot || 0 );
 		else if ( p.type === 'arch' ) rusticArch( L, hf, x, z, p.rot || 0 );
+		else if ( p.type === 'ruin' ) ruin( L, hf, x, z, p.rot || 0, mulberry32( ( p.seed || 1 ) * 4129 ) );
 	}
 	const anchor = V( x, hf.heightAt( x, z ), z );
 	let T = null;

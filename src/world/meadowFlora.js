@@ -12,6 +12,7 @@ import { mulberry32, makeSimplex, fbm, smoothstep as ss } from '../core/noise.js
 import { VILLAGE } from './layout.js';
 import { CH, natureAt } from './natureEdits.js';
 import { inLake, sampleMask } from './vegetation.js';
+import { placeables, addPlaced } from './placed.js';
 
 const UP = new THREE.Vector3( 0, 1, 0 );
 const FORWARD = new THREE.Vector3( 0, 0, 1 );
@@ -318,6 +319,14 @@ export function createMeadowFlora( app, density, vegetation ) {
 			}
 		}
 	}
+
+	// hand-placed flowers (the editor's library, world/placed.js): white tint as the scatter's, standing
+	// on the ground
+	const keys = [ 'daisy', 'buttercup', 'foxglove' ].map( ( k ) => {
+		placeables[ 'plant:flora_' + k ] = { chunk: species[ k ], tint: () => [ 1, 1, 1 ], lift: () => - 0.02 };
+		return 'plant:flora_' + k;
+	} );
+	addPlaced( app, keys );
 
 	for ( const s of Object.values( species ) ) { s.build(); group.add( s ); }
 	group.userData.counts = counts;

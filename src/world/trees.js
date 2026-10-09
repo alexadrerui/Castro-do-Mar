@@ -705,6 +705,65 @@ export function hollyBush( lod = 0, seed = 61 ) {
 	return b.build();
 }
 
+// Norway spruce (abeto, Picea abies), after offroad's forest (https://github.com/alexadrerui/offroad,
+// src/world/foliage.js buildSpruce; MIT License, Copyright (c) 2026 Arz-Gev): a straight bole tapering to
+// the tip with a slight lean, whorls of drooping branches every ~0.5 m, longest at the foot of the crown and
+// short at the top (a narrow cone), sprays of needles along each branch (leaf atlas tile 1, the pine's),
+// flat and facing up, thin branch sticks under them and crossed sprays at the leader. Not native to the
+// Galician coast: never scattered, only placed by hand from the editor's library (world/placed.js).
+// ~14 m tall at scale 1. lod 1: fewer whorls, no sticks, larger sprays.
+const SPRUCE_BARK = new THREE.Color( 0x45382d );
+
+export function spruceTree( lod = 0, seed = 81 ) {
+	const rand = mulberry32( seed );
+	const R = ( a, b ) => a + ( b - a ) * rand();
+	const H = 14;
+	const b = new Builder();
+	const lean = [ R( - 0.12, 0.12 ), R( - 0.12, 0.12 ) ];
+	const axis = ( t ) => new THREE.Vector3( lean[ 0 ] * t * t, H * t, lean[ 1 ] * t * t );
+	const flex = ( p ) => Math.min( 1, Math.hypot( p.x, p.z ) / 3 + Math.max( 0, p.y - H * 0.55 ) / ( H * 0.7 ) );
+	const radius = ( t ) => 0.03 + 0.24 * Math.pow( 1 - t, 1.2 ) * ( t < 0.05 ? 1.25 : 1 );
+	const segs = lod ? 3 : 6;
+	for ( let i = 0; i < segs; i ++ ) addBranch( b, axis( i / segs ), axis( ( i + 1 ) / segs ), radius( i / segs ), radius( ( i + 1 ) / segs ), lod ? 4 : 6, 1, SPRUCE_BARK, H, flex );
+
+	const crownBase = H * R( 0.12, 0.2 ), maxR = H * 0.21;
+	const crownC = new THREE.Vector3( 0, ( crownBase + H ) / 2, 0 );
+	const crownR = new THREE.Vector3( maxR + 0.5, ( H - crownBase ) / 2 + 0.5, maxR + 0.5 );
+	const cards = [];
+	for ( let h = crownBase; h < H - 0.6; h += lod ? R( 0.75, 1.0 ) : R( 0.42, 0.62 ) ) {
+		const t = ( h - crownBase ) / ( H - crownBase );
+		const len = maxR * Math.pow( 1 - t, 0.85 ) * R( 0.85, 1.1 ) + 0.35;
+		const n = t > 0.85 ? 4 : Math.floor( R( 5, 7.99 ) );
+		const a0 = R( 0, Math.PI * 2 );
+		const base = axis( h / H );
+		for ( let k = 0; k < n; k ++ ) {
+			const a = a0 + k / n * Math.PI * 2 + R( - 0.25, 0.25 );
+			const droop = - 0.25 - 0.35 * ( 1 - t ) + R( - 0.1, 0.1 );
+			const dir = new THREE.Vector3( Math.cos( a ), droop, Math.sin( a ) ).normalize();
+			if ( ! lod && len > 1 && k % 2 === 0 ) addBranch( b, base, base.clone().addScaledVector( dir, len * 0.8 ), 0.035, 0.012, 3, 1, SPRUCE_BARK, H, flex );
+			// two or three sprays along the branch, flat, facing up and a little out
+			const nC = lod ? 1 : len > 1.6 ? 3 : 2;
+			for ( let c = 0; c < nC; c ++ ) {
+				const u = lod ? 0.35 : c / nC;
+				const cl = ( len * ( 1 - u * 0.55 ) * 0.75 + 0.35 ) * ( lod ? 1.45 : 1 );
+				const center = base.clone().addScaledVector( dir, len * u * 0.85 + cl * 0.35 );
+				const normal = new THREE.Vector3( R( - 0.3, 0.3 ), 1, R( - 0.3, 0.3 ) ).addScaledVector( dir, 0.35 ).normalize();
+				cards.push( { center, size: cl, normal, yaw: Math.atan2( dir.z, dir.x ) + R( - 0.3, 0.3 ), lobeC: base, lobeR: 1, crownC, crownR, flexFn: flex, tile: 1, clumpC: base, clumpR: Math.max( 0.9, len * 0.6 ) } );
+			}
+		}
+	}
+	// the leader: crossed upright sprays
+	for ( let k = 0; k < 3; k ++ ) {
+		const a = k / 3 * Math.PI;
+		cards.push( { center: axis( ( H - 1.0 ) / H ), size: 1.8, normal: new THREE.Vector3( Math.cos( a ), 0, Math.sin( a ) ), yaw: Math.PI / 2, lobeC: axis( 1 ), lobeR: 1.2, crownC, crownR, flexFn: flex, tile: 1 } );
+	}
+	emitCards( b, cards, crownC );
+	const g = b.build();
+	g.translate( 0, - 0.3, 0 ); // the foot sinks into sloping ground
+	g.computeBoundingSphere();
+	return g;
+}
+
 // Ivy (hedra, Hedera helix) on the rustic archway (world/gate.js rusticArch; ref/ref_entrada.jpg):
 // curtains of broad-leaf cards hanging from the main beam, thicker on the right (as one comes in:
 // local -x), a mat on top of the beams and a climber up the right post. In the arch's frame (x across, y up from the ground

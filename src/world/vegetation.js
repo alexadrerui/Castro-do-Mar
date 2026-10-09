@@ -7,7 +7,7 @@ import { makeFoliageAtlas } from '../core/texgen.js';
 import { ChunkedInstances } from '../core/chunked.js';
 import { mineLedgeSpots } from './fort.js';
 import { placeables, addPlaced } from './placed.js';
-import { oakTree, pineTree, birchTree, shrubBush, bracken, deadTree, fallenLog, hollyBush, ivyGeometry, OAK_BARK, PINE_BARK } from './trees.js';
+import { oakTree, pineTree, birchTree, shrubBush, bracken, deadTree, fallenLog, hollyBush, ivyGeometry, spruceTree, OAK_BARK, PINE_BARK } from './trees.js';
 import { LeafAtlas } from './leafAtlas.js';
 import { ImpostorAtlas } from './impostors.js';
 import { cacheGet, cachePut, hashSources } from '../core/cache.js';
@@ -175,7 +175,9 @@ export function setLakeTest( fn ) { lakeTest = fn; }
 export const inLake = ( x, z ) => !! lakeTest && lakeTest( x, z );
 
 // Ground radius of a stall or prop (m), before the clearance's margin.
-const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8, gate: 9.5, arch: 2.8 };
+// the spruce's instances are built in the editor, or when the world edits hold a placed one
+const SPRUCE_WANTED = ( app ) => new URLSearchParams( location.search ).has( 'edit' ) || ( app.worldEdits?.added ?? [] ).some( ( a ) => a?.kind === 'plant' && a.species === 'spruce' );
+const PROP_R = { well: 1.0, cart: 1.6, rack: 1.9, skep: 0.45, wood: 0.8, gate: 9.5, arch: 2.8, ruin: 5.5 };
 const propR = ( p ) => ( p.type === 'pen' ? Math.hypot( p.w || 6, p.d || 5 ) / 2 : p.type === 'hay' ? p.r || 1.2 : PROP_R[ p.type ] ?? 1.5 ) * ( p.scale || 1 );
 let editedList = null;
 
@@ -288,7 +290,11 @@ export async function createVegetation( app, progress ) {
 		log: new ChunkedInstances( { name: 'log', hi: fallenLog( 0, 51 ), lo: fallenLog( 1, 51 ), material: canopy, tile: 780, lodDistance: 70, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 320 } ),
 		holly: new ChunkedInstances( { name: 'holly', hi: hollyBush( 0, 61 ), lo: hollyBush( 1, 61 ), material: canopy, tile: 780, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		// the ivy on the rustic archways (world/gate.js), one per arch on its frame
-		ivy: new ChunkedInstances( { name: 'ivy', hi: ivyGeometry( 0, 71, ARCH.half, ARCH.beamY ), lo: ivyGeometry( 1, 71, ARCH.half, ARCH.beamY ), material: canopy, tile: 260, lodDistance: 90, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 400 } )
+		ivy: new ChunkedInstances( { name: 'ivy', hi: ivyGeometry( 0, 71, ARCH.half, ARCH.beamY ), lo: ivyGeometry( 1, 71, ARCH.half, ARCH.beamY ), material: canopy, tile: 260, lodDistance: 90, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 400 } ),
+		// the spruce (offroad's, trees.js): never scattered, only placed by hand from the editor's library
+		// (world/placed.js); built only in the editor or when one was placed (same material and layout:
+		// no new shader either way)
+		...( SPRUCE_WANTED( app ) ? { spruce: new ChunkedInstances( { name: 'spruce', hi: spruceTree( 0, 81 ), lo: spruceTree( 1, 81 ), material: canopy, tile: 780, lodDistance: 150, shadowDistance: SHADOW_REACH } ) } : {} )
 	};
 	for ( const s of Object.values( species ) ) s.addAttribute( 'aTint', 3 );
 
@@ -300,6 +306,7 @@ export async function createVegetation( app, progress ) {
 		fern: [ 0x506a26, 0x5c722a, 0x4a6224, 0x6a7230 ], // bracken: fresh green, some yellowing
 		holly: [ 0x22341c, 0x283a1e, 0x1f3020, 0x2c3f22 ], // holly: very dark, glossy greens
 		ivy: [ 0x416c2b ], // ivy: deep green (lighter than the holly: it hangs in the open)
+		spruce: [ 0x253a22, 0x2b4126, 0x21341f, 0x2f4429 ], // spruce: dark, bluish greens
 		snag: [ 0x808080 ], log: [ 0x808080 ] // bark only (the tint colours leaves)
 	};
 	const tmpC = new THREE.Color();
@@ -517,14 +524,16 @@ export async function createVegetation( app, progress ) {
 
 	// hand-placed ones (the object editor's library, world/placed.js): what each is drawn with, then the
 	// saved ones into the instances (in the editor they are groups of their own instead)
-	for ( const sp of [ 'oak', 'pine', 'birch', 'gold', 'snag', 'log', 'holly', 'bush', 'fern' ] ) {
+	const placedKeys = [];
+	for ( const sp of [ 'oak', 'pine', 'birch', 'gold', 'snag', 'log', 'holly', 'bush', 'fern', ...( species.spruce ? [ 'spruce' ] : [] ) ] ) {
+		placedKeys.push( 'plant:' + sp );
 		placeables[ 'plant:' + sp ] = {
 			chunk: species[ sp === 'gold' ? 'birch' : sp ],
 			tint: ( seed ) => sp === 'gold' ? [ 0.47, 0.32, 0.045 ] : tint( sp, mulberry32( seed ) ),
 			lift: ( s ) => sp === 'log' ? 0.24 * s : - 0.25 * s // the log lies on the ground; the rest stand sunk a little
 		};
 	}
-	addPlaced( app, 'plant' );
+	addPlaced( app, placedKeys );
 
 	for ( const s of Object.values( species ) ) { s.build(); group.add( s ); }
 	app.onFrame.push( () => { for ( const s of Object.values( species ) ) s.update( app.camera ); } );

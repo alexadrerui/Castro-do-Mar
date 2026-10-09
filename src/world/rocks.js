@@ -16,6 +16,7 @@ import { getDetailTexture } from './granite/detail.js';
 import { createGraniteMaterial } from './granite/shading.js';
 import { cloudShade } from './cloudShadow.js';
 import { placeables, addPlaced } from './placed.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const nR = makeSimplex( 3131 );
 
@@ -109,6 +110,17 @@ export function createRocks( app, progress ) {
 	const shore = [ chunked( 'shore0', 'boulder', 111 ), chunked( 'shore1', 'tor', 112 ) ];
 	const talus = [ chunked( 'talus0', 'block', 121 ), chunked( 'talus1', 'slab', 122 ) ];
 	const variants = [ ...tors, ...shore, ...talus ];
+	// offroad's faceted boulders (granite/geometry.js style 'facet'), alone or as a cluster of loose stones
+	// (its rocks in groups along the tracks): only placed by hand from the editor's library, no tiles
+	// otherwise; same material (no new shader)
+	const cluster = ( subdiv ) => mergeGeometries( [ [ 0, 0, 0, 1 ], [ 1.1, 0, 0.5, 0.55 ], [ - 0.8, 0, 0.9, 0.45 ], [ 0.3, 0, - 1.1, 0.5 ], [ - 1.2, 0, - 0.5, 0.35 ] ].map( ( [ x, y, z, s ], i ) => {
+		const g = graniteGeometry( 'facet', 141 + i, subdiv );
+		g.scale( s, s, s ).rotateY( i * 1.7 ).translate( x, y + 0.1 * s, z );
+		return g;
+	} ) );
+	const facetGroup = new ChunkedInstances( { name: 'facetGroup', hi: cluster( 2 ), lo: cluster( 1 ), material: mat, materialLo: matLo, tile: 520, lodDistance: 100, shadowDistance: SHADOW_REACH, layer: 1, reflect: false } );
+	facetGroup.addAttribute( 'aTint', 3 );
+	const handOnly = [ chunked( 'facet0', 'facet', 131 ), facetGroup ];
 	const gravel = [];
 	for ( let v = 0; v < 2; v ++ ) {
 		const s = new ChunkedInstances( { name: 'gravel' + v, hi: pebbleGeometry( 200 + v ), material: matLo, tile: 120, castShadow: false, layer: 1, maxDistance: 110, reflect: false } );
@@ -289,11 +301,11 @@ export function createRocks( app, progress ) {
 	}
 
 	// hand-placed rocks (world/placed.js): by style, sunk a quarter of their size as the scatter's
-	for ( const s of variants ) placeables[ 'rock:' + s.name ] = { chunk: s, lo: true, tint: ( seed ) => tint( mulberry32( seed ) ), lift: ( size ) => - 0.25 * size };
-	addPlaced( app, 'rock' );
+	for ( const s of [ ...variants, ...handOnly ] ) placeables[ 'rock:' + s.name ] = { chunk: s, lo: true, tint: ( seed ) => tint( mulberry32( seed ) ), lift: ( size ) => - 0.25 * size };
+	addPlaced( app, [ ...variants, ...handOnly ].map( ( s ) => 'rock:' + s.name ) );
 
-	for ( const s of [ ...variants, ...gravel ] ) { s.build(); group.add( s ); }
-	app.onFrame.push( () => { for ( const s of [ ...variants, ...gravel ] ) s.update( app.camera ); } );
+	for ( const s of [ ...variants, ...gravel, ...handOnly ] ) { s.build(); group.add( s ); }
+	app.onFrame.push( () => { for ( const s of [ ...variants, ...gravel, ...handOnly ] ) s.update( app.camera ); } );
 	group.userData.counts = counts;
 	progress?.( 1 );
 	return group;
