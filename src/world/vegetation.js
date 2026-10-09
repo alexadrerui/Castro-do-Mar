@@ -274,16 +274,18 @@ export async function createVegetation( app, progress ) {
 	const species = {
 		oak: new ChunkedInstances( { name: 'oak', hi: oakHi, lo: oakTree( 1, 11 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH, impostor: oakImpostor, impostorDistance: 320 } ),
 		pine: new ChunkedInstances( { name: 'pine', hi: pineHi, lo: pineTree( 1, 12 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH, impostor: pineImpostor, impostorDistance: 320 } ),
-		// no impostor: the birches are few (~2.5% of the trees) and their lo LOD is cheap far away; one
+		// no impostor: the birches are few (~2.5% of the trees) and their lo LOD is cheap far away (520 m tiles: sparse, fewer draw calls); one
 		// bake less at the load and 3 pipelines less (the browser's shader cache is at its limit)
-		birch: new ChunkedInstances( { name: 'birch', hi: birchTree( 0, 13 ), lo: birchTree( 1, 13 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
+		birch: new ChunkedInstances( { name: 'birch', hi: birchTree( 0, 13 ), lo: birchTree( 1, 13 ), material: canopy, tile: 520, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
 		bush: new ChunkedInstances( { name: 'bush', hi: shrubBush( 0, 14 ), lo: shrubBush( 1, 14 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		fern: new ChunkedInstances( { name: 'fern', hi: bracken( 0, 15 ), lo: bracken( 1, 15 ), material: fernMat, tile: 260, lodDistance: 90, shadowDistance: 0, castShadow: false, layer: 1, reflect: false, maxDistance: 260 } ),
 		// the woodland floor after the offroad forest (trees.js): snags, fallen logs, holly; same
-		// material and vertex layout as the rest (no new shader)
-		snag: new ChunkedInstances( { name: 'snag', hi: deadTree( 0, 41 ), lo: deadTree( 1, 41 ), material: canopy, tile: 260, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
-		log: new ChunkedInstances( { name: 'log', hi: fallenLog( 0, 51 ), lo: fallenLog( 1, 51 ), material: canopy, tile: 260, lodDistance: 70, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 320 } ),
-		holly: new ChunkedInstances( { name: 'holly', hi: hollyBush( 0, 61 ), lo: hollyBush( 1, 61 ), material: canopy, tile: 260, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
+		// material and vertex layout as the rest (no new shader). Sparse (a few hundred over the map):
+		// 780 m tiles, or each plant stood nearly in a tile of its own and cost a draw call per pass
+		// (83 calls in the panorama, ~10% of the frame's; the CPU, not the GPU, sets the frame time)
+		snag: new ChunkedInstances( { name: 'snag', hi: deadTree( 0, 41 ), lo: deadTree( 1, 41 ), material: canopy, tile: 780, lodDistance: 150, shadowDistance: SHADOW_REACH } ),
+		log: new ChunkedInstances( { name: 'log', hi: fallenLog( 0, 51 ), lo: fallenLog( 1, 51 ), material: canopy, tile: 780, lodDistance: 70, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 320 } ),
+		holly: new ChunkedInstances( { name: 'holly', hi: hollyBush( 0, 61 ), lo: hollyBush( 1, 61 ), material: canopy, tile: 780, lodDistance: 110, shadowDistance: 0, castShadow: false, layer: 1, reflect: false } ),
 		// the ivy on the rustic archways (world/gate.js), one per arch on its frame
 		ivy: new ChunkedInstances( { name: 'ivy', hi: ivyGeometry( 0, 71, ARCH.half, ARCH.beamY ), lo: ivyGeometry( 1, 71, ARCH.half, ARCH.beamY ), material: canopy, tile: 260, lodDistance: 90, shadowDistance: SHADOW_REACH, layer: 1, reflect: false, maxDistance: 400 } )
 	};

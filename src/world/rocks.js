@@ -100,7 +100,7 @@ export function createRocks( app, progress ) {
 	// one style per setting: rounded tor blocks on the hills, boulders on the shore, angular
 	// blocks in the talus under the cliff
 	const chunked = ( name, style, seed ) => {
-		const s = new ChunkedInstances( { name, hi: graniteGeometry( style, seed, 2 ), lo: graniteGeometry( style, seed, 1 ), material: mat, materialLo: matLo, tile: 260, lodDistance: 100, shadowDistance: SHADOW_REACH, layer: 1, reflect: false } );
+		const s = new ChunkedInstances( { name, hi: graniteGeometry( style, seed, 2 ), lo: graniteGeometry( style, seed, 1 ), material: mat, materialLo: matLo, tile: 520, lodDistance: 100, shadowDistance: SHADOW_REACH, layer: 1, reflect: false } );
 		s.addAttribute( 'aTint', 3 );
 		return s;
 	};
