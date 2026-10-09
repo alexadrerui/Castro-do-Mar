@@ -22,7 +22,8 @@ import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { shadowSphere } from '../core/chunked.js';
 
 const MAX_FAR = 900;       // m: shadows out to here
-const CASCADES = 3;
+// 2 since 08/10/2026 (was 3): one shadow pass less (~1/3 of the shadow draw calls); ?cascades=3 for A/B
+const CASCADES = Math.min( 4, Math.max( 1, Number( new URLSearchParams( location.search ).get( 'cascades' ) ) || 2 ) );
 const MAP = 2048;          // per cascade
 const MARGIN = 400;        // m behind each box along the light: casters up the hill from it
 const NORMAL_BIAS = 0.85;  // texels

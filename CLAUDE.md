@@ -82,7 +82,7 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
 - Servidor para o que precisa persistir sem ninguém na sala (recados, placar, galeria).
 - Inspector do three atrás de `?inspector`; laço de atualização com prioridades; revelação na entrada (anel).
 - Profundidade de campo em meia resolução.
-- Sombras: mapa 4096 → 2048 ou 2 cascatas; menos casters.
+- Sombras: menos casters (já são 2 cascatas de 2048).
 - Vegetação de perto num conjunto em volta da câmera em vez de tiles (menos chamadas).
 - Primeira visita sem cache de shaders (pré-compilação a frio ~7,85 s, pronto a frio ~15,8 s): sobram materiais únicos (terreno, aves, água, fundo do mar, ~0,3–0,6 s cada).
 - Ainda não conferido: o rastro da lua na água. Um objeto original removido no editor só volta editando o JSON.

@@ -3,7 +3,7 @@
 // main loop does (main.js placeShadow).
 // The shadows are switched on (they are off by default since 03/10/2026); --hour= sets the clock (17 for
 // the hills' long shadows over the bay, view "bay").
-//   node tools/shadows.mjs [prefix] [--hour=15.53]   ->  shots/<prefix>_{village,slope,wood,aerial,bay}.png
+//   node tools/shadows.mjs [prefix] [--hour=15.53] [--params=cascades=3]   ->  shots/<prefix>_{village,slope,wood,aerial,bay}.png
 // A still-frame test of the flicker does not work: the water and the grass move with the clock and
 // their change hides a shadow shifted by a texel (old and new snapping measured the same).
 import puppeteer from 'puppeteer-core';
@@ -19,7 +19,8 @@ const page = await browser.newPage();
 const errors = [];
 page.on( 'console', ( m ) => { if ( m.type() === 'error' ) errors.push( m.text().slice( 0, 300 ) ); } );
 page.on( 'pageerror', ( e ) => errors.push( 'pageerror: ' + String( e ).slice( 0, 300 ) ) );
-await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
+const extra = ( process.argv.find( ( a ) => a.startsWith( '--params=' ) ) || '' ).slice( 9 );
+await page.goto( 'http://localhost:5190/?auto' + ( extra ? '&' + extra : '' ), { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app?.ready, { timeout: 300000, polling: 250 } );
 const hourArg = process.argv.find( ( a ) => a.startsWith( '--hour=' ) );
 await page.evaluate( ( h ) => { const a = window.__app; a.dynamicRes = false; a.setFocus( false ); a.setShadows( true ); if ( h !== null ) { a.clock.set( h ); a.sky.buildEnv(); } }, hourArg ? + hourArg.slice( 7 ) : null );

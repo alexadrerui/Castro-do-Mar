@@ -1,9 +1,11 @@
-// CPU profile of the render loop: node tools/cpuprof.mjs [view] [frames]
+// CPU profile of the render loop: node tools/cpuprof.mjs [view] [frames] [--params=a=1&b=2]
 // Prints the functions with the most self time (aggregated by name+file).
 import puppeteer from 'puppeteer-core';
 
-const view = Number( process.argv[ 2 ] || 0 );
-const frames = Number( process.argv[ 3 ] || 60 );
+const pos = process.argv.slice( 2 ).filter( ( a ) => ! a.startsWith( '--' ) );
+const view = Number( pos[ 0 ] || 0 );
+const frames = Number( pos[ 1 ] || 60 );
+const extra = ( process.argv.find( ( a ) => a.startsWith( '--params=' ) ) || '' ).slice( 9 );
 const browser = await puppeteer.launch( {
 	executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
 	headless: 'new', protocolTimeout: 900000,
@@ -11,7 +13,7 @@ const browser = await puppeteer.launch( {
 	defaultViewport: { width: 1600, height: 900 }
 } );
 const page = await browser.newPage();
-await page.goto( 'http://localhost:5190/?auto', { waitUntil: 'domcontentloaded' } );
+await page.goto( 'http://localhost:5190/?auto' + ( extra ? '&' + extra : '' ), { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 1000 } );
 await page.evaluate( async ( view ) => {
 	const a = window.__app; a.dynamicRes = false; a.setView( view );
