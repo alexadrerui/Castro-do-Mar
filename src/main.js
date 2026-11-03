@@ -747,6 +747,10 @@ async function main() {
 	// with a capture they were drawn with the mirrored camera, upside down over the bay (every frame
 	// with ?reflectms=0).
 	app.renderFrame = () => {
+		// the canvas: three r187's compileAsync() re-applies the render target current when it was called
+		// at each of its yields, so the precompile (main.js, on the reflection's target) left that target
+		// current after it, and every frame drew into it (a black screen); also while a compile still runs
+		renderer.setRenderTarget( null );
 		const w = app.water;
 		if ( w.mesh.visible && w.reflector.reflector.updateBeforeType !== THREE.NodeUpdateType.NONE ) w.reflection?.captureBefore( { renderer, scene, camera, material: w.material } );
 		// the clouds' shadow map (world/cloudShadow.js), read by the ground and by the clouds' pass
@@ -839,11 +843,11 @@ async function main() {
 		// first frame rebuilt every shader again (~6 s of freeze after the loader).
 		// 1. probe frame with an empty scene (only the water, so the reflection runs too):
 		//    records the call depth of each render target.
-		const contexts = renderer._renderContexts, getContext = contexts.get; // three.js r186 internals
+		const contexts = renderer._renderContexts, getContext = contexts.get; // three.js r187 internals: get( rt, mrt, depth, camera )
 		const depthOf = new Map();
 		const hidden = scene.children.filter( ( o ) => o.visible && ! o.isLight && o !== app.water.mesh );
 		hidden.forEach( ( o ) => { o.visible = false; } );
-		contexts.get = ( t, m, d ) => { if ( t && ! depthOf.has( t ) ) depthOf.set( t, d ); return getContext.call( contexts, t, m, d ); };
+		contexts.get = ( t, m, d, c ) => { if ( t && ! depthOf.has( t ) ) depthOf.set( t, d ); return getContext.call( contexts, t, m, d, c ); };
 		try { app.renderFrame(); } finally {
 			contexts.get = getContext;
 			hidden.forEach( ( o ) => { o.visible = true; } );
@@ -853,7 +857,7 @@ async function main() {
 			const depth = depthOf.get( rt );
 			if ( depth === undefined ) console.warn( 'precompile: render target not seen in the probe frame' );
 			const prevRT = renderer.getRenderTarget(), prevMRT = renderer.getMRT();
-			contexts.get = ( t, m, d ) => getContext.call( contexts, t, m, depth ?? d );
+			contexts.get = ( t, m, d, c ) => getContext.call( contexts, t, m, depth ?? d, c );
 			renderer.setRenderTarget( rt ); renderer.setMRT( mrt );
 			// the lights / environment / fog key is cached per render call (info.calls), which
 			// compileAsync() does not advance: without this, the second compile reused the key
@@ -890,7 +894,7 @@ async function main() {
 		// never block the loader forever (hidden tabs throttle the GPU queue)
 		const t0 = performance.now();
 		let compiled = false;
-		const all = compiles().then( () => { compiled = true; console.info( 'precompile done (ms)', Math.round( performance.now() - t0 ) ); } );
+		const all = compiles().then( () => { compiled = true; renderer.setRenderTarget( null ); console.info( 'precompile done (ms)', Math.round( performance.now() - t0 ) ); } );
 		await Promise.race( [ all, new Promise( ( r ) => setTimeout( r, 12000 ) ) ] );
 		app.shadows.enableLayer( 1 );
 		// and what only shows under the water (marine snow, the surface seen from below, the water's

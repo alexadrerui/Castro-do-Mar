@@ -52,6 +52,8 @@ Movido do CLAUDE.md em 08/10/2026 (texto sem alterações). O CLAUDE.md guarda s
 Ferramentas: `tools/perf.mjs` (tempo de GPU por camada, via timestamp com `?perf`), `tools/cpuprof.mjs` (perfil de CPU do loop),
 `tools/leak.mjs` (cresce shader/pipeline?), `tools/resprobe.mjs` (frame × resolução × recursos) e `tools/fps.mjs` (janela real;
 falha se a janela ficar atrás de outras, porque o Edge pausa o rAF).
+- [x] **three r187** (03/11/2026, branch `three-r187`; vite 8.3.5). `CloudHistory` estende `Node` (o `TempNode` foi descontinuado). `RenderContexts.get` ganhou o argumento `camera`, que o desvio da pré-compilação agora repassa. O `compileAsync` passou a compilar em paralelo e a reaplicar, a cada pausa, o render target ativo quando foi chamado: a pré-compilação do reflexo deixava o alvo dele ativo e a tela saía preta (o `app.renderFrame` começa com `setRenderTarget( null )`). `verify` OK a frio e com cache, sem regravar o baseline: as nuvens do `SkyMesh` e o PMREM não mudaram a imagem. Pré-compilação a frio 5,95 s (era ~7,85), pronto a frio 15,4 s, com cache 5,2 s; 95 pipelines, 0 depois do `ready`; WebGL 2 OK.
+  - Meshlets (`MeshletDrawingPipeline`, novo na r187; a demo do canyon tem ~2 bi de triângulos, ~8,3 M únicos): não adotado. O gargalo aqui são pipelines e chamadas, não triângulos; preparar os clusters leva 16–21 s sem cache; o vento no `positionNode` e as instâncias `iM*` não batem com os limites dos clusters. Candidato futuro, isolado atrás de `?meshlets`: pedras e granito (estáticos e repetidos).
 
 Feito:
 - [x] **Causa principal:** instâncias com ≤ 1024 matrizes usavam o caminho de uniform buffer, que dá nome único por objeto e

@@ -1,6 +1,6 @@
 # Castro do Mar — notas para o Claude
 
-Recriação procedural (three.js r186, WebGPU + TSL) da vila celta das imagens em `ref/`.
+Recriação procedural (three.js r187, WebGPU + TSL) da vila celta das imagens em `ref/`.
 Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é procedural.
 
 ## Rodar e verificar
@@ -39,7 +39,8 @@ Idioma do usuário: português. Todo o conteúdo (terreno, texturas, casas) é p
   - Depois compila para o pass da cena e em seguida para o reflexo, nessa ordem (a ordem inversa deixou o céu branco). As duas compilações não podem rodar ao mesmo tempo, porque compartilham o `lightsNode`.
   - `renderer.info.calls ++` antes de cada compilação: a chave de luzes/ambiente/névoa fica em cache por `info.calls`.
   - Storage buffers precisam ser enviados antes da pré-compilação (ex.: `birds.commit()` logo após criar o `BirdBatch`): um buffer nunca enviado deixava o pré-compile da cena pendente até o limite de 12 s.
-  - Usa internos do r186 (`renderer._renderContexts.get`); conferir ao atualizar o three. O console mostra `first frame (ms)`: se voltar a passar de ~0,5 s, a pré-compilação deixou de bater.
+  - Usa internos da r187 (`renderer._renderContexts.get( rt, mrt, depth, camera )`; o desvio repassa todos os argumentos); conferir ao atualizar o three.
+  - Na r187, o `compileAsync` reaplica, a cada pausa, o render target ativo quando foi chamado: depois da pré-compilação (feita no alvo do reflexo) esse alvo ficava ativo e todo quadro desenhava nele (tela preta). O `app.renderFrame` começa com `setRenderTarget( null )`. O console mostra `first frame (ms)`: se voltar a passar de ~0,5 s, a pré-compilação deixou de bater.
 - **Layers:** 1 = props que não entram no reflexo; 2 = objetos que o reflexo da água vê; 3 = cópias leves (`src/core/proxies.js`), vistas só pelo reflexo e pela sombra do sol.
 - **Cópias leves (`proxies.js`):** os materiais procedurais de casas, forte e mina (`materials.js`, rocha do forte) eram compilados três vezes: cena, reflexo e sombra. O passe de sombra mantém todo o grafo de cor só para ler o alfa. Agora cada malha cujo material tem `userData.proxyColor` fica só na cena (sem sombra, fora da layer 2), e um filho com a mesma geometria e cor lisa num uniform (um shader para todas) aparece no reflexo e projeta a sombra. Material procedural novo: defina `proxyColor` (ver `proxyTone`).
 - **Limite do WebGPU:** 8 vertex buffers por pipeline; empacote atributos (ex.: `aux` vec4 na vegetação).

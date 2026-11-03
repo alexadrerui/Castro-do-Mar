@@ -394,7 +394,7 @@ export class Clouds {
 const _size = new THREE.Vector2(), _quad = new THREE.QuadMesh();
 let _state;
 
-class CloudHistory extends THREE.TempNode {
+class CloudHistory extends THREE.Node {
 
 	// frame: the march's jitter index, advanced here at every render (also with the clouds frozen, as
 	// tools/verify.mjs does: a still jitter shows the raw march's noise)
