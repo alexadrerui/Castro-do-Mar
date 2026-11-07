@@ -68,7 +68,7 @@ export function createSky( scene, renderer ) {
 	const hemi = new THREE.HemisphereLight( 0xbfd6f2, 0x3d4a26, 0.15 );
 	scene.add( hemi );
 
-	const _sunset = new THREE.Color( 1.0, 0.42, 0.18 );
+	const _sunset = new THREE.Color( 1.0, 0.42, 0.18 ), _cool = new THREE.Color( 0.82, 0.9, 1.0 );
 	const _hemiDay = new THREE.Color( 0xbfd6f2 ), _hemiNight = new THREE.Color( 0x8c96aa );
 	const _groundDay = new THREE.Color( 0x3d4a26 ), _groundNight = new THREE.Color( 0x1c1e23 );
 	const state = {
@@ -81,7 +81,15 @@ export function createSky( scene, renderer ) {
 		// light follows this (the directional light and its shadows, terrain, plants, water, clouds...),
 		// the sky and the screen-space sun shafts keep sunDir
 		lightDir: new THREE.Vector3(),
-		lightElevation: 21
+		lightElevation: 21,
+		// hand tuning (the #debug panel's "Luz do sol", ui/debug.js), applied in update() on top of the
+		// clock and the look: the defaults change nothing
+		tune: {
+			lock: false, elevation: 21, azimuth: 238, // the sun held at a position of its own (the clock keeps the hour)
+			azimuthOffset: 0,                         // the sun's arc turned (degrees)
+			sunGain: 1, sunTint: new THREE.Color( 1, 1, 1 ), warmth: 0, // warmth: -1 cooler .. +1 toward the sunset's orange
+			moonGain: 1, ambientGain: 1, envIntensity: 0.22
+		}
 	};
 
 	const pmrem = new THREE.PMREMGenerator( renderer );
@@ -94,8 +102,10 @@ export function createSky( scene, renderer ) {
 	let envRT = null;
 
 	function update( rebuildEnv = true ) {
+		const tune = state.tune;
+		if ( tune.lock ) { state.elevation = tune.elevation; state.azimuth = tune.azimuth; }
 		const phi = THREE.MathUtils.degToRad( 90 - state.elevation );
-		const theta = THREE.MathUtils.degToRad( state.azimuth );
+		const theta = THREE.MathUtils.degToRad( state.azimuth + tune.azimuthOffset );
 		// azimuth measured clockwise from north (-z) towards east (+x)
 		state.sunDir.set( Math.sin( phi ) * Math.sin( theta ), Math.cos( phi ), - Math.sin( phi ) * Math.cos( theta ) );
 		sky.sunPosition.value.copy( state.sunDir );
@@ -119,20 +129,24 @@ export function createSky( scene, renderer ) {
 			sun.color.setRGB( 1.0, 0.7 + 0.16 * warm, 0.46 + 0.2 * warm );
 			// the sunset (day and night, phase 6): deeper orange below 6 degrees (unchanged above)
 			sun.color.lerp( _sunset, look.sunset );
-			sun.intensity = sunI;
+			// the hand tuning: warmer / cooler, a tint, a gain
+			if ( tune.warmth > 0 ) sun.color.lerp( _sunset, tune.warmth );
+			else if ( tune.warmth < 0 ) sun.color.lerp( _cool, - tune.warmth );
+			sun.color.multiply( tune.sunTint );
+			sun.intensity = sunI * tune.sunGain;
 		} else {
 			// the moonlight (phase 5): the same light, from the moon (opposite the sun), cool white, rising
 			// with the night and the moon's height; both are 0 where the light switches (the sun at -1)
 			state.lightDir.copy( moon.dir.value );
 			state.lightElevation = - state.elevation;
 			sun.color.copy( moon.tint.value );
-			sun.intensity = MOON_MAX * THREE.MathUtils.smoothstep( n, 0.15, 1 ) * THREE.MathUtils.smoothstep( - state.elevation, - 1, 12 );
+			sun.intensity = MOON_MAX * THREE.MathUtils.smoothstep( n, 0.15, 1 ) * THREE.MathUtils.smoothstep( - state.elevation, - 1, 12 ) * tune.moonGain;
 		}
 		sun.position.copy( sun.target.position ).addScaledVector( state.lightDir, 700 );
 		state.sunIntensity = sun.intensity; // clear sky: world/weather.js dims it under rain
 		// the sky's light on the ground, with the twilight's (phase 6: the sky still lights the ground for
 		// a while after the sun has set): the look's `ambient`
-		hemi.intensity = look.ambient;
+		hemi.intensity = look.ambient * tune.ambientGain;
 		// the sky's light at night: a cool grey
 		hemi.color.copy( _hemiDay ).lerp( _hemiNight, n );
 		hemi.groundColor.copy( _groundDay ).lerp( _groundNight, n );
@@ -140,7 +154,7 @@ export function createSky( scene, renderer ) {
 		if ( rebuildEnv ) {
 			envRT = pmrem.fromScene( envScene, 0, 1, 2000, envRT ? { renderTarget: envRT } : {} );
 			scene.environment = envRT.texture;
-			scene.environmentIntensity = 0.22;
+			scene.environmentIntensity = tune.envIntensity;
 		}
 	}
 	update( false );

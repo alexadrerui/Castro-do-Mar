@@ -24,7 +24,8 @@ const browser = await puppeteer.launch( {
 const page = await browser.newPage();
 page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e ).slice( 0, 300 ) ) );
 page.on( 'console', ( m ) => { if ( m.type() === 'error' ) console.log( '[page]', m.text().slice( 0, 300 ) ); } );
-await page.goto( 'http://localhost:5190/?auto' + ( extra ? '&' + extra : '' ), { waitUntil: 'domcontentloaded' } );
+// the film grain changes every frame on purpose: left out (main.js app.grain)
+await page.goto( 'http://localhost:5190/?auto&grain=0' + ( extra ? '&' + extra : '' ), { waitUntil: 'domcontentloaded' } );
 await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 500 } );
 await page.evaluate( ( at, look ) => {
 	const a = window.__app;

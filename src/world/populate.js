@@ -4,6 +4,7 @@ import { createRocks, createRockMaterial } from './rocks.js';
 import { createBuildingMaterials } from './materials.js';
 import { surfaceTextures } from './surfaceBake.js';
 import { createBuildings } from './buildings.js';
+import { lampLight } from './lampLight.js';
 import { createFort } from './fort.js';
 import { addProxies } from '../core/proxies.js';
 import { createSmoke } from './smoke.js';
@@ -52,6 +53,9 @@ export async function populate( app, progress ) {
 	const fort = createFort( app, mats, createRockMaterial( 1.0, false, { tintScale: 0.62, jointScale: 0.22 }, surf ) );
 	app.scene.add( fort );
 	app.layers.fort = { label: 'Castro', object: fort };
+	// the lanterns' and lit windows' pools of light on the ground at night (world/lampLight.js)
+	app.lampLight = lampLight;
+	console.info( 'lamps', lampLight.bake( [ bld, fort ], mats.ember, app.hf ).length );
 	// cheap stand-ins in the water reflection and the shadow pass
 	addProxies( bld ); addProxies( fort );
 	// raycasts on them (bird perches now, the focus later) through a BVH

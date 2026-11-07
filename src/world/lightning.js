@@ -332,6 +332,8 @@ export class Lightning {
 		this.flashing = false;
 		this.count = 0;
 		this.paused = false; // QA: the strikes' clocks stand still (tools/lightning.mjs)
+		this.cloudFlash = null; // post/clouds.js flash uniforms (main.js): the clouds lit from inside
+		this.cloudPower = 40;   // the channel's light at the flash's peak
 	}
 
 	_slots() {
@@ -365,57 +367,149 @@ export class Lightning {
 		const dist = Math.hypot( x - cam.x, z - cam.z );
 		slot.fill( x, gy, z, dist < P.nearEffects, onWater );
 		slot.t.value = 0; slot.active = true; slot.warming = 0;
-		slot.event = this._flash( 1 / ( 1 + dist / 1500 ) );
+		// the channel inside the cloud, above the bolt's top, for the clouds' inner light
+		const top = gy + P.heightMax;
+		slot.event = this._flash( 1 / ( 1 + dist / 1500 ), 'cg', { a: new THREE.Vector3( x, top, z ), b: new THREE.Vector3( x + rnd( - 300, 300 ), top + rnd( 600, 1100 ), z + rnd( - 300, 300 ) ), reach: 450 } );
 		this.count ++;
 		if ( dist < 250 && ! motion.reduced ) this.shake = Math.max( this.shake, 0.014 * Math.pow( 1 - dist / 250, 2 ) + 0.002 );
-		this._thunder( dist );
+		this._thunder( dist, 1, x, z );
 		return { x, z, dist: Math.round( dist ) };
 	}
 
-	// a flash inside the clouds (no bolt), or the sky flash of a strike: scale 0..1
-	flash( scale = 0.45 ) { const e = this._flash( scale ); this._thunder( 1500 + Math.random() * 3000, 0.6 ); return e; }
+	// A flash inside the clouds, no bolt (idea from Nightscape, WeebLabs: only its description): kind 'deep'
+	// (in the core of a cloud: its light scatters through so much cloud that it only glows softly from
+	// within; slow, one or two swells) or 'ic' (between charge regions: a train of pulses wandering along
+	// a channel of 1-3 km); without a kind, two in three deep. Somewhere 1.5-4.5 km away, within ~50
+	// degrees of the view, at 1.1-1.8 km up.
+	flash( scale = 0.45, kind = Math.random() < 0.67 ? 'deep' : 'ic' ) {
+		const cam = this.camera, f = cam.getWorldDirection( this._fwd || ( this._fwd = new THREE.Vector3() ) );
+		const az = Math.atan2( f.z, f.x ) + rnd( - 0.9, 0.9 ), d = rnd( 1500, 4500 ), y = rnd( 1100, 1800 );
+		const x = cam.position.x + Math.cos( az ) * d, z = cam.position.z + Math.sin( az ) * d;
+		let src;
+		if ( kind === 'ic' ) {
+			const h = Math.random() * Math.PI * 2, l = rnd( 1000, 3000 ) / 2;
+			src = { a: new THREE.Vector3( x - Math.cos( h ) * l, y, z - Math.sin( h ) * l ), b: new THREE.Vector3( x + Math.cos( h ) * l, y + rnd( - 150, 150 ), z + Math.sin( h ) * l ), reach: 300, crawl: true };
+		} else src = { a: new THREE.Vector3( x, y - 150, z ), b: new THREE.Vector3( x, y + 250, z ), reach: 420 };
+		const e = this._flash( scale * ( kind === 'deep' ? 0.5 : 0.8 ), kind, src );
+		this._thunder( d, kind === 'deep' ? 0.5 : 0.7, x, z );
+		return e;
+	}
 
-	_flash( scale ) {
-		// the leader, the return stroke at strikeDur and 1-3 restrokes
-		const strokes = [ [ 0, 0.25 ], [ P.strikeDur, 1 ] ];
-		let at = P.strikeDur;
-		for ( let k = irnd( 1, 3 ); k > 0; k -- ) { at += rnd( 0.04, 0.22 ); strokes.push( [ at, rnd( 0.45, 1 ) ] ); }
-		const e = { t: 0, strokes, scale };
+	// strokes: [ at (s), amplitude, decay (1/s), hold (s, the continuing current) ]
+	_flash( scale, kind = 'cg', src = null ) {
+		const strokes = [];
+		if ( motion.reduced ) {
+			// reduced motion: one soft, slow swell, no rapid flicker
+			strokes.push( [ kind === 'cg' ? P.strikeDur : 0, kind === 'cg' ? 0.8 : 0.6, 2.5, 0.05 ] );
+		} else if ( kind === 'cg' ) {
+			// the stepped leader: faint flickers working down, then 1-4 return strokes tens of ms apart,
+			// a third of the time a flickering continuing current after one of them
+			for ( let at = 0; at < P.strikeDur - 0.01; at += rnd( 0.012, 0.03 ) ) strokes.push( [ at, rnd( 0.05, 0.16 ), 45, 0 ] );
+			strokes.push( [ P.strikeDur, 1, 11, 0 ] );
+			let at = P.strikeDur;
+			const n = irnd( 0, 3 ), cc = Math.random() < 0.33 ? irnd( 0, n ) : - 1;
+			if ( cc === 0 ) strokes[ strokes.length - 1 ][ 3 ] = rnd( 0.08, 0.25 );
+			for ( let k = 1; k <= n; k ++ ) { at += rnd( 0.03, 0.12 ); strokes.push( [ at, rnd( 0.45, 0.95 ), 11, k === cc ? rnd( 0.08, 0.25 ) : 0 ] ); }
+		} else if ( kind === 'deep' ) {
+			strokes.push( [ 0, rnd( 0.6, 1 ), 4.5, 0.04 ] );
+			if ( Math.random() < 0.5 ) strokes.push( [ rnd( 0.15, 0.4 ), rnd( 0.4, 0.8 ), 5, 0 ] );
+		} else {
+			let at = 0;
+			for ( let k = irnd( 4, 10 ); k > 0; k -- ) { strokes.push( [ at, rnd( 0.35, 1 ), 22, 0 ] ); at += rnd( 0.03, 0.09 ); }
+			if ( src ) src.span = at + 0.1;
+		}
+		const e = { t: 0, strokes, scale, kind, src };
 		this.events.push( e );
 		return e;
 	}
 
 	static glowAt( e ) {
 		let g = 0;
-		for ( const [ at, amp ] of e.strokes ) if ( e.t >= at ) g = Math.max( g, amp * Math.exp( - ( e.t - at ) * ( at === 0 ? 30 : 11 ) ) );
+		for ( const [ at, amp, decay, hold ] of e.strokes ) {
+			if ( e.t < at ) continue;
+			const dt = e.t - at;
+			// the continuing current flickers a little while it holds
+			const v = dt < hold ? amp * ( 0.8 + 0.2 * Math.sin( dt * 95 ) ) : amp * Math.exp( - ( dt - hold ) * decay );
+			g = Math.max( g, v );
+		}
 		return g;
 	}
 
-	_thunder( dist, gain = 1 ) {
+	// The thunder, at the speed of sound: rolling rumbles (brown noise under an envelope, lowpassed more
+	// with the distance) and, when close, a bright crack on its own path (it went through the rumble's
+	// lowpass and came out muffled). Each part normalised to a peak of 1, with gains that sum below 1 (close
+	// strikes peaked at 1.5: clipping), and faded out at its end (a close rumble used to stop at a fifth of
+	// its loudness: a click); panned toward the strike from the camera's right (x, z; a flash in the clouds:
+	// somewhere to a side). QA: node tools/thunder.mjs.
+	_thunder( dist, gain = 1, x, z ) {
 		if ( ! this.sound || this.volume <= 0 || typeof AudioContext === 'undefined' ) return;
 		try {
 			const out = this.output?.();
 			const ctx = out?.ctx ?? ( this.audio || ( this.audio = new AudioContext() ) );
 			if ( ! out && ctx.state === 'suspended' ) ctx.resume();
-			const dur = 3 + Math.min( 5, dist / 600 ), sr = ctx.sampleRate;
+			const sr = ctx.sampleRate, at = ctx.currentTime + dist / 343;
+			const fill = ( d, fade ) => {
+				let peak = 0;
+				for ( let i = 0; i < d.length; i ++ ) peak = Math.max( peak, Math.abs( d[ i ] ) );
+				const k = peak > 0 ? 1 / peak : 0, nf = Math.floor( fade * sr );
+				for ( let i = 0; i < d.length; i ++ ) {
+					const left = d.length - 1 - i;
+					d[ i ] *= k * ( left < nf ? 0.5 - 0.5 * Math.cos( Math.PI * left / nf ) : 1 );
+				}
+			};
+			// the rumbles
+			const dur = 3.5 + Math.min( 5, dist / 600 );
 			const buf = ctx.createBuffer( 1, Math.floor( dur * sr ), sr ), d = buf.getChannelData( 0 );
-			// brown noise under an envelope: a crack when close, then rolling rumbles
 			let last = 0;
 			const bumps = [];
-			for ( let k = irnd( 3, 6 ); k > 0; k -- ) bumps.push( [ Math.random() * dur * 0.6, rnd( 0.4, 1 ), rnd( 0.4, 1.2 ) ] );
-			const crack = Math.max( 0, 1 - dist / 800 );
+			for ( let k = irnd( 3, 6 ); k > 0; k -- ) bumps.push( [ Math.random() * dur * 0.55, rnd( 0.4, 1 ), rnd( 0.4, 1.2 ) ] );
 			for ( let i = 0; i < d.length; i ++ ) {
-				const t = i / sr, w = Math.random() * 2 - 1;
-				last = ( last + 0.02 * w ) / 1.02;
+				const t = i / sr;
+				last = ( last + 0.02 * ( Math.random() * 2 - 1 ) ) / 1.02;
 				let env = Math.exp( - t * 1.2 ) * 0.5;
-				for ( const [ at, a, len ] of bumps ) if ( t > at ) env += a * Math.exp( - ( t - at ) / len ) * Math.min( 1, ( t - at ) * 20 );
-				d[ i ] = last * 3.5 * env + w * crack * Math.exp( - t * 9 ) * 0.5;
+				for ( const [ b, a, len ] of bumps ) if ( t > b ) env += a * Math.exp( - ( t - b ) / len ) * Math.min( 1, ( t - b ) * 20 );
+				d[ i ] = last * env;
 			}
+			fill( d, 0.8 );
+			// a soft saturation: the rumble's few sharp peaks set the normalisation, which left it quiet
+			const T2 = Math.tanh( 2.2 );
+			for ( let i = 0; i < d.length; i ++ ) d[ i ] = Math.tanh( 2.2 * d[ i ] ) / T2;
+			// -> panner -> the bus (no DynamicsCompressor: WebAudio's adds its own make-up gain and raised
+			// even a far rumble; the parts are normalised and their gains sum below 1 instead)
+			const pan = ctx.createStereoPanner();
+			let p = ( Math.random() - 0.5 ) * 0.8;
+			if ( x !== undefined ) {
+				const cam = this.camera, r = this._right || ( this._right = new THREE.Vector3() );
+				r.setFromMatrixColumn( cam.matrixWorld, 0 );
+				const dx = x - cam.position.x, dz = z - cam.position.z, l = Math.hypot( dx, dz ) || 1, rl = Math.hypot( r.x, r.z ) || 1;
+				p = ( dx * r.x + dz * r.z ) / ( l * rl ) * 0.8;
+			}
+			pan.pan.value = p;
+			pan.connect( out?.destination ?? ctx.destination );
 			const src = ctx.createBufferSource(); src.buffer = buf;
 			const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900 / ( 1 + dist / 700 ) + 120;
-			const g = ctx.createGain(); g.gain.value = 0.9 * gain * this.volume / ( 1 + dist / 500 );
-			src.connect( lp ).connect( g ).connect( out?.destination ?? ctx.destination );
-			src.start( ctx.currentTime + dist / 343 );
+			const g = ctx.createGain(); g.gain.value = 0.82 * gain * this.volume / ( 1 + dist / 500 );
+			src.connect( lp ).connect( g ).connect( pan );
+			src.start( at );
+			// the crack of a close strike: bright, short, a few sharp tears
+			const crack = Math.max( 0, 1 - dist / 800 );
+			if ( crack > 0 ) {
+				const cb = ctx.createBuffer( 1, Math.floor( 0.45 * sr ), sr ), c = cb.getChannelData( 0 );
+				const tears = [ 0, rnd( 0.02, 0.06 ), rnd( 0.07, 0.15 ) ];
+				for ( let i = 0; i < c.length; i ++ ) {
+					const t = i / sr;
+					let env = 0;
+					for ( const b of tears ) if ( t >= b ) env = Math.max( env, Math.exp( - ( t - b ) * 14 ) * Math.min( 1, ( t - b ) * 2000 ) );
+					c[ i ] = ( Math.random() * 2 - 1 ) * env;
+				}
+				fill( c, 0.1 );
+				const cs = ctx.createBufferSource(); cs.buffer = cb;
+				const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 250;
+				const clp = ctx.createBiquadFilter(); clp.type = 'lowpass'; clp.frequency.value = 2500 + 4000 * crack; // the air takes the highs
+				const cg = ctx.createGain(); cg.gain.value = 0.32 * crack * crack * gain * this.volume;
+				cs.connect( hp ).connect( clp ).connect( cg ).connect( pan );
+				cs.start( at );
+			}
 		} catch ( err ) { /* no audio */ }
 	}
 
@@ -425,12 +519,14 @@ export class Lightning {
 		this.pixel.value = 2 * Math.tan( THREE.MathUtils.degToRad( cam.fov ) / 2 ) / Math.max( 1, renderer?.domElement.height || innerHeight );
 		this.camRight.value.setFromMatrixColumn( cam.matrixWorld, 0 );
 		this.camUp.value.setFromMatrixColumn( cam.matrixWorld, 1 );
-		// the storm: a strike every 5-25 s at full rain, rarer at its edge; a third flash in the clouds
+		// the storm: a strike every 5-25 s at full rain, rarer at its edge
 		if ( this.storm > 0 ) {
 			this.nextStrike -= dt * this.storm;
 			if ( this.nextStrike <= 0 ) {
 				this.nextStrike = rnd( 5, 25 );
-				if ( Math.random() < 0.33 ) this.flash(); else this.strike();
+				// two in five deep flashes, one in five wandering in the cloud, two in five to the ground
+				const k = Math.random();
+				if ( k < 0.4 ) this.flash( 0.45, 'deep' ); else if ( k < 0.6 ) this.flash( 0.45, 'ic' ); else this.strike();
 			}
 		}
 		// the flicker and the sky / hemisphere flash
@@ -441,6 +537,26 @@ export class Lightning {
 			e.glow = Lightning.glowAt( e );
 			f += e.glow * e.scale;
 			if ( e.t > 2 ) this.events.splice( i, 1 );
+		}
+		// the clouds lit from inside (post/clouds.js flash): the brightest event with a channel; a flash in
+		// the clouds wanders along its channel (the lit stretch moves from one end to the other)
+		if ( this.cloudFlash ) {
+			let best = null, bv = 0;
+			// (a ground strike's channel sits low in the cloud base: 60% of it, or the whole deck glared)
+			for ( const e of this.events ) {
+				const v = e.src ? e.glow * e.scale * ( e.kind === 'cg' ? 0.6 : 1 ) : 0;
+				if ( v > bv ) { bv = v; best = e; }
+			}
+			const F = this.cloudFlash;
+			F.power.value = bv * this.cloudPower;
+			if ( best ) {
+				const S = best.src;
+				if ( S.crawl ) {
+					const u = Math.min( 1, best.t / ( S.span || 0.5 ) );
+					F.a.value.lerpVectors( S.a, S.b, Math.max( 0, u - 0.3 ) ); F.b.value.lerpVectors( S.a, S.b, u );
+				} else { F.a.value.copy( S.a ); F.b.value.copy( S.b ); }
+				F.reach.value = S.reach;
+			}
 		}
 		const sky = this.sky;
 		if ( f > 1e-3 ) {

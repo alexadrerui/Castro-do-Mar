@@ -94,6 +94,7 @@ export class HUD {
 			if ( e.code === 'KeyU' ) document.body.classList.toggle( 'clean' );
 			if ( e.code === 'KeyB' ) this.setFocus( ! app.focus.enabled );
 			if ( e.code === 'KeyL' && ! e.ctrlKey ) app.strike?.();
+			if ( e.code === 'KeyK' && app.meteors ) { if ( ! app.meteors.fire( app.camera, e.shiftKey, app.sky.state.lightDir ) ) this.toast( 'Sem céu à vista' ); }
 			if ( e.code === 'KeyM' && app.settings ) { app.settings.toggleMute(); this.toast( app.settings.muted ? 'Som desligado' : 'Som ligado' ); }
 			const n = parseInt( e.key, 10 );
 			if ( n >= 1 && n <= app.views.length ) app.goView( n - 1 );

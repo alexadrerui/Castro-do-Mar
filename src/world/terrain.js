@@ -11,6 +11,7 @@ import { cacheGet, cachePut, hashSources } from '../core/cache.js';
 import { cloudShade } from './cloudShadow.js';
 import { rainRipples, rainGlints } from './rainImpacts.js';
 import { wetness } from './weather.js';
+import { lampGlow } from './lampLight.js';
 
 // Screen-space bump from an arbitrary procedural height node (the built-in
 // bumpMap() only differentiates texture UVs).
@@ -221,7 +222,9 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	const rip = rainRipples( wp.xz, puddleM.mul( smoothstep( 40, 60, viewDist ).oneMinus() ) ).mul( 0.09 );
 	mat.normalNode = normalize( bumped.add( cameraViewMatrix.mul( vec4( rip.x.negate(), 0, rip.y.negate(), 0 ) ).xyz ) );
 	// and the impacts glinting on everything wet that faces up, out to where a drop is a pixel
-	mat.emissiveNode = rainGlints( wp.xz, wetM.mul( smoothstep( 0.4, 0.8, normalWorld.y ) ).mul( smoothstep( 70, 110, viewDist ).oneMinus() ).mul( underM.oneMinus() ) ).mul( 0.5 );
+	mat.emissiveNode = rainGlints( wp.xz, wetM.mul( smoothstep( 0.4, 0.8, normalWorld.y ) ).mul( smoothstep( 70, 110, viewDist ).oneMinus() ).mul( underM.oneMinus() ) ).mul( 0.5 )
+		// and the lanterns' pools of light at night (world/lampLight.js)
+		.add( lampGlow( wp.xz ) );
 
 	const group = new THREE.Group();
 	group.name = 'terrain';
@@ -337,7 +340,7 @@ function updateGridNormals( hf, out, i0, j0, i1, j1 ) {
 	}
 }
 
-// 11 x 11 chunks of 80 cells, LOD strides 1/2/4/8/16, with skirts to hide cracks.
+// 14 x 14 chunks of 80 cells, LOD strides 1/2/4/8/16, with skirts to hide cracks.
 const CHUNK = 80, STRIDES = [ 1, 2, 4, 8, 16 ];
 function buildChunks( hf, normals, ao ) {
 	const n = hf.n, CH = CHUNK, NC = hf.seg / CH;

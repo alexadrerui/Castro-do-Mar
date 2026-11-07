@@ -19,6 +19,7 @@ import { clearance, editedClearance, inLake } from './vegetation.js';
 import { CH, natureAt } from './natureEdits.js';
 import { VILLAGE, MASK } from './layout.js';
 import { cloudShade } from './cloudShadow.js';
+import { lampGlow } from './lampLight.js';
 import { wind, windAmount, gustAt } from './wind.js';
 import { SUN_MAX, MOON_MAX } from './sky.js';
 
@@ -685,6 +686,8 @@ export class GrassField {
 		// (three adds the emissive into the light sum but builds it first) and read the shadow still at 1.
 		// The grass ends at ~88 m, where the fog it skips is negligible.
 		mat.outputNode = vec4( output.rgb.add( backlight() ), output.a );
+		// the lanterns' pools of light at night (world/lampLight.js), on the blades' albedo
+		mat.emissiveNode = lampGlow();
 		mat.roughnessNode = select( vG.y.greaterThan( 2.5 ).and( vG.y.lessThan( 3.5 ) ), float( 0.45 ), float( 0.8 ) );
 		mat.metalnessNode = float( 0 );
 		// the same soft normal on both faces (no DoubleSide flip), tilted to the viewer

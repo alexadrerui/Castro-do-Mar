@@ -131,6 +131,52 @@ export async function createDebugPanel( app ) {
 		}
 	} );
 
+	// ---- the sun's light (world/sky.js state.tune: on top of the clock and the look; Restaurar undoes)
+	if ( app.sky?.state.tune ) {
+		const sky = app.sky, T = sky.state.tune;
+		const f = pane.addFolder( { title: 'Luz do sol', expanded: false } );
+		const apply = () => app.onSunChanged();
+		// what the light is now (the sun by day, the moon at night; the rain dims it after)
+		const nowL = { elev: 0, az: 0, power: 0, color: '#ffffff', source: '' };
+		const ro = ( k, label, fmt ) => f.addBinding( nowL, k, { label, readonly: true, ...( fmt ? { format: fmt } : {} ) } );
+		ro( 'source', 'luz' ); ro( 'elev', 'elevação (°)', ( v ) => v.toFixed( 1 ) ); ro( 'az', 'azimute (°)', ( v ) => v.toFixed( 1 ) );
+		ro( 'power', 'intensidade', ( v ) => v.toFixed( 3 ) ); ro( 'color', 'cor' );
+		setInterval( () => {
+			const st = sky.state;
+			nowL.source = st.elevation > - 1 ? 'sol' : 'lua';
+			nowL.elev = st.elevation; nowL.az = ( ( st.azimuth + T.azimuthOffset ) % 360 + 360 ) % 360;
+			nowL.power = sky.sun.intensity; nowL.color = '#' + sky.sun.color.getHexString();
+		}, 300 );
+		const pos = f.addFolder( { title: 'Posição', expanded: false } );
+		pos.addBinding( T, 'lock', { label: 'travar o sol' } ).on( 'change', ( e ) => {
+			// held where it is now, then moved by hand
+			if ( e.value ) { T.elevation = sky.state.elevation; T.azimuth = sky.state.azimuth; elevB.refresh(); azB.refresh(); }
+			else app.clock.set( app.clock.hour ); // back to the clock's arc
+			apply();
+		} );
+		const elevB = pos.addBinding( T, 'elevation', { label: 'elevação (°)', min: - 20, max: 90, step: 0.1 } ).on( 'change', () => { if ( T.lock ) apply(); } );
+		const azB = pos.addBinding( T, 'azimuth', { label: 'azimute (°)', min: 0, max: 360, step: 0.5 } ).on( 'change', () => { if ( T.lock ) apply(); } );
+		pos.addBinding( T, 'azimuthOffset', { label: 'girar o arco (°)', min: - 180, max: 180, step: 0.5 } ).on( 'change', apply );
+		const lf = f.addFolder( { title: 'Cor e força', expanded: true } );
+		lf.addBinding( T, 'sunGain', { label: 'força do sol', min: 0, max: 3, step: 0.01 } ).on( 'change', apply );
+		lf.addBinding( T, 'warmth', { label: 'fria ↔ quente', min: - 1, max: 1, step: 0.01 } ).on( 'change', apply );
+		bindColor( lf, T.sunTint, 'tom' )?.on( 'change', apply );
+		lf.addBinding( T, 'moonGain', { label: 'força da lua', min: 0, max: 4, step: 0.01 } ).on( 'change', apply );
+		lf.addBinding( T, 'ambientGain', { label: 'luz do céu (hemisfério)', min: 0, max: 3, step: 0.01 } ).on( 'change', apply );
+		lf.addBinding( T, 'envIntensity', { label: 'reflexo do céu (IBL)', min: 0, max: 1, step: 0.01 } ).on( 'change', ( e ) => { app.scene.environmentIntensity = e.value; } );
+		if ( app.shadows ) lf.addBinding( app, 'shadowStrength', { label: 'força da sombra', min: 0, max: 1, step: 0.01 } ).on( 'change', ( e ) => { if ( app.shadowsOn !== false ) app.shadows.setIntensity( e.value ); } );
+		const DEF = { lock: false, azimuthOffset: 0, sunGain: 1, warmth: 0, moonGain: 1, ambientGain: 1, envIntensity: 0.22 };
+		f.addButton( { title: 'Restaurar' } ).on( 'click', () => {
+			Object.assign( T, DEF ); T.sunTint.setRGB( 1, 1, 1 );
+			app.shadowStrength = 1;
+			if ( app.shadows && app.shadowsOn !== false ) app.shadows.setIntensity( 1 );
+			app.scene.environmentIntensity = DEF.envIntensity;
+			app.clock.set( app.clock.hour );
+			apply();
+			pane.refresh();
+		} );
+	}
+
 	// ---- the eye's adaptation (post/autoExposure.js)
 	const ex = app.exposure;
 	if ( ex ) {

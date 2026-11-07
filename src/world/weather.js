@@ -171,6 +171,6 @@ export class Weather {
 		// the sun dims under the rain clouds (sky.update sets its clear-sky intensity on every change)
 		if ( sky.state.sunIntensity !== undefined ) sky.sun.intensity = sky.state.sunIntensity * ( 1 - 0.55 * e );
 		// and the shadows soften (unless the panel switched them off: app.setShadows)
-		if ( this.app.shadowsOn !== false ) this.app.shadows?.setIntensity( 1 - 0.6 * e );
+		if ( this.app.shadowsOn !== false ) this.app.shadows?.setIntensity( ( 1 - 0.6 * e ) * ( this.app.shadowStrength ?? 1 ) ); // shadowStrength: the #debug panel's
 	}
 }

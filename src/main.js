@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { fog, uniform, positionWorld, positionView, length, float, exp, mix, smoothstep, max, Fn, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2, rtt, screenSize } from 'three/tsl';
+import { fog, uniform, positionWorld, positionView, length, float, exp, mix, smoothstep, max, Fn, dot, pass, renderOutput, vec3, vec4, uv, clamp, screenUV, getViewPosition, vec2, rtt, screenSize, floor, fract, hash, time, mod } from 'three/tsl';
 
 import { Loader } from './ui/loader.js';
 import { HUD } from './ui/hud.js';
@@ -32,6 +32,7 @@ import { Lakes } from './world/lakeWater.js';
 import { Weather } from './world/weather.js';
 import { Clock, PRESETS } from './world/clock.js';
 import { Stars, loadStars } from './world/stars.js';
+import { Meteors } from './world/meteors.js';
 import { Lightning } from './world/lightning.js';
 import { Clouds, loadCloudTextures } from './post/clouds.js';
 import { ValleyFog } from './post/valleyFog.js';
@@ -197,6 +198,13 @@ async function main() {
 			app.stars = new Stars( await loadStars(), sky.night );
 			app.stars.setHour( PRESETS.tarde );
 			scene.add( app.stars );
+		}
+		// shooting stars at night (world/meteors.js); ?meteors=0 leaves them out
+		if ( params.get( 'meteors' ) !== '0' ) {
+			const meteors = new Meteors( sky.night );
+			app.meteors = meteors;
+			scene.add( meteors );
+			app.onFrame.push( ( dt ) => meteors.update( dt, camera, renderer, sky.state.night, app.weather?.level ?? 0, sky.state.lightDir ) );
 		}
 	} );
 
@@ -381,9 +389,10 @@ async function main() {
 	// shadow node, still in the compiled materials, read the disposed map when the light cast again
 	// ("Cannot read properties of null (reading 'depthTexture')", then WebGPU validation errors).
 	app.shadowsOn = true;
+	app.shadowStrength = 1; // how dark the sun's shadows are (the #debug panel's "Luz do sol"; the rain dims them further)
 	app.setShadows = ( on ) => {
 		app.shadowsOn = on;
-		app.shadows.setIntensity( on ? 1 : 0 );
+		app.shadows.setIntensity( on ? app.shadowStrength : 0 );
 		if ( on ) app.shadows.markDirty();
 	};
 	app.setReflections = ( on ) => {
@@ -469,6 +478,64 @@ async function main() {
 	app.scenePass = scenePass;
 	const grade = uniform( 1.0 );
 	app.grade = grade;
+	// film grain (idea from Nightscape, WeebLabs; no code taken): soft clumps ~1.5 px across plus a finer
+	// sparkle, mostly neutral with a hint of colour, strongest in the shadows and midtones, a new pattern
+	// 24 times a second; and a faint triangular dither (always, also with the grain at 0) against banding
+	// in the night sky's gradients. In display space, after the grade. app.grain (0 turns it off; ?grain=0)
+	// the night's colour grade (idea from Nightscape's "Teal Night" preset, WeebLabs; values from its
+	// README, no code taken): white balance (temperature, tint), saturation, contrast, split toning (a
+	// teal in the shadows, a pale mint in the highlights) and the "night glow" that lifts the blacks
+	// toward the shadow colour, so the dark reads as night air rather than flat black. In display space,
+	// after the day's grade, weighted by the sky's night (0 by day: the day is unchanged) × amount.
+	// app.nightGrade: amount (0 = the night as before, 1 = the full preset) and each control.
+	const nightGrade = {
+		amount: uniform( 0.5 ),
+		temperature: uniform( - 0.35 ), // cool -1 .. warm +1
+		tint: uniform( 0.35 ),          // magenta -1 .. green +1
+		saturation: uniform( 1.1 ),
+		contrast: uniform( 1.05 ),
+		shadowColor: uniform( new THREE.Color( 0x0f8f86 ) ), // sRGB components, as in display space
+		shadowTint: uniform( 0.5 ),
+		highlightColor: uniform( new THREE.Color( 0xc4ece2 ) ),
+		highlightTint: uniform( 0.25 ),
+		glow: uniform( 0.7 )
+	};
+	for ( const k of [ 'shadowColor', 'highlightColor' ] ) nightGrade[ k ].value.convertLinearToSRGB();
+	if ( params.has( 'nightgrade' ) ) nightGrade.amount.value = Number( params.get( 'nightgrade' ) );
+	app.nightGrade = nightGrade;
+	const nightGraded = ( rgb0 ) => {
+		const G = nightGrade, W = vec3( 0.2126, 0.7152, 0.0722 );
+		// the warm lights (lanterns, windows, their pools on the ground) keep their orange: the grade fades
+		// where red leads blue
+		const k = G.amount.mul( sky.night ).mul( smoothstep( 0.02, 0.12, rgb0.r.sub( rgb0.b ) ).mul( 0.85 ).oneMinus() );
+		let rgb = rgb0.mul( vec3( G.temperature.mul( 0.1 ).sub( G.tint.mul( 0.05 ) ).add( 1 ), G.tint.mul( 0.1 ).add( 1 ), G.temperature.mul( - 0.1 ).sub( G.tint.mul( 0.05 ) ).add( 1 ) ) );
+		rgb = mix( vec3( dot( rgb, W ) ), rgb, G.saturation );
+		rgb = rgb.sub( 0.4 ).mul( G.contrast ).add( 0.4 ).max( 0 );
+		const l = dot( rgb, W ).clamp( 0, 1 );
+		// split toning: the hue of each colour (its luma brought to 1) multiplied in, by the shade
+		const hueS = G.shadowColor.div( dot( G.shadowColor, W ) ), hueH = G.highlightColor.div( dot( G.highlightColor, W ) );
+		rgb = mix( rgb, rgb.mul( hueS ), G.shadowTint.mul( l.oneMinus().pow( 2 ) ) );
+		rgb = mix( rgb, rgb.mul( hueH ), G.highlightTint.mul( l.pow( 2 ) ) );
+		// the night glow: the darkest parts lifted toward the shadow colour
+		rgb = rgb.add( G.shadowColor.mul( G.glow.mul( 0.06 ) ).mul( l.oneMinus().pow( 4 ) ) );
+		return mix( rgb0, rgb, k );
+	};
+	const grain = uniform( params.get( 'grain' ) === '0' ? 0 : 0.014 );
+	app.grain = grain;
+	const filmGrain = ( rgb ) => {
+		const px = screenUV.mul( screenSize );
+		const fr = mod( floor( time.mul( 24 ) ), 64 ).mul( 131 ); // repeats every 2.7 s (keeps the seeds small)
+		const h = ( p, k ) => hash( p.x.add( p.y.mul( 4099 ) ).add( fr ).add( k ) );
+		const q = px.div( 1.5 ), i = floor( q ), f = fract( q ), w = f.mul( f ).mul( f.mul( - 2 ).add( 3 ) );
+		const clump = ( k ) => mix( mix( h( i, k ), h( i.add( vec2( 1, 0 ) ), k ), w.x ), mix( h( i.add( vec2( 0, 1 ) ), k ), h( i.add( vec2( 1, 1 ) ), k ), w.x ), w.y ).sub( 0.5 );
+		const fine = h( floor( px ), 17 ).sub( 0.5 ).mul( 0.45 );
+		const n = clump( 0 ).add( fine );
+		const tint = vec3( clump( 31 ), clump( 57 ), clump( 83 ) ).mul( 0.25 );
+		const luma = dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+		const where = mix( float( 1 ), float( 0.3 ), smoothstep( 0.45, 1.0, luma ) );
+		const dither = h( floor( px ), 101 ).add( h( floor( px ), 211 ) ).sub( 1 ).div( 255 );
+		return rgb.add( vec3( n ).add( tint ).mul( grain.mul( where ).mul( 2 ) ) ).add( dither );
+	};
 
 	// Auto-focus depth of field on top of the scene pass (toggle: B).
 	const focus = new AutoFocus( {
@@ -576,6 +643,7 @@ async function main() {
 	// lightning (world/lightning.js): storms when the rain passes 60%, the panel's "Raio" (L), app.strike( x, z )
 	const lightning = new Lightning( { scene, camera, heightAt: ( x, z ) => hf.heightAt( x, z ), sky } );
 	app.lightning = lightning;
+	if ( clouds ) lightning.cloudFlash = clouds.flash; // the clouds lit from inside by the flashes
 	weather.lightning = lightning;
 	app.strike = ( x, z ) => lightning.strike( x, z );
 	app.onFrame.push( ( dt ) => lightning.update( dt, renderer ) );
@@ -592,6 +660,8 @@ async function main() {
 		// the look's `nightFog` (world/look.js): with the night, through the sunrise, clear by 8 h
 		const k = sky.state.look.nightFog * ( 1 - 0.8 * Math.min( 1, app.weather?.target ?? 0 ) );
 		app.nightFog = k;
+		// the lanterns light up at dusk (world/lampLight.js)
+		if ( app.lampLight ) app.lampLight.on.value = Math.min( 1, sky.state.night * 2 );
 		if ( valley ) for ( const key in VALLEY_DAY ) valley[ key ].value = THREE.MathUtils.lerp( VALLEY_DAY[ key ], VALLEY_NIGHT[ key ], k );
 		if ( mist ) for ( const key in MIST_DAY ) mist[ key ].value = THREE.MathUtils.lerp( MIST_DAY[ key ], MIST_NIGHT[ key ], k );
 	} );
@@ -690,7 +760,7 @@ async function main() {
 		// soft vignette
 		const v = length( uv().sub( 0.5 ).mul( vec3( 1.0, 0.8, 0 ).xy ) );
 		rgb.mulAssign( smoothstep( 0.35, 0.85, v ).oneMinus().mul( 0.22 ).add( 0.78 ) );
-		return vec4( mix( c.rgb, clamp( rgb, 0.0, 1.0 ), grade ), 1.0 );
+		return vec4( clamp( filmGrain( mix( c.rgb, clamp( nightGraded( rgb ), 0.0, 1.0 ), grade ) ), 0.0, 1.0 ), 1.0 );
 	} )();
 	// the outputs: with / without depth of field, with / without bloom, and the "oil paint" (post/kuwahara.js,
 	// the panel's option): the scene painted in place of the depth of field (the paint smooths already,

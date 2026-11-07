@@ -86,6 +86,13 @@ export class Clouds {
 		this.cirrus = uniform( 1 );                            // the cirrus layer's strength (0: off)
 		this.stepScale = uniform( 1 );  // the main march's step: > 1 cheaper (fewer, longer steps; core/dynamicRes.js)
 		this.fairDensity = 0.2;                                // the cumulus' density (1/m) in fair weather (overcast())
+		// the lightning inside the clouds (world/lightning.js sets them): a channel from a to b whose light,
+		// scattered many times through the cloud, fades gently with the distance from it (reach, m);
+		// power 0 between flashes
+		const F = this.flash = {
+			a: uniform( new THREE.Vector3( 0, 1000, 0 ) ), b: uniform( new THREE.Vector3( 0, 1500, 0 ) ),
+			power: uniform( 0 ), reach: uniform( 450 ), color: uniform( new THREE.Color( 0.72, 0.8, 1.0 ) )
+		};
 		const sun = uniform( sunDir );
 		const camWorld = uniform( camera.matrixWorld ), camProjInv = uniform( camera.projectionMatrixInverse ), camPos = uniform( camera.position );
 		this.camPos = camPos;
@@ -172,7 +179,13 @@ export class Clouds {
 							const grad = dot( w.hf.mul( 0.5 ).add( 0.5 ), m.d.div( m.sum ) );
 							const powder = exp( m.sum.mul( - 150 ) ).mul( 0.8 ).oneMinus();
 							// radiance per unit scattering; the step's in-scattering, energy-conserving
-							const rad = sunIrr.mul( ms ).add( skyIrr.mul( grad ).mul( 1 / ( 4 * Math.PI ) ) ).mul( powder );
+							const rad0 = sunIrr.mul( ms ).add( skyIrr.mul( grad ).mul( 1 / ( 4 * Math.PI ) ) ).mul( powder );
+							// the lightning's channel lighting the cloud from inside (isotropic: the light has
+							// scattered many times by the time it gets here)
+							const pa = p.sub( F.a ), ba = F.b.sub( F.a );
+							const hc = dot( pa, ba ).div( dot( ba, ba ).max( 1 ) ).clamp( 0, 1 );
+							const dc = pa.sub( ba.mul( hc ) ).length();
+							const rad = rad0.add( F.color.mul( F.power.mul( exp( dc.div( F.reach ).negate() ) ).mul( 1 / ( 4 * Math.PI ) ) ) );
 							const Ts = exp( m.sum.mul( step ).negate() );
 							col.addAssign( rad.mul( Ts.oneMinus() ).mul( T ) );
 							T.mulAssign( Ts );
