@@ -1,8 +1,10 @@
 // Load time per loader step, cold (empty cache) then warm (cache filled by the
-// first load), up to the first frame drawn: node tools/loadtime.mjs [loads=2] [extra url params]
+// first load), up to the first frame drawn: node tools/loadtime.mjs [loads=2] [extra url params] [--port=5190]
 import puppeteer from 'puppeteer-core';
 
 const loads = Number( process.argv[ 2 ] ) || 2;
+const port = ( process.argv.find( ( x ) => x.startsWith( '--port=' ) ) || '--port=5190' ).slice( 7 );
+const extraArg = process.argv.slice( 3 ).find( ( x ) => ! x.startsWith( '--' ) );
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
 const browser = await puppeteer.launch( {
@@ -21,7 +23,7 @@ page.on( 'pageerror', ( e ) => console.log( '[pageerror]', String( e.stack || e 
 
 for ( let i = 0; i < loads; i ++ ) {
 	const t0 = Date.now();
-	await page.goto( 'http://localhost:5190/?auto' + ( process.argv[ 3 ] ? '&' + process.argv[ 3 ] : '' ), { waitUntil: 'domcontentloaded' } );
+	await page.goto( `http://localhost:${ port }/?auto` + ( extraArg ? '&' + extraArg : '' ), { waitUntil: 'domcontentloaded' } );
 	if ( i === 0 ) await page.evaluate( () => new Promise( ( r ) => { const q = indexedDB.deleteDatabase( 'castro-do-mar' ); q.onsuccess = q.onerror = q.onblocked = r; } ) ).then( () => page.reload( { waitUntil: 'domcontentloaded' } ) );
 	const first = new Promise( ( r ) => { const f = ( m ) => { if ( m.text().startsWith( 'first frame' ) ) { page.off( 'console', f ); r(); } }; page.on( 'console', f ); } );
 	await page.waitForFunction( () => window.__app && window.__app.ready, { timeout: 300000, polling: 250 } );
