@@ -139,7 +139,8 @@
 				<label>Velocidade <output id="o-speed"></output><input type="range" id="r-speed" min="0.2" max="6" step="0.1" /></label>
 				<label>Nuvens <output id="o-cloud"></output><input type="range" id="r-cloud" min="0" max="1" step="0.01" /></label>
 				<label>Chuva <output id="o-rain"></output><input type="range" id="r-rain" min="0" max="1" step="0.01" /></label>
-				<div class="grid-btn"><button id="b-strike" title="Raio (L); acima de 60% de chuva há tempestade">Raio <kbd>L</kbd></button></div>
+				<div class="grid-btn"><button id="b-strike" title="Raio (L); acima de 60% de chuva há tempestade">Raio <kbd>L</kbd></button><button id="b-meteor" title="Estrela cadente agora (K; Shift+K: bola de fogo). Só à noite, com céu à vista">Estrela cadente <kbd>K</kbd></button></div>
+				<label id="l-meteor" title="Quantas estrelas cadentes à noite, em média (1/2 min = uma a cada ~2 minutos; chegam ao acaso)">Estrelas cadentes <output id="o-meteor"></output><input type="range" id="r-meteor" min="0" max="6" step="0.1" /></label>
 				<label>Névoa <output id="o-fog"></output><input type="range" id="r-fog" min="0" max="3" step="0.05" /></label>
 
 				<h3>Vento</h3>
@@ -169,6 +170,7 @@
 				<div class="opt-row" title="Sombra de contato nos cantos, entre pedras, nas copas e sob os beirais (GTAO; ~0,5 ms fraca, ~0,9 ms forte)"><span>Oclusão de ambiente</span><div class="seg" id="o-ao"><button data-ao="off">Não</button><button data-ao="low">Fraca</button><button data-ao="high">Forte</button></div></div>
 				<label class="chk" title="Do pôr do sol em diante o olho se adapta ao que vê (de dia não muda nada)"><input type="checkbox" id="c-autoexp" checked /> Exposição automática</label>
 				<label class="chk"><input type="checkbox" id="c-paint" /> Pintura a óleo</label>
+				<label title="Granulação de filme, mais forte nas sombras (um dither fraco contra faixas no céu fica sempre)">Granulação <output id="o-grain"></output><input type="range" id="r-grain" min="0" max="0.03" step="0.001" /></label>
 			</div>
 		</aside>
 

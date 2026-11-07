@@ -63,6 +63,7 @@ export class HUD {
 		this._range( 'r-cloud', 'o-cloud', sky.sky.cloudCoverage.value, ( v ) => { sky.sky.cloudCoverage.value = v; }, ( v ) => Math.round( v * 100 ) + '%' );
 		this._range( 'r-rain', 'o-rain', app.weather?.target ?? 0, ( v ) => app.setRain?.( v ), ( v ) => Math.round( v * 100 ) + '%' );
 		$( 'b-strike' )?.addEventListener( 'click', () => app.strike?.() );
+		this._bindNightSky();
 		this._range( 'r-fog', 'o-fog', app.fogScale.value, ( v ) => { app.fogScale.value = v; }, ( v ) => v.toFixed( 2 ) + '×' );
 		this._range( 'r-res', 'o-res', app.pixelRatio, ( v ) => app.setPixelRatio( v ), ( v ) => v.toFixed( 2 ) + '×' );
 		$( 'c-shadows' ).checked = app.shadowsOn; // on by default (main.js), ?shadows=0
@@ -94,7 +95,7 @@ export class HUD {
 			if ( e.code === 'KeyU' ) document.body.classList.toggle( 'clean' );
 			if ( e.code === 'KeyB' ) this.setFocus( ! app.focus.enabled );
 			if ( e.code === 'KeyL' && ! e.ctrlKey ) app.strike?.();
-			if ( e.code === 'KeyK' && app.meteors ) { if ( ! app.meteors.fire( app.camera, e.shiftKey, app.sky.state.lightDir ) ) this.toast( 'Sem céu à vista' ); }
+			if ( e.code === 'KeyK' ) this.fireMeteor( e.shiftKey );
 			if ( e.code === 'KeyM' && app.settings ) { app.settings.toggleMute(); this.toast( app.settings.muted ? 'Som desligado' : 'Som ligado' ); }
 			const n = parseInt( e.key, 10 );
 			if ( n >= 1 && n <= app.views.length ) app.goView( n - 1 );
@@ -291,6 +292,36 @@ export class HUD {
 		const t = $( 'toast' );
 		t.textContent = msg; t.classList.add( 'show' );
 		clearTimeout( this._tt ); this._tt = setTimeout( () => t.classList.remove( 'show' ), ms );
+	}
+
+	// The shooting stars (world/meteors.js: a button and the rate) and the film grain (main.js app.grain),
+	// kept per browser in localStorage (?grain=0 still turns the grain off for that visit)
+	_bindNightSky() {
+		const app = this.app, KEY = 'castroDoMar:nightSky';
+		let saved = {};
+		try { saved = JSON.parse( localStorage.getItem( KEY ) ) || {}; } catch ( e ) { /* no storage */ }
+		const save = () => { try { localStorage.setItem( KEY, JSON.stringify( { meteors: app.meteors?.rate, grain: app.grain?.value } ) ); } catch ( e ) { /* no storage */ } };
+		const m = app.meteors;
+		if ( m ) {
+			if ( Number.isFinite( saved.meteors ) ) m.rate = Math.min( 6, Math.max( 0, saved.meteors ) );
+			// short (the label is long): 'não', '1/2 min' (one every ~2 min), '2,5/min'
+			const every = ( v ) => v <= 0 ? 'não' : v >= 1 ? v.toFixed( 1 ).replace( '.', ',' ) + '/min' : '1/' + Math.round( 1 / v ) + ' min';
+			this._range( 'r-meteor', 'o-meteor', m.rate, ( v ) => { m.rate = v; save(); }, every );
+			$( 'b-meteor' ).onclick = ( e ) => this.fireMeteor( e.shiftKey );
+		} else { $( 'b-meteor' ).hidden = true; $( 'l-meteor' ).hidden = true; }
+		const g = app.grain;
+		if ( g ) {
+			if ( Number.isFinite( saved.grain ) && ! new URLSearchParams( location.search ).has( 'grain' ) ) g.value = Math.min( 0.03, Math.max( 0, saved.grain ) );
+			this._range( 'r-grain', 'o-grain', g.value, ( v ) => { g.value = v; save(); }, ( v ) => v <= 0 ? 'desligada' : Math.round( v * 1000 ) );
+		}
+	}
+
+	// a shooting star now (the button, K): only at night, with the sky in view
+	fireMeteor( fireball = false ) {
+		const app = this.app;
+		if ( ! app.meteors ) return;
+		if ( ( app.sky.state.night ?? 0 ) < 0.5 ) { this.toast( 'Estrelas cadentes só à noite' ); return; }
+		if ( ! app.meteors.fire( app.camera, fireball, app.sky.state.lightDir ) ) this.toast( 'Sem céu à vista' );
 	}
 
 	_range( id, outId, value, onInput, fmt ) {
