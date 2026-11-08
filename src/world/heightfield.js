@@ -207,15 +207,19 @@ export function rawHeight( x, z ) {
 	// --- islands: low, elongated, rocky ---
 	for ( const is of ISLANDS ) {
 		const ix = x - is.x, iz = z - is.z;
-		if ( Math.abs( ix ) > is.r * is.e * 1.6 || Math.abs( iz ) > is.r * is.e * 1.6 ) continue;
+		if ( Math.abs( ix ) > is.r * is.e * 3.0 || Math.abs( iz ) > is.r * is.e * 3.0 ) continue; // rr < 2.2 with the warp (up to x1.3) reaches 2.86 r
 		const c = Math.cos( is.rot ), s = Math.sin( is.rot );
 		// rotate into island frame; long axis runs NNE-SSW
 		const lx = ix * c - iz * s, lz = ix * s + iz * c;
 		const warp = 1 + 0.3 * nA( x * 0.02 + is.x, z * 0.02 );
 		const rr = Math.hypot( lx, lz / is.e ) / ( is.r * warp );
-		if ( rr < 1.4 ) {
+		if ( rr < 2.2 ) {
 			const top = Math.min( 22, is.h * ( 0.65 + 0.55 * ridged( nB, x * 0.025, z * 0.025, 3 ) ) );
-			const ih = - 6 + ( top + 6 ) * ( 1 - smoothstep( 0.5, 1.25, rr ) );
+			// the skirt goes down to the sea floor around it, out to rr 2.2 (it stopped at a flat -6 m out
+			// to rr 1.4 and ended there in a wall of up to ~30 m: a terrace and a cliff under the water,
+			// with the kelp lined up along its edges); the shore (rr < ~1.1) is unchanged
+			const base = lerp( - 6, h - 1, smoothstep( 1.15, 2.2, rr ) );
+			const ih = base + ( top - base ) * ( 1 - smoothstep( 0.5, 1.25, rr ) );
 			h = Math.max( h, ih + 1.5 * fbm( nD, x * 0.08, z * 0.08, 2 ) * ( 1 - smoothstep( 0.8, 1.2, rr ) ) );
 		}
 	}

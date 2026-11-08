@@ -31,7 +31,13 @@ export const SEABED = {
 	//  surface: shader branch (materials.js SURFACE: rock, urchin, anemone, rubble, grass, kelp,
 	//    ulva, algae, star, mussel, cucumber)
 	//  flex: sway with the surge (0 rigid) | warp: per-instance shape warp for rocks
-	//  scale: size (m) range; sy / sxz: vertical / horizontal stretch ranges
+	//  scale: a multiplier of the model's own size (not metres); sy / sxz: vertical / horizontal stretch ranges.
+	//    In metres (07/11/2026, checked against the Galician species; the model sizes printed by a
+	//    page script): boulders 0.5-3.3 m wide, slabs 1.1-4.9 m, forest kelp (Laminaria hyperborea /
+	//    ochroleuca) 1.1-3.2 m tall, sugar kelp (Saccharina) 0.9-2.6 m, sea lettuce (Ulva) 13-45 cm,
+	//    wireweed (Sargassum muticum) 0.5-1.7 m, eelgrass (Zostera) beds 0.6-1.5 m tall, mussel beds
+	//    15-50 cm, urchins (Paracentrotus lividus) 5-10 cm with the spines, snakelocks anemones
+	//    (Anemonia viridis) 10-23 cm, starfish 14-31 cm, sea cucumbers (Holothuria) 19-37 cm
 	//  lod: level-of-detail switch distances, then the draw distance, in multiples of the radius
 	//  align: 0 upright .. 1 follows the ground normal; sink: share of the height buried
 	//  solid: keeps its footprint clear of everything else in the tile
@@ -41,21 +47,21 @@ export const SEABED = {
 			c1: [ 0x6f6c66, 0x7a766e, 0x65625c, 0x807b72, 0x726a60 ], c2: [ 0xb87a8a, 0xa87088, 0xc08c96, 0x9a6a80 ] },
 		outcrop: { model: [ 'slab' ], surface: 'rock', warp: 0.05, scale: [ 1.6, 3.8 ], sy: [ 0.4, 0.75 ], sxz: [ 0.75, 1.3 ], lod: [ 1.5, 4, 10, 60 ], align: 0.75, sink: 0.25, solid: true,
 			c1: [ 0x6a6760, 0x747068, 0x5f5c56 ], c2: [ 0xb07888, 0xa8708a, 0xbc8a94 ] },
-		kelpForest: { model: [ 'kelpForest' ], surface: 'kelp', flex: 0.55, scale: [ 1.0, 2.2 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 6, 16, 60 ], align: 0.15, sink: 0,
+		kelpForest: { model: [ 'kelpForest' ], surface: 'kelp', flex: 0.55, scale: [ 1.3, 3.0 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 6, 16, 60 ], align: 0.15, sink: 0,
 			c1: [ 0x6b4e22, 0x7a5a26, 0x5e4620, 0x80602a ], c2: [ 0x8a3a3a, 0x7a3444, 0x96504a ] },
-		kelpSugar: { model: [ 'kelpSugar' ], surface: 'kelp', flex: 0.9, scale: [ 0.8, 1.6 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 6, 16, 60 ], align: 0.2, sink: 0,
+		kelpSugar: { model: [ 'kelpSugar' ], surface: 'kelp', flex: 0.9, scale: [ 1.0, 2.2 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 6, 16, 60 ], align: 0.2, sink: 0,
 			c1: [ 0x7a6428, 0x8a6e2c, 0x6e5a24 ], c2: [ 0x5a4a22 ] },
 		ulva: { model: [ 'ulva' ], surface: 'ulva', flex: 0.5, scale: [ 0.6, 1.3 ], sy: [ 0.8, 1.2 ], sxz: [ 0.85, 1.15 ], lod: [ 5, 15, 70 ], align: 0.6, sink: 0,
 			c1: [ 0x4f8a2e, 0x5a9a34, 0x468028 ], c2: [ 0x9ac070 ] },
-		algae: { model: [ 'algae' ], surface: 'algae', flex: 0.9, scale: [ 0.7, 1.5 ], sy: [ 0.8, 1.3 ], sxz: [ 0.85, 1.15 ], lod: [ 5, 16, 70 ], align: 0.2, sink: 0,
+		algae: { model: [ 'algae' ], surface: 'algae', flex: 0.9, scale: [ 1.2, 2.6 ], sy: [ 0.8, 1.3 ], sxz: [ 0.85, 1.15 ], lod: [ 5, 16, 70 ], align: 0.2, sink: 0,
 			c1: [ 0x6a5a26, 0x7a6428, 0x5e5020, 0x806a2c ], c2: [ 0x4a4020 ] },
 		meadow: { model: [ 'meadow' ], surface: 'grass', flex: 0.8, scale: [ 1.0, 1.4 ], sy: [ 1.3, 2.2 ], sxz: [ 0.9, 1.1 ], lod: [ 2.5, 7, 40 ], align: 0.5, sink: 0,
 			c1: [ 0x3e5a26, 0x46622a, 0x3a5222, 0x4a6a2e ], c2: [ 0x6a7a3a ] },
 		mussels: { model: [ 'mussels' ], surface: 'mussel', warp: 0, scale: [ 0.7, 1.5 ], sy: [ 0.9, 1.2 ], sxz: [ 0.85, 1.15 ], lod: [ 6, 18, 80 ], align: 0.8, sink: 0.05,
 			c1: [ 0x1e2230, 0x242636, 0x1a1c26 ], c2: [ 0x5a4a32 ] },
-		urchin: { model: [ 'urchin' ], surface: 'urchin', scale: [ 0.8, 1.3 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 15, 180 ], align: 0.9, sink: 0,
+		urchin: { model: [ 'urchin' ], surface: 'urchin', scale: [ 0.5, 0.75 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 15, 180 ], align: 0.9, sink: 0,
 			c1: [ 0x2a1e2a ], c2: [ 0x4a2a52, 0x3e3a26, 0x5a3048, 0x3a2e3e ] },
-		anemone: { model: [ 'anemone' ], surface: 'anemone', flex: 0.35, scale: [ 0.6, 1.2 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 10, 120 ], align: 0.8, sink: 0,
+		anemone: { model: [ 'anemone' ], surface: 'anemone', flex: 0.35, scale: [ 0.32, 0.58 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 10, 120 ], align: 0.8, sink: 0,
 			c1: [ 0x6a8a4a, 0x5a7a3e, 0x7a8e56 ], c2: [ 0x9a4a8a, 0x8a5a9a ] },
 		star: { model: [ 'star' ], surface: 'star', scale: [ 0.7, 1.3 ], sy: [ 0.9, 1.1 ], sxz: [ 0.9, 1.1 ], lod: [ 150 ], align: 1.0, sink: 0,
 			c1: [ 0xc0602a, 0xb85a30, 0x8a4a6a, 0xc87a3a ], c2: [ 0xe0c0a0 ] },

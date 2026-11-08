@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, normalWorld, positionView, normalView, faceDirection,
-	vec2, vec3, float, color, mix, smoothstep, clamp, max, abs, sin, cross, dot, normalize, length,
+	vec2, vec3, float, color, mix, smoothstep, clamp, max, abs, sin, cos, cross, dot, normalize, length,
 	attribute, fwidth, cameraViewMatrix, vec4, textureLoad, ivec2, floor, select
 } from 'three/tsl';
 import { MASK, WATER_LEVEL } from './layout.js';
@@ -168,7 +168,15 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	// seabed: pale sand and olive silt in patches (the seabed life sits on it, see world/seabed)
 	const seabedCol = mix( color( 0x7a725c ), color( 0x56583e ), smoothstep( 0.3, 0.7, nMed ) ).mul( mix( 0.85, 1.1, nFine ) );
 	// sand ripple marks, running across the swell (from the east)
-	const ripples = sin( wp.x.mul( 6.3 ).add( wp.z.mul( 1.4 ) ).add( nMed.mul( 9.0 ) ) ).mul( 0.5 ).add( 0.5 );
+	// (~1 m) and a finer set across them (~0.4 m, bent by the noise). Their slope is analytic (the
+	// sines' derivatives, in world x / z: below, with the normal): the screen-derivative bump of the
+	// rest of the terrain is taken per 2x2 pixels, and close up at a grazing angle it turned the
+	// ripples (and the detail texture's 1.2 cm texels) into a regular grid of dashes
+	const ripPh = wp.x.mul( 6.3 ).add( wp.z.mul( 1.4 ) ).add( nMed.mul( 9.0 ) );
+	const ripFinePh = wp.x.mul( 13.0 ).sub( wp.z.mul( 9.0 ) ).add( nLarge.mul( 14.0 ) );
+	// heights (m): 2 cm and 0.6 cm; slope = amplitude x cos x wave number
+	const ripA = cos( ripPh ).mul( 0.02 ), ripFineA = cos( ripFinePh ).mul( 0.006 );
+	const sandSlope = vec2( ripA.mul( 6.3 ).add( ripFineA.mul( 13.0 ) ), ripA.mul( 1.4 ).sub( ripFineA.mul( 9.0 ) ) );
 
 	// ---- snow on the highest local peaks ----
 	const snowM = smoothstep( 390, 470, wp.y.add( nLarge.mul( 60 ) ) ).mul( smoothstep( 0.3, 0.55, slope ).oneMinus() );
@@ -214,13 +222,15 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	const hRock = smoothstep( 0.0, 0.08, cracks ).mul( 0.7 ).add( nRock3.mul( 0.8 ) ).add( smoothstep( 0.0, 0.05, cracksFine ).mul( 0.25 ) );
 	const hGrass = nFine.mul( 0.25 ).add( nMed.mul( 0.3 ) );
 	const hPath = nFine.mul( 0.15 );
-	const hSea = mix( nFine.mul( 0.2 ).add( ripples.mul( 0.35 ) ), hRock, rockM );
+	const hSea = hRock.mul( rockM ); // the sand's ripples are analytic (sandSlope, with the normal)
 	const hDetail = mix( mix( mix( hGrass, hPath, pathM ), hRock, rockAll ), hSea, underM ).mul( U.detail );
 	const bumpFade = smoothstep( 80, 420, viewDist ).oneMinus();
 	const bumped = proceduralBump( hDetail, mix( 0.35, 1.4, rockAll ).mul( nearFade.mul( 0.8 ).add( 0.2 ) ).mul( bumpFade ).mul( puddleM.oneMinus() ) );
 	// the rain on the puddles: ring slopes in world x / z (the ripples are too small to resolve past ~60 m)
 	const rip = rainRipples( wp.xz, puddleM.mul( smoothstep( 40, 60, viewDist ).oneMinus() ) ).mul( 0.09 );
-	mat.normalNode = normalize( bumped.add( cameraViewMatrix.mul( vec4( rip.x.negate(), 0, rip.y.negate(), 0 ) ).xyz ) );
+	// the sand's ripples under the water (sandSlope), faded out far away (a few px a wave past ~60 m)
+	const sand2 = sandSlope.mul( underM.mul( rockM.oneMinus() ).mul( smoothstep( 40, 70, viewDist ).oneMinus() ).mul( U.detail ) );
+	mat.normalNode = normalize( bumped.add( cameraViewMatrix.mul( vec4( rip.x.add( sand2.x ).negate(), 0, rip.y.add( sand2.y ).negate(), 0 ) ).xyz ) );
 	// and the impacts glinting on everything wet that faces up, out to where a drop is a pixel
 	mat.emissiveNode = rainGlints( wp.xz, wetM.mul( smoothstep( 0.4, 0.8, normalWorld.y ) ).mul( smoothstep( 70, 110, viewDist ).oneMinus() ).mul( underM.oneMinus() ) ).mul( 0.5 )
 		// and the lanterns' pools of light at night (world/lampLight.js)
