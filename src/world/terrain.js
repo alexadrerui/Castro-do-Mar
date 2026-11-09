@@ -2,8 +2,9 @@ import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, normalWorld, positionView, normalView, faceDirection,
 	vec2, vec3, float, color, mix, smoothstep, clamp, max, abs, sin, cos, cross, dot, normalize, length,
-	attribute, fwidth, cameraViewMatrix, vec4, textureLoad, ivec2, floor, select
+	attribute, fwidth, cameraViewMatrix, vec4, textureLoad, ivec2, floor, select, If, exp, time, cameraPosition
 } from 'three/tsl';
+import { caustic, CAUSTIC_TILE } from '../post/underwater.js';
 import { MASK, WATER_LEVEL } from './layout.js';
 import { makeDetailTexture } from '../core/texgen.js';
 import srcTexgen from '../core/texgen.js?raw';
@@ -80,6 +81,7 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	const U = {
 		detail: uniform( 1.0 ),
 		wetLine: uniform( 0.6 ),
+		caustics: uniform( 3.0 ), // the caustic net on the bed seen from above the water (0: none)
 		sunDir: uniform( sunDir )
 	};
 
@@ -211,7 +213,24 @@ export function createTerrain( hf, maskData, aoData, sunDir, macroData, detailDa
 	const puddleM = smoothstep( 0.6, 0.66, nMed.add( nFine.sub( 0.5 ).mul( 0.2 ) ).add( wetness.mul( 0.18 ) ).sub( 0.18 ) )
 		.mul( holds ).mul( flat ).mul( smoothstep( 0.25, 0.8, wetness ) ).mul( underM.oneMinus() ).mul( lakeWet.oneMinus() ).mul( snowM.oneMinus() );
 	col = mix( col, col.mul( vec3( 0.55, 0.56, 0.6 ) ), puddleM.mul( 0.85 ) );
-	mat.colorNode = col.mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() ).mul( wetM.mul( rockAll.mul( 0.08 ).sub( 0.22 ) ).add( 1 ) );
+	// Caustics on the bed seen from above the water (the sea's shallows, rivers, lakes): the waves focus
+	// the sunlight into the moving net of post/underwater.js (which draws it when the eye is under the
+	// water: here only while the camera is above that water's surface). Sharp in the shallows and gone
+	// by ~6 m; on the ground's albedo, so the sun's shading and shadow still apply. Only the submerged
+	// fragments pay for the pattern.
+	const waterTop = max( lakeL, float( WATER_LEVEL ) );
+	const under = waterTop.sub( wp.y );
+	const causticK = smoothstep( 0.03, 0.3, under ).mul( exp( under.mul( - 0.22 ) ) ).mul( smoothstep( 0.4, 0.8, normalWorld.y ) )
+		.mul( select( cameraPosition.y.greaterThan( waterTop ), float( 1 ), float( 0 ) ) ).mul( U.caustics ).min( 1.6 );
+	const bedCol = Fn( () => {
+		const c = col.toVar();
+		If( causticK.greaterThan( 0.01 ), () => {
+			const net = caustic( wp.xz.div( CAUSTIC_TILE ), time.mul( 0.55 ) );
+			c.mulAssign( net.mul( 2.2 ).sub( 0.28 ).mul( causticK ).add( 1 ) );
+		} );
+		return c;
+	} )();
+	mat.colorNode = bedCol.mul( mix( 0.55, 1.0, ao ) ).mul( cloudShade() ).mul( wetM.mul( rockAll.mul( 0.08 ).sub( 0.22 ) ).add( 1 ) );
 	mat.aoNode = mix( float( 0.6 ), float( 1.0 ), ao );
 
 	// roughness: wet near water, rock slightly smoother

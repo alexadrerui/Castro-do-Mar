@@ -146,6 +146,7 @@ export function createRocks( app, progress ) {
 		item.add_( m, ex );
 		return true;
 	};
+	const putRock = put;
 	const counts = { boulders: 0, gravel: 0 };
 
 	// 1) Granite tors on the hills and around the village: clusters. The grids of 1), 2) and 3) draw
@@ -223,6 +224,13 @@ export function createRocks( app, progress ) {
 	// own sequence (seeded by its source), so the stones above keep their places.
 	for ( const river of app.rivers?.list ?? [] ) {
 		const S = river.course.samples;
+		// the stones laid here are kept for the water's white collars and wakes (rivers.js bakeStones)
+		river.stones = [];
+		const put = ( list, x, z, s, sink, squash, R ) => {
+			const ok = putRock( list, x, z, s, sink, squash, R );
+			if ( ok ) river.stones.push( [ x, z, s * 0.55 ] );
+			return ok;
+		};
 		const R = mulberry32( ( Math.round( S[ 0 ].x * 13 ) * 73856093 ) ^ ( Math.round( S[ 0 ].z * 13 ) * 19349663 ) ^ 0x726976 );
 		// a stone cannot rest on ground steeper than ~50 degrees across its footprint (it would hang)
 		const rests = ( x, z, s ) => {
@@ -266,6 +274,8 @@ export function createRocks( app, progress ) {
 			}
 		}
 	}
+
+	app.rivers?.bakeStones();
 
 	// 3) Gravel: along path edges, at house pads and on the shore near the village.
 	for ( let z = - 260, j = 0; z < 300; z += 1.3, j ++ ) {

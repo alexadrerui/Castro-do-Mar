@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, attribute, texture, positionWorld, cameraPosition, time, vec2, vec3, float, mix, smoothstep, clamp,
-	max, pow, dot, normalize, reflect, fract, abs, pmremTexture, mx_noise_float, uniform, normalWorld
+	max, pow, dot, normalize, reflect, fract, abs, exp, pmremTexture, mx_noise_float, uniform, normalWorld
 } from 'three/tsl';
 import { WATER_LEVEL } from './layout.js';
 import { RiverCourse } from './riverCourse.js';
@@ -44,6 +44,9 @@ function ribbonGeometry( course ) {
 	const g = new THREE.BufferGeometry();
 	g.setAttribute( 'position', new THREE.Float32BufferAttribute( pos, 3 ) );
 	g.setAttribute( 'riverFlow', new THREE.Float32BufferAttribute( flow, 4 ) );
+	// the stones in the stream (Rivers.bakeStones, once rocks.js has placed them): the white collar
+	// round each one and its wake downstream
+	g.setAttribute( 'riverRock', new THREE.Float32BufferAttribute( new Float32Array( pos.length / 3 * 2 ), 2 ) );
 	g.setIndex( idx );
 	g.computeVertexNormals();
 	g.computeBoundingSphere();
@@ -54,13 +57,18 @@ function ribbonGeometry( course ) {
 let MAT = null;
 function riverMaterial( heightTex, sunDir, envMap ) {
 	if ( MAT ) return MAT;
-	const waveTex = createWaveTexture( 256, 11 );
+	// a broad fan (no wind axis: the ripples ride the current in every direction the river runs)
+	const waveTex = createWaveTexture( 256, 11, { spread: 1, floor: 0.5, kPeak: 5 } );
 	const U = {
 		sunDir: uniform( sunDir ), sunColor: uniform( new THREE.Color( 0xfff0d8 ) ),
 		shallow: uniform( new THREE.Color( 0x3d5a3c ) ), deep: uniform( new THREE.Color( 0x1f3a3a ) ),
-		envGain: uniform( 0.55 )
+		envGain: uniform( 0.55 ),
+		// how fast the water hides the bed (1/m along the light's path down and back up; the sea's is 0.12)
+		absorb: uniform( 0.45 )
 	};
 	const mat = new THREE.MeshBasicNodeMaterial( { transparent: true, depthWrite: true } );
+	// premultiplied, as the sea (water.js): the reflection on top, the bed through what the water lets pass
+	mat.premultipliedAlpha = true;
 	mat.name = 'RiverWater';
 	const wp = positionWorld, V = normalize( cameraPosition.sub( wp ) );
 	const hd = heightTex.userData;
@@ -85,36 +93,58 @@ function riverMaterial( heightTex, sunDir, envMap ) {
 	// the ribbon's own normal (a fall's sheet tilts toward the viewer below it: taken as level, the
 	// Fresnel term saw a grazing angle there and mirrored the whole sky), bent by the slopes
 	const N = normalize( normalWorld.add( vec3( sl.x.mul( strength ).negate(), 0.0, sl.y.mul( strength ).negate() ) ) );
+	// The optics of the sea (water.js, after offroad's water.js): the Fresnel reflection kR at full
+	// strength on top, and under it the light the water body scatters back, (1 - kR)(1 - T), where
+	// T = exp( -absorb depth (1 + 1/cos) ) is what comes back from the bed (down from the surface, up
+	// along the refracted view); the bed itself shows through the alpha. Before, the river was a fixed
+	// opacity by depth (0.35 to 0.95) and its bed hardly showed.
+	const cosT = max( dot( V, N ), 0.0 );
+	const fres = float( 0.02 ).add( float( 0.98 ).mul( pow( float( 1 ).sub( cosT ), 5.0 ) ) );
+	const kR = clamp( fres.mul( 1.1 ).add( 0.05 ), 0, 1 );
+	const cosR = float( 1 ).sub( float( 1 ).sub( cosT.mul( cosT ) ).div( 1.78 ) ).sqrt();
+	const trans = exp( U.absorb.mul( depth ).mul( float( 1 ).add( float( 1 ).div( cosR ) ) ).negate() );
+	// (a fall's sheet is opaque: the cover it adds is more of the water body)
+	const cover0 = kR.add( kR.oneMinus().mul( trans.oneMinus() ) );
+	const cover = clamp( cover0.add( fall ), 0, 1 );
+	const rock = attribute( 'riverRock', 'vec2' );
+	const edge = smoothstep( 0.0, 0.18, depth ).max( fall );
+	// white water: streaks carried by the current where it runs fast, and a thin line at the banks
+	const n0 = mx_noise_float( vec3( wp.xz.sub( drift( ph0 ) ).mul( vec2( 0.9, 0.9 ) ), 1.3 ) );
+	const n1 = mx_noise_float( vec3( wp.xz.sub( drift( ph1 ) ).mul( vec2( 0.9, 0.9 ) ), 7.1 ) );
+	const streak = smoothstep( 0.25, 0.75, mix( n0, n1, wgt ).mul( 0.5 ).add( 0.5 ) );
+	// (on a fall the strands below take over: there the fast-water white covered the whole sheet)
+	const fallM = smoothstep( 0.0, 0.6, fall );
+	// the stones: a white collar hugging each one (broken by a fine lace) and its wake trailing downstream
+	const lace = mx_noise_float( vec3( wp.xz.sub( drift( ph0 ) ).mul( 3.1 ), 4.2 ) ).mul( 0.5 ).add( 0.5 ).mul( wgt.oneMinus() )
+		.add( mx_noise_float( vec3( wp.xz.sub( drift( ph1 ) ).mul( 3.1 ), 9.4 ) ).mul( 0.5 ).add( 0.5 ).mul( wgt ) );
+	const stones = smoothstep( 0.6, 0.95, rock.x.mul( 0.75 ).add( lace.mul( 0.45 ) ) ).mul( rock.x.min( 1 ) ).mul( 0.9 )
+		.add( smoothstep( 0.55, 0.85, lace ).mul( rock.y ).mul( 0.6 ) ).add( rock.y.mul( 0.08 ) );
+	const white = streak.mul( smoothstep( 2.2, 5.0, speed ) ).mul( 0.75 ).mul( fallM.oneMinus() ).add( smoothstep( 0.04, 0.2, depth ).oneMinus().mul( 0.1 ) ).add( stones );
+	const whiteW = clamp( white, 0, 0.85 );
+	// falls: sheets of white strands pouring down the course (fine across, long along the flow,
+	// carried downstream at the water's speed); the plunge pool below boils white and clears
+	const across = dot( wp.xz, vec2( dir.y.negate(), dir.x ) ), along = dot( wp.xz, dir );
+	const strands = mx_noise_float( vec3( across.mul( 2.8 ), along.mul( 0.35 ).sub( time.mul( speed ).mul( 0.35 ) ), 3.7 ) ).mul( 0.5 ).add( 0.5 );
+	const sheet = smoothstep( 0.38, 0.62, strands );
+	// white strands with the water showing between them (a solid white sheet read as snow)
+	const fallW = fallM.mul( sheet.mul( 0.7 ).add( 0.12 ) );
 	mat.colorNode = Fn( () => {
 		const L = normalize( U.sunDir );
-		const cosT = max( dot( V, N ), 0.0 );
-		const fres = float( 0.02 ).add( float( 0.98 ).mul( pow( float( 1 ).sub( cosT ), 5.0 ) ) );
 		const body = mix( U.shallow, U.deep, smoothstep( 0.2, 1.4, depth ) ).mul( U.sunColor ).mul( max( dot( N, L ), 0.0 ).mul( 0.35 ).add( 0.45 ) );
 		const refl = pmremTexture( envMap, reflect( V.negate(), N ), float( 0.05 ) ).rgb.mul( U.envGain ).min( vec3( 1.1 ) );
-		const col = mix( body, refl, clamp( fres.mul( 1.1 ).add( 0.05 ), 0, 1 ) ).toVar();
+		const col = refl.mul( kR ).add( body.mul( kR.oneMinus() ).mul( trans.oneMinus() ) ).toVar();
 		const R = reflect( L.negate(), N );
 		col.addAssign( U.sunColor.mul( pow( max( dot( R, V ), 0.0 ), 300.0 ).mul( 6.0 ) ) );
-		// white water: streaks carried by the current where it runs fast, and a thin line at the banks
-		const n0 = mx_noise_float( vec3( wp.xz.sub( drift( ph0 ) ).mul( vec2( 0.9, 0.9 ) ), 1.3 ) );
-		const n1 = mx_noise_float( vec3( wp.xz.sub( drift( ph1 ) ).mul( vec2( 0.9, 0.9 ) ), 7.1 ) );
-		const streak = smoothstep( 0.25, 0.75, mix( n0, n1, wgt ).mul( 0.5 ).add( 0.5 ) );
-		// (on a fall the strands below take over: there the fast-water white covered the whole sheet)
-		const fallM = smoothstep( 0.0, 0.6, fall );
-		const white = streak.mul( smoothstep( 2.2, 5.0, speed ) ).mul( 0.75 ).mul( fallM.oneMinus() ).add( smoothstep( 0.04, 0.2, depth ).oneMinus().mul( 0.1 ) );
-		col.assign( mix( col, vec3( 0.88, 0.92, 0.92 ), clamp( white, 0, 0.85 ) ) );
-		// falls: sheets of white strands pouring down the course (fine across, long along the flow,
-		// carried downstream at the water's speed); the plunge pool below boils white and clears
-		const across = dot( wp.xz, vec2( dir.y.negate(), dir.x ) ), along = dot( wp.xz, dir );
-		const strands = mx_noise_float( vec3( across.mul( 2.8 ), along.mul( 0.35 ).sub( time.mul( speed ).mul( 0.35 ) ), 3.7 ) ).mul( 0.5 ).add( 0.5 );
-		const sheet = smoothstep( 0.38, 0.62, strands );
-		// white strands with the water showing between them (a solid white sheet read as snow)
-		col.assign( mix( col, vec3( 0.9, 0.94, 0.95 ).mul( sheet.mul( 0.2 ).add( 0.85 ) ), fallM.mul( sheet.mul( 0.7 ).add( 0.12 ) ) ) );
-		return col;
+		col.addAssign( body.mul( cover.sub( cover0 ) ) );
+		col.assign( mix( col, vec3( 0.88, 0.92, 0.92 ), whiteW ) );
+		col.assign( mix( col, vec3( 0.9, 0.94, 0.95 ).mul( sheet.mul( 0.2 ).add( 0.85 ) ), fallW ) );
+		// premultiplied: the edge fade dims the colour with the alpha
+		return col.mul( edge );
 	} )();
 	// the water fades out over its last ~18 cm: the visible edge follows the bilinear height texture, a
 	// smooth curve, instead of the relief's triangles crossing the surface (a sawtooth on narrow rivers)
-	mat.opacityNode = clamp( mix( 0.35, 0.95, smoothstep( 0.0, 1.2, depth ) ).add( pow( float( 1 ).sub( max( dot( V, N ), 0.0 ) ), 3.0 ).mul( 0.4 ) ).add( fall ), 0, 1 )
-		.mul( smoothstep( 0.0, 0.18, depth ).max( fall ) );
+	// (the white water, a fall's sheet: opaque)
+	mat.opacityNode = mix( cover, float( 1 ), max( whiteW, fallW ) ).mul( edge );
 	mat.userData.uniforms = U;
 	MAT = mat;
 	return mat;
@@ -199,6 +229,37 @@ export class Rivers {
 		this.light.sunDir.value = sunDir; // the sky's own vector: follows the sun
 		for ( const r of this.list ) this._surface( r );
 		this._mist();
+	}
+
+	// the stones rocks.js laid in and along each river (river.stones: [ x, z, r ]): per ribbon vertex, the
+	// white collar round the nearest stones (stronger on their upstream face, where the current piles up)
+	// and the wake trailing downstream of each (longer where it runs fast); into 'riverRock'
+	bakeStones() {
+		for ( const river of this.list ) {
+			const g = river.mesh?.geometry, st = river.stones;
+			if ( ! g ) continue;
+			const P = g.attributes.position.array, F = g.attributes.riverFlow.array, A = g.attributes.riverRock;
+			const out = A.array;
+			out.fill( 0 );
+			if ( st?.length ) for ( let v = 0; v < P.length / 3; v ++ ) {
+				const x = P[ v * 3 ], z = P[ v * 3 + 2 ], dx = F[ v * 4 ], dz = F[ v * 4 + 1 ], sp = F[ v * 4 + 2 ];
+				let collar = 0, wake = 0;
+				for ( const [ sx, sz, r ] of st ) {
+					const ox = x - sx, oz = z - sz;
+					if ( Math.abs( ox ) > 14 || Math.abs( oz ) > 14 ) continue;
+					const d = Math.hypot( ox, oz ), along = ox * dx + oz * dz, across = Math.abs( ox * dz - oz * dx );
+					const up = d > 1e-3 ? Math.max( 0, - along / d ) : 0;
+					collar = Math.max( collar, Math.exp( - Math.max( d - r * 0.8, 0 ) / ( 0.22 + 0.12 * r ) ) * ( 0.7 + 0.5 * up ) );
+					if ( along > 0 ) {
+						const len = 2.5 + 1.6 * sp + 2 * r;
+						const wr = r * ( 0.9 + along / len * 0.8 );
+						wake = Math.max( wake, Math.exp( - along / len ) * Math.exp( - ( ( across / wr ) ** 2 ) ) * Math.min( 1, along / Math.max( r, 0.3 ) ) );
+					}
+				}
+				out[ v * 2 ] = collar; out[ v * 2 + 1 ] = wake;
+			}
+			A.needsUpdate = true;
+		}
 	}
 
 	_surface( river ) {

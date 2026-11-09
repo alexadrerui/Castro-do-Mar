@@ -15,6 +15,7 @@ import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
 import { Mist } from './post/mist.js';
 import { Godrays } from './post/godrays.js';
+import { computeSurf } from './world/surf.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
 import { FishSchools } from './world/fish/schools.js';
@@ -223,7 +224,11 @@ async function main() {
 	await loader.run( 'water', async () => {
 		// the planar reflection is captured every 100 ms (or when the camera moves 2 m) and reprojected
 		// in between (world/planarReprojection.js); ?reflectms=0 captures every frame
-		const water = createWater( terrain.heightTex, sky.state.lightDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 0 ) } );
+		// the swell's travel time over the bed (world/surf.js): the waves breaking on the coast
+		const tSurf = performance.now();
+		const surfTex = params.get( 'surf' ) === '0' ? null : computeSurf( hf, WATER_LEVEL );
+		app.surfMs = performance.now() - tSurf;
+		const water = createWater( terrain.heightTex, sky.state.lightDir, { reflectionInterval: Number( params.get( 'reflectms' ) ?? 0 ), surfTex } );
 		scene.add( water.mesh );
 		app.water = water;
 		app.layers.water = { label: 'Água', object: water.mesh };

@@ -25,7 +25,7 @@ const UNDER_NEAR = 0.05; // m: and its near plane (far / near = 1800: depth prec
 // m: the waterline cut is drawn while the camera is within this distance of the surface (the near
 // plane's corners reach ~1.4 m from the eye at the 1 m near plane: past it the cut is off screen)
 const LINE_BAND = 1.5;
-const CAUSTIC_TILE = 3.2; // m: size of the caustic pattern tile
+export const CAUSTIC_TILE = 3.2; // m: size of the caustic pattern tile
 const CAUSTIC_STRENGTH = 1.3;
 const CAUSTIC_FADE = 0.08; // 1/m: caustics lost per metre of depth (the net also blurs out)
 const TAU = Math.PI * 2;
@@ -68,7 +68,7 @@ const causticLayer = ( uv, t, N, speed, seed, warp ) => {
 
 };
 
-const caustic = ( uv, t ) => {
+export const caustic = ( uv, t ) => {
 
 	const l1 = exp( causticLayer( uv, t, 3, 0.9, 1, 0.35 ).div( - 0.07 ) );
 	const l2 = exp( causticLayer( uv.add( vec2( 0.37, 0.11 ) ), t, 2, 0.7, 2, 0.45 ).div( - 0.098 ) );

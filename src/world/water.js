@@ -1,41 +1,88 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, uniform, texture, positionWorld, cameraPosition, time, reflector,
-	vec2, vec3, float, color, mix, smoothstep, clamp, max, pow, dot, normalize, reflect, length, sin,
+	vec2, vec3, float, color, mix, smoothstep, clamp, max, pow, dot, normalize, reflect, length, sin, cos, fract,
 	mx_noise_float, pmremTexture, exp
 } from 'three/tsl';
 import { PlanarReprojection } from './planarReprojection.js';
 import { rainRipples } from './rainImpacts.js';
 import { WATER_LEVEL } from './layout.js';
 
-// Tileable wave-slope texture: sum of sines with integer wave vectors so it
-// wraps perfectly. RG store d(h)/dx, d(h)/dz.
-export function createWaveTexture( size = 256, seed = 7 ) {
+// in-place radix-2 inverse FFT of n complex values at re/im[ off + i * stride ] (unnormalised)
+function ifft1( re, im, n, off, stride ) {
+	for ( let i = 1, j = 0; i < n; i ++ ) {
+		let bit = n >> 1;
+		for ( ; j & bit; bit >>= 1 ) j ^= bit;
+		j ^= bit;
+		if ( i < j ) {
+			const a = off + i * stride, b = off + j * stride;
+			let t = re[ a ]; re[ a ] = re[ b ]; re[ b ] = t;
+			t = im[ a ]; im[ a ] = im[ b ]; im[ b ] = t;
+		}
+	}
+	for ( let len = 2; len <= n; len <<= 1 ) {
+		const ang = 2 * Math.PI / len, half = len >> 1;
+		for ( let i = 0; i < n; i += len ) for ( let j = 0; j < half; j ++ ) {
+			const wr = Math.cos( ang * j ), wi = Math.sin( ang * j );
+			const a = off + ( i + j ) * stride, b = a + half * stride;
+			const tr = wr * re[ b ] - wi * im[ b ], ti = wr * im[ b ] + wi * re[ b ];
+			re[ b ] = re[ a ] - tr; im[ b ] = im[ a ] - ti;
+			re[ a ] += tr; im[ a ] += ti;
+		}
+	}
+}
+
+// Tileable wave-slope texture from a directional wind-sea spectrum (after NeuralSpecOcean's
+// SpectralWaves.js, https://github.com/bgbg108555/NeuralSpecOcean, MIT, Copyright (c) 2026 bgbg108555,
+// licenses/LICENSE-NeuralSpecOcean.md): every integer wave vector up to kMax harmonics per tile gets a
+// Gaussian amplitude from a Phillips spectrum (k^-4, the peak at kPeak, a smooth roll-off before the
+// tile's Nyquist) times a broad directional spreading around `dir` (cos^2s of the angle to the wind
+// axis plus a floor: a natural fan of crests, not the diamond lattice of a few crossing sines). The
+// slopes i k H come out of one complex inverse FFT (Sx + i Sz, the height spectrum made Hermitian).
+// The integer wave vectors make it wrap perfectly. RG store d(h)/dx, d(h)/dz.
+// opts: dir (the wind axis in texture space, radians; 0 = crests along v), spread (cos power; low =
+// broad), floor (the share of energy in every direction), kPeak, kMax.
+export function createWaveTexture( size = 256, seed = 7, opts = {} ) {
+	const { dir = 0, spread = 3, floor = 0.18, kPeak = 3.5, kMax = 56 } = opts;
 	let s = seed;
 	const rnd = () => ( s = ( s * 16807 ) % 2147483647 ) / 2147483647;
-	const waves = [];
-	for ( let i = 0; i < 48; i ++ ) {
-		const kx = Math.round( ( rnd() * 2 - 1 ) * 14 ), kz = Math.round( ( rnd() * 2 - 1 ) * 14 );
-		if ( kx === 0 && kz === 0 ) continue;
+	const gauss = () => Math.sqrt( - 2 * Math.log( rnd() + 1e-12 ) ) * Math.cos( 2 * Math.PI * rnd() );
+	const n = size, N = n * n;
+	const hr = new Float32Array( N ), hi = new Float32Array( N );
+	const cd = Math.cos( dir ), sd = Math.sin( dir );
+	for ( let y = 0; y < n; y ++ ) for ( let x = 0; x < n; x ++ ) {
+		const kx = x <= n / 2 ? x : x - n, kz = y <= n / 2 ? y : y - n;
 		const k = Math.hypot( kx, kz );
-		waves.push( { kx, kz, a: 1 / Math.pow( k, 1.4 ), p: rnd() * Math.PI * 2 } );
+		if ( k === 0 || k > kMax ) continue;
+		const c = Math.abs( kx * cd + kz * sd ) / k; // |cos| of the angle to the wind axis
+		const D = floor + ( 1 - floor ) * Math.pow( c, 2 * spread );
+		const taper = Math.exp( - ( k * k ) / ( kMax * kMax * 0.35 ) );
+		const P = Math.exp( - ( kPeak * kPeak ) / ( k * k ) ) / ( k * k * k * k ) * D * taper;
+		const a = Math.sqrt( P * 0.5 );
+		hr[ y * n + x ] = gauss() * a; hi[ y * n + x ] = gauss() * a;
 	}
-	const data = new Uint8Array( size * size * 4 );
-	let maxD = 0;
-	const tmp = new Float32Array( size * size * 2 );
-	for ( let j = 0; j < size; j ++ ) for ( let i = 0; i < size; i ++ ) {
-		const u = i / size * Math.PI * 2, v = j / size * Math.PI * 2;
-		let dx = 0, dz = 0;
-		for ( const w of waves ) {
-			const c = Math.cos( w.kx * u + w.kz * v + w.p ) * w.a;
-			dx += c * w.kx; dz += c * w.kz;
-		}
-		tmp[ ( j * size + i ) * 2 ] = dx; tmp[ ( j * size + i ) * 2 + 1 ] = dz;
-		maxD = Math.max( maxD, Math.abs( dx ), Math.abs( dz ) );
+	// Hermitian height spectrum (a real height field): Hs(k) = ( H(k) + conj H(-k) ) / 2; slopes
+	// packed as A = i kx Hs + i ( i kz Hs ), whose inverse transform is Sx + i Sz
+	const re = new Float32Array( N ), im = new Float32Array( N );
+	for ( let y = 0; y < n; y ++ ) for ( let x = 0; x < n; x ++ ) {
+		const i = y * n + x, j = ( ( n - y ) % n ) * n + ( ( n - x ) % n );
+		const sr = ( hr[ i ] + hr[ j ] ) / 2, si = ( hi[ i ] - hi[ j ] ) / 2;
+		const kx = x <= n / 2 ? x : x - n, kz = y <= n / 2 ? y : y - n;
+		const ok = x !== n / 2 && y !== n / 2; // the Nyquist row/column has no partner
+		re[ i ] = ok ? - kx * si - kz * sr : 0;
+		im[ i ] = ok ? kx * sr - kz * si : 0;
 	}
-	for ( let k = 0; k < size * size; k ++ ) {
-		data[ k * 4 ] = ( tmp[ k * 2 ] / maxD * 0.5 + 0.5 ) * 255;
-		data[ k * 4 + 1 ] = ( tmp[ k * 2 + 1 ] / maxD * 0.5 + 0.5 ) * 255;
+	for ( let y = 0; y < n; y ++ ) ifft1( re, im, n, y * n, 1 );
+	for ( let x = 0; x < n; x ++ ) ifft1( re, im, n, x, n );
+	const data = new Uint8Array( N * 4 );
+	// scaled to 3 standard deviations (a Gaussian field's rare extremes, clamped, would flatten the rest)
+	let v2 = 0;
+	for ( let k = 0; k < N; k ++ ) v2 += re[ k ] * re[ k ] + im[ k ] * im[ k ];
+	const range = 3 * Math.sqrt( v2 / ( 2 * N ) );
+	const q = ( v ) => Math.max( 0, Math.min( 255, ( v / range * 0.5 + 0.5 ) * 255 ) );
+	for ( let k = 0; k < N; k ++ ) {
+		data[ k * 4 ] = q( re[ k ] );
+		data[ k * 4 + 1 ] = q( im[ k ] );
 		data[ k * 4 + 2 ] = 128; data[ k * 4 + 3 ] = 255;
 	}
 	const tex = new THREE.DataTexture( data, size, size, THREE.RGBAFormat );
@@ -45,6 +92,73 @@ export function createWaveTexture( size = 256, seed = 7 ) {
 	tex.generateMipmaps = true;
 	tex.needsUpdate = true;
 	return tex;
+}
+
+// The coastal swell on the sea plane, after NeuralSpecOcean's CoastalWaves.js
+// (https://github.com/bgbg108555/NeuralSpecOcean, MIT, Copyright (c) 2026 bgbg108555,
+// licenses/LICENSE-NeuralSpecOcean.md): three swell trains at the phase w (t - tau) of the travel time
+// over the bed (world/surf.js), so the crests bend round the coast and come in square to it; each has
+// the skewed shoaling profile of a wave about to break (a steep front, a long back; steeper in the
+// shallows), the wave groups of a swell (sets and lulls), the shoaling gain (Green's law, h^-1/4) and
+// the depth limit. The sea stays a plane: the swell is its slope (the normal) and the white water.
+// The breaking lip shows where the local wave height nears the depth limit (Miche / McCowan,
+// H ~ 0.64-0.78 d) on the crest's front and its long trailing roller.
+// Returns { slope (dh/dx, dh/dz), lip (0..~1.3), run (0..1: a wave running up the shore), dir (the
+// crests' travel direction) }.
+function coastalSurf( surfTex, huv, insideT, depth, U ) {
+	const su = surfTex.userData;
+	U.surf = uniform( 1.6 ); // the swell's height (0: none; 1: NeuralSpecOcean's)
+	const sv = texture( surfTex, huv );
+	const reach = sv.a.mul( insideT );
+	const tau = sv.r.add( float( su.X0 ).sub( positionWorld.x ).div( su.c0 ) );
+	const gT = sv.gb; // grad tau (s/m)
+	const dir = gT.div( max( length( gT ), 1e-4 ) );
+	const wp = positionWorld;
+	const t = time.add( 3.05 );
+	// only near the coast (out at sea the swell is part of the spectral slopes)
+	const coast = smoothstep( 4.0, 14.0, depth ).oneMinus().mul( reach );
+	const d0 = depth;
+	const shoal = clamp( pow( float( 1.98 ).div( max( d0, 0.24 ) ), 0.28 ), 1.0, 1.9 );
+	const lim = clamp( d0.div( 0.42 ), 0.0, 1.0 );
+	const skew = mix( 0.24, 0.88, smoothstep( 0.16, 2.45, d0 ).oneMinus() );
+	// crests broken along their length (static bends in the phase) and sets that vary along the coast
+	const bend = mx_noise_float( wp.xz.div( 38 ) ).mul( 1.4 ).add( mx_noise_float( wp.xz.div( 11 ).add( 7.7 ) ).mul( 0.35 ) );
+	const along = mx_noise_float( wp.xz.div( 90 ).add( 3.1 ) ).mul( 3.0 );
+	// one train: elevation, d(elevation)/d(phase), the breaking lip
+	const train = ( w, ph, sk ) => {
+		const W = ph.add( sk.mul( sin( ph ) ) ).add( sk.mul( sk ).mul( 0.34 ).mul( sin( ph.mul( 2 ) ) ) );
+		const dW = float( 1 ).add( sk.mul( cos( ph ) ) ).add( sk.mul( sk ).mul( 0.68 ).mul( cos( ph.mul( 2 ) ) ) );
+		const s = sin( W );
+		const e = s.add( sk.mul( 0.33 ).mul( s.mul( s ).sub( 0.5 ) ) ).add( sk.mul( sk ).mul( 0.12 ).mul( s.mul( s ).mul( s ).sub( s.mul( 0.75 ) ) ) );
+		const dE = cos( W ).mul( float( 1 ).add( sk.mul( 0.66 ).mul( s ) ).add( sk.mul( sk ).mul( 0.12 ).mul( s.mul( s ).mul( 3 ).sub( 0.75 ) ) ) ).mul( dW );
+		const u = fract( W.div( 6.2831853 ) );
+		const lip = smoothstep( 0.03, 0.22, u ).mul( pow( smoothstep( 0.21, 0.84, u ).oneMinus(), 1.75 ) ).mul( smoothstep( - 0.18, 0.58, e ).mul( 0.55 ).add( 0.45 ) );
+		return { e, dE, lip };
+	};
+	const w1 = 2 * Math.PI / 7.1, w2 = 2 * Math.PI / 6.55, w3 = 2 * Math.PI / 4.75;
+	const p1 = t.sub( tau ).mul( w1 ).add( bend );
+	const p2 = t.sub( tau.mul( 0.985 ) ).mul( w2 ).sub( bend.mul( 0.65 ) ).add( 1.35 );
+	const p3 = t.sub( tau.mul( 1.045 ) ).mul( w3 ).add( bend.mul( 0.8 ) ).add( 2.6 );
+	const env1 = clamp( float( 0.68 ).add( sin( t.mul( 0.21 ).sub( tau.mul( 0.16 ) ).add( along ) ).mul( 0.34 ) ).add( cos( t.mul( 0.13 ).sub( tau.mul( 0.11 ) ).sub( along ) ).mul( 0.22 ) ), 0.22, 1.3 );
+	const env2 = clamp( float( 0.6 ).add( cos( t.mul( 0.25 ).sub( tau.mul( 0.18 ) ).sub( along ).add( 1.55 ) ).mul( 0.36 ) ).add( sin( t.mul( 0.16 ).sub( tau.mul( 0.09 ) ).add( along ) ).mul( 0.2 ) ), 0.18, 1.24 );
+	const env3 = clamp( float( 0.56 ).add( sin( t.mul( 0.29 ).sub( tau.mul( 0.21 ) ).add( along.mul( 1.3 ) ).sub( 0.8 ) ).mul( 0.44 ) ), 0.15, 1.18 );
+	const a = train( w1, p1, skew ), b = train( w2, p2, skew.mul( 0.94 ) ), c = train( w3, p3, skew.mul( 0.88 ) );
+	const gain = shoal.mul( lim ).mul( coast ).mul( U.surf );
+	const sum = a.e.mul( env1 ).mul( 0.245 ).add( b.e.mul( env2 ).mul( 0.175 ) ).add( c.e.mul( env3 ).mul( 0.145 ) );
+	const elev = sum.mul( gain );
+	// d(phase)/dx = -w s grad tau
+	const dPh = a.dE.mul( env1 ).mul( 0.245 * w1 ).add( b.dE.mul( env2 ).mul( 0.175 * w2 * 0.985 ) ).add( c.dE.mul( env3 ).mul( 0.145 * w3 * 1.045 ) ).mul( gain );
+	const slope = gT.mul( dPh ).negate();
+	// breaking: the local wave height against the depth
+	const H = max( elev.mul( 2.15 ), 0.0 );
+	const miche = H.div( max( d0.add( max( elev, 0.0 ).mul( 0.35 ) ), 0.26 ).mul( 0.64 ) );
+	const steep = smoothstep( 0.32, 1.08, miche );
+	const crest = max( a.lip.mul( env1 ).mul( 0.76 ).add( b.lip.mul( env2 ).mul( 0.62 ) ).add( c.lip.mul( env3 ).mul( 0.56 ) ), 0.0 );
+	const zone = smoothstep( 0.03, 0.24, d0 ).mul( smoothstep( 0.6, 2.6, d0 ).oneMinus() );
+	const lip = clamp( crest.mul( zone ).mul( steep.mul( 0.9 ).add( 0.35 ) ).mul( 1.8 ).mul( coast ).mul( U.surf.min( 1.5 ) ), 0.0, 1.3 );
+	// (without the depth limit, which takes the swell to nothing at the waterline)
+	const run = clamp( sum.mul( shoal ).mul( coast ).mul( U.surf ).div( 0.25 ), 0.0, 1.0 );
+	return { slope, lip, run, dir: dir.negate() };
 }
 
 // opts: reflectionInterval (ms between planar captures, planarReprojection.js), waveStrength, foam (the surf; lakes are calmer), level (WATER_LEVEL; a lake's own level, world/lakeFill.js), geometry (a horizontal surface in
@@ -112,12 +226,20 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	const wind = mix( float( 0.35 ), float( 1.3 ), windField );
 
 	// animated wave slopes: a long swell octave plus 3 scrolling octaves, fading with distance
+	// The texture's wind axis is world x (the swell comes in from the open sea to the east, crests
+	// along the coast); the shorter octaves are read in frames turned off that axis (the wind sea is
+	// broader than the swell) and their slopes turned back. All drift shoreward (towards -x).
+	const octave = ( scale, ang, vx, vz ) => {
+		const c = Math.cos( ang ), s = Math.sin( ang );
+		const p = vec2( wp.x.mul( c ).add( wp.z.mul( s ) ), wp.z.mul( c ).sub( wp.x.mul( s ) ) );
+		const g = texture( waveTex, p.div( scale ).add( vec2( time.mul( vx ), time.mul( vz ) ) ) ).rg.mul( 2 ).sub( 1 );
+		return ang === 0 ? g : vec2( g.x.mul( c ).sub( g.y.mul( s ) ), g.x.mul( s ).add( g.y.mul( c ) ) );
+	};
 	const slope = Fn( () => {
-		const t = time;
-		const s0 = texture( waveTex, wp.xz.div( 163 ).add( vec2( t.mul( 0.0045 ), t.mul( 0.0021 ) ) ) ).rg.mul( 2 ).sub( 1 );
-		const s1 = texture( waveTex, wp.xz.div( 46 ).add( vec2( t.mul( 0.010 ), t.mul( 0.006 ) ) ) ).rg.mul( 2 ).sub( 1 );
-		const s2 = texture( waveTex, wp.xz.div( 15.5 ).add( vec2( t.mul( - 0.018 ), t.mul( 0.013 ) ) ) ).rg.mul( 2 ).sub( 1 );
-		const s3 = texture( waveTex, wp.xz.div( 4.3 ).add( vec2( t.mul( 0.035 ), t.mul( - 0.031 ) ) ) ).rg.mul( 2 ).sub( 1 );
+		const s0 = octave( 163, 0, 0.0045, 0.0008 );
+		const s1 = octave( 46, 0.31, 0.010, 0.002 );
+		const s2 = octave( 15.5, - 0.44, 0.018, - 0.004 );
+		const s3 = octave( 4.3, 0.7, 0.035, 0.012 );
 		const nearF = smoothstep( 20, 220, dist ).oneMinus();
 		// the wind patches scale the short octaves (the long swell is the same everywhere)
 		return s0.mul( 0.35 ).add( s1.mul( 0.55 ).add( s2.mul( 0.4 ) ).add( s3.mul( 0.3 ).mul( nearF ) ).mul( wind ) );
@@ -126,7 +248,10 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 		.mul( smoothstep( 0.0, 1.5, depth ).mul( 0.7 ).add( 0.3 ) );
 	// raindrops landing (world/rainImpacts.js): their rings added to the wave slopes, near the camera
 	const rain = rainRipples( wp.xz, smoothstep( 45, 75, dist ).oneMinus() ).mul( 0.12 );
-	const N = normalize( vec3( slope.x.mul( strength ).add( rain.x ).negate(), 1.0, slope.y.mul( strength ).add( rain.y ).negate() ) );
+	// the coastal swell (the sea only: opts.surfTex, world/surf.js): its slope and its breaking crests
+	const surf = opts.surfTex ? coastalSurf( opts.surfTex, huv, insideT, depth, U ) : null;
+	const sSlope = surf ? surf.slope : vec2( 0 );
+	const N = normalize( vec3( slope.x.mul( strength ).add( rain.x ).add( sSlope.x ).negate(), 1.0, slope.y.mul( strength ).add( rain.y ).add( sSlope.y ).negate() ) );
 
 	// planar reflection with wave distortion (the sea); a lake reflects the sky's environment map
 	let refl = null, reflNode, reproj = null, reflWeight = float( 1 );
@@ -163,8 +288,18 @@ export function createWater( heightTex, sunDir, opts = {} ) {
 	// the shoreline foam (bands travelling towards the shore): opaque, over everything
 	const foam = Fn( () => {
 		const fn = mx_noise_float( wp.xz.mul( 0.35 ).add( time.mul( 0.08 ) ) ).mul( 0.5 ).add( 0.5 );
-		const band = sin( depth.mul( 9.0 ).sub( time.mul( 1.7 ) ).add( fn.mul( 5.0 ) ) ).mul( 0.5 ).add( 0.5 );
-		const f = smoothstep( 0.0, 1.1, depth ).oneMinus().mul( smoothstep( 0.55, 0.95, band ).mul( 0.6 ).add( smoothstep( 0.0, 0.35, depth ).oneMinus() ) ).mul( fn.mul( 0.6 ).add( 0.5 ) );
+		let f;
+		if ( surf ) {
+			// the breaking crests (lace: two noise scales drifting with the swell) and the wash at the
+			// waterline, wider while a wave runs up
+			const lace = mx_noise_float( wp.xz.mul( 1.3 ).add( surf.dir.mul( time ).mul( 1.4 ) ) ).mul( 0.5 ).add( 0.5 );
+			const broken = smoothstep( 0.25, 0.75, lace.mul( 0.6 ).add( fn.mul( 0.6 ) ).sub( 0.1 ) );
+			const wash = smoothstep( 0.0, surf.run.mul( 0.5 ).add( 0.2 ), depth ).oneMinus();
+			f = surf.lip.mul( broken.mul( 0.8 ).add( 0.35 ) ).add( wash.mul( fn.mul( 0.6 ).add( 0.5 ) ) );
+		} else {
+			const band = sin( depth.mul( 9.0 ).sub( time.mul( 1.7 ) ).add( fn.mul( 5.0 ) ) ).mul( 0.5 ).add( 0.5 );
+			f = smoothstep( 0.0, 1.1, depth ).oneMinus().mul( smoothstep( 0.55, 0.95, band ).mul( 0.6 ).add( smoothstep( 0.0, 0.35, depth ).oneMinus() ) ).mul( fn.mul( 0.6 ).add( 0.5 ) );
+		}
 		// (x 0.5: the foam is opaque now; before, the shallows' low opacity also thinned it)
 		return clamp( f.mul( U.foam ).mul( 0.5 ), 0, 0.9 );
 	} )();
