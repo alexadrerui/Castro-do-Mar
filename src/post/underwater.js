@@ -27,6 +27,8 @@ const UNDER_NEAR = 0.05; // m: and its near plane (far / near = 1800: depth prec
 const LINE_BAND = 1.5;
 export const CAUSTIC_TILE = 3.2; // m: size of the caustic pattern tile
 const CAUSTIC_STRENGTH = 1.3;
+const DISPERSION = 0.007; // m of red-blue split per metre of depth (the sun at ~45°)
+const DISPERSION_FAR = 20; // m: past it the fringes are below a pixel
 const CAUSTIC_FADE = 0.08; // 1/m: caustics lost per metre of depth (the net also blurs out)
 const TAU = Math.PI * 2;
 
@@ -98,6 +100,7 @@ export class Underwater {
 		this.sunK = uniform( 1 ).setName( 'uwSunK' );
 		// QA: 1 shows the caustic light factor, 2 the up-facing mask, 3 the point depth / 10
 		this.debug = uniform( 0 ).setName( 'uwDebug' );
+		this.dispersion = uniform( 1 ).setName( 'uwDispersion' ); // caustic colour fringes (0 = off)
 
 	}
 
@@ -166,7 +169,7 @@ export class Underwater {
 		const on = this.on, depth = this.depth, murk = this.murk, viewZ = this.viewZ;
 		const camWorld = this.camWorld, projInv = this.projInv, W = this.level;
 		const line = this.line, near = this.near;
-		const sunDir = this.sunDir, sunK = this.sunK, debug = this.debug;
+		const sunDir = this.sunDir, sunK = this.sunK, debug = this.debug, dispersion = this.dispersion;
 		return Fn( () => {
 
 			const col = vec3( rgb ).toVar();
@@ -203,10 +206,28 @@ export class Underwater {
 				const uv = posW.xz.add( refrXZ.mul( pointDepth.div( sy ) ) ).div( CAUSTIC_TILE );
 				// a main net plus a fainter, larger one drifting across it (averaging the two would halve
 				// the bright lines)
-				const cst = caustic( uv, time.mul( 0.55 ) ).add( caustic( uv.mul( 0.61 ).add( 0.37 ), time.mul( 0.4 ) ).mul( 0.35 ) );
-				const sharp = exp( pointDepth.mul( - 0.05 ) ); // the net blurs toward its mean with depth
-				const net = mix( float( 0.35 ), min( cst.mul( 3.2 ), 4 ), sharp );
 				const k = up.mul( sunK ).mul( exp( pointDepth.mul( - CAUSTIC_FADE ) ) ).mul( CAUSTIC_STRENGTH ).mul( smoothstep( 0.02, 0.4, pointDepth ) );
+				// dispersion (after the caus() of Abyssal Garden, MIT: the pattern sampled per channel at a
+				// small offset): red refracts a little less than blue (n 1.331 vs 1.340), so each colour's
+				// net lands shifted along the sun's direction, more the deeper the point: coloured fringes
+				// along the bright lines (~1.2 cm red-blue at the surface, ~4 cm at 5 m). One extra sample,
+				// not two: red at the pattern, blue at the shifted one, green the mean of both (three
+				// samples cost +0.53 ms at 1600x900 on a view full of seabed; this one ~half), and only
+				// where the caustics show (up-facing, lit, nearer than DISPERSION_FAR)
+				const sunH = refrXZ.div( max( length( refrXZ ), 1e-3 ) );
+				const disp = sunH.mul( pointDepth.mul( DISPERSION ).add( 0.012 ).min( 0.08 ).div( CAUSTIC_TILE ) ).mul( dispersion );
+				const t1 = time.mul( 0.55 );
+				const wide = caustic( uv.mul( 0.61 ).add( 0.37 ), time.mul( 0.4 ) ).mul( 0.35 );
+				const c0 = caustic( uv, t1 ).toVar();
+				const c1 = c0.toVar();
+				If( k.greaterThan( 0.02 ).and( dist.lessThan( DISPERSION_FAR ) ).and( dispersion.greaterThan( 0 ) ), () => {
+
+					c1.assign( caustic( uv.add( disp ), t1 ) );
+
+				} );
+				const cst = vec3( c0, c0.add( c1 ).mul( 0.5 ), c1 ).add( wide );
+				const sharp = exp( pointDepth.mul( - 0.05 ) ); // the net blurs toward its mean with depth
+				const net = mix( vec3( 0.35 ), min( cst.mul( 3.2 ), vec3( 4 ) ), sharp );
 				lightDown.mulAssign( float( 1 ).add( net.sub( 0.35 ).mul( k ) ) );
 				const trans = exp( vec3( ...ABSORB ).mul( dist ).negate() );
 				const fogAmt = float( 1 ).sub( exp( dist.mul( - SCATTER ) ) );
