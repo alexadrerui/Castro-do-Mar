@@ -13,13 +13,15 @@ import { Fn, uniform, float, vec2, vec3, vec4, exp, mix, smoothstep, screenUV, I
 //  - caustics: the waves focus the sunlight into a moving net of bright lines on everything that
 //    faces up (the normal comes from the derivatives of the rebuilt position), projected along
 //    the refracted sun direction, blurring out and fading with depth;
-//  - the murk itself is darker the deeper the camera is. The surface seen from below is its own
-//    mesh (world/waterUnderside.js); where nothing is hit, the far murk is lit a little brighter
-//    toward the top of the screen.
+//  - the murk: the daylight that the water scatters toward the eye, integrated along the view ray
+//    (darker the deeper the camera is and the deeper the ray goes: brighter looking up, darker
+//    looking down, stronger toward the sun). The surface seen from below is its own mesh
+//    (world/waterUnderside.js).
 const ABSORB = [ 0.42, 0.11, 0.08 ]; // 1/m, view leg, per channel (cold, green Atlantic coastal water)
 const LIGHT_ABSORB = [ 0.16, 0.055, 0.05 ]; // 1/m, sunlight going down to the point
 const SCATTER = 0.07; // 1/m: visibility of roughly 30-40 m
-const DEPTH_FALLOFF = 0.06; // 1/m: murk light lost per metre below the surface
+// 1/m: murk light lost per metre below the surface, per channel (red first: deeper water is bluer-green)
+const MURK_FALLOFF = [ 0.068, 0.06, 0.056 ];
 const UNDER_FAR = 90; // m: camera far plane while under water
 const UNDER_NEAR = 0.05; // m: and its near plane (far / near = 1800: depth precision to spare)
 // m: the waterline cut is drawn while the camera is within this distance of the surface (the near
@@ -231,11 +233,26 @@ export class Underwater {
 				lightDown.mulAssign( float( 1 ).add( net.sub( 0.35 ).mul( k ) ) );
 				const trans = exp( vec3( ...ABSORB ).mul( dist ).negate() );
 				const fogAmt = float( 1 ).sub( exp( dist.mul( - SCATTER ) ) );
-				const light = exp( depth.mul( - DEPTH_FALLOFF ) );
-				// brighter toward the top of the screen (screenUV.y = 0 at the top)
-				const glow = mix( float( 1.35 ), float( 0.55 ), smoothstep( 0.0, 1.0, screenUV.y ) );
-				const water = vec3( murk ).mul( light ).mul( glow );
-				col.assign( mix( col.mul( lightDown ).mul( trans ), water, fogAmt ) );
+				// the water between the eye and the point: the light it scatters toward the eye, integrated
+				// along the view ray (after fogIn() of Abyssal Garden, MIT). The daylight in the water falls
+				// off with depth, exp( -K d ) per channel, and the ray climbs or sinks: at a distance t its
+				// depth is depth - rd.y t, so the light it gathers is
+				//   murk exp( -K depth ) * SCATTER * integral_0^dist exp( -( SCATTER - K rd.y ) t ) dt
+				//   = murk exp( -K depth ) * SCATTER ( 1 - exp( -a dist ) ) / a,  a = SCATTER - K rd.y
+				// (horizontal: the old murk * fogAmt). Brighter looking up, darker looking down, without the
+				// old screen-space glow, and stronger toward the refracted sun (a forward phase).
+				const rd = normalize( posW.sub( camPos ) );
+				const K = vec3( ...MURK_FALLOFF );
+				const a = vec3( SCATTER ).sub( K.mul( rd.y ) );
+				const aSafe = select( a.abs().lessThan( vec3( 1e-3 ) ), vec3( 1e-3 ), a );
+				const gather = vec3( 1 ).sub( exp( aSafe.mul( dist ).negate() ) ).div( aSafe ).mul( SCATTER );
+				const Ls = vec3( sunDir.x.div( 1.333 ), 0, sunDir.z.div( 1.333 ) );
+				const sunW = vec3( Ls.x, max( float( 1 ).sub( Ls.x.mul( Ls.x ) ).sub( Ls.z.mul( Ls.z ) ), 0.05 ).sqrt(), Ls.z );
+				const mu = max( dot( rd, sunW ), 0 );
+				const mu2 = mu.mul( mu );
+				const phase = mix( float( 1 ), mu2.mul( mu2 ).mul( 0.7 ).add( 0.85 ), sunK );
+				const water = vec3( murk ).mul( exp( K.mul( depth ).negate() ) ).mul( gather ).mul( phase );
+				col.assign( col.mul( lightDown ).mul( trans ).mul( fogAmt.oneMinus() ).add( water ) );
 				// the cut: under water below the line; along it a thin film of water on the lens, bright
 				// where the light runs along the meniscus and darker just under it
 				// (squares as products: pow of a negative base is NaN)
