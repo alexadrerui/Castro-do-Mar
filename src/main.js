@@ -15,6 +15,7 @@ import { Underwater } from './post/underwater.js';
 import { MarineSnow } from './post/marineSnow.js';
 import { Mist } from './post/mist.js';
 import { Godrays } from './post/godrays.js';
+import { UnderwaterRays } from './post/underwaterRays.js';
 import { computeSurf } from './world/surf.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
@@ -571,6 +572,9 @@ async function main() {
 	const lensFn = lens.build();
 	const blurred = discBlur( scenePass.getTextureNode(), 6 );
 	app.underwater = underwater;
+	// light shafts under water (post/underwaterRays.js, after Abyssal Garden); ?uwrays=0 leaves them out
+	const uwRays = params.get( 'uwrays' ) === '0' ? null : new UnderwaterRays( { scenePass, underwater } );
+	app.uwRays = uwRays;
 	app.lens = lens;
 	const snow = new MarineSnow( { waterLevel: WATER_LEVEL } );
 	scene.add( snow.mesh );
@@ -748,7 +752,7 @@ async function main() {
 		const misty = valley ? valley.apply( misty0 ) : misty0;
 		const src0 = godrays ? godrays.apply( misty ) : misty;
 		const src = withBloom ? src0.add( bloomPass.rgb ) : src0;
-		const wetRGB = lensFn( underwater.apply( src ), blurred, screenUV ).mul( exposure.texture.sample( vec2( 0.5 ) ).r );
+		const wetRGB = lensFn( uwRays ? uwRays.apply( underwater.apply( src ) ) : underwater.apply( src ), blurred, screenUV ).mul( exposure.texture.sample( vec2( 0.5 ) ).r );
 		const c = renderOutput( vec4( wetRGB, 1.0 ) ).toVar();
 		const rgb = c.rgb.toVar();
 		const luma = dot( rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
