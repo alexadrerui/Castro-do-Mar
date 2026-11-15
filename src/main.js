@@ -16,6 +16,7 @@ import { MarineSnow } from './post/marineSnow.js';
 import { Mist } from './post/mist.js';
 import { Godrays } from './post/godrays.js';
 import { UnderwaterRays } from './post/underwaterRays.js';
+import { Bubbles } from './world/bubbles.js';
 import { computeSurf } from './world/surf.js';
 import { createWaterUnderside } from './world/waterUnderside.js';
 import { Seabed } from './world/seabed/seabed.js';
@@ -458,6 +459,7 @@ async function main() {
 		app.underwater?.setSun( sky.state.lightDir, sky.sun.intensity / SUN_MAX );
 		app.underside?.setDaylight( hazeColor.value, sky.state.lightDir, sky.sun, app.underwater?.murk.value );
 		app.snow?.light.value.copy( hazeColor.value );
+		app.bubbles?.light.value.copy( hazeColor.value );
 		app.seabed?.updateSun( sky.state.lightDir );
 		app.fish?.updateSun( sky.state.lightDir );
 	};
@@ -579,6 +581,10 @@ async function main() {
 	const snow = new MarineSnow( { waterLevel: WATER_LEVEL } );
 	scene.add( snow.mesh );
 	app.snow = snow;
+	// air bubbles rising (world/bubbles.js, after Abyssal Garden): the plunge, the breath, seabed streams
+	const bubbles = new Bubbles( { floorAt: ( x, z ) => app.seabed?.floorAt( x, z ) ?? hf.heightAt( x, z ), waterLevel: WATER_LEVEL } );
+	scene.add( bubbles.mesh );
+	app.bubbles = bubbles;
 	// the water surface seen from below (Snell's window, total internal reflection)
 	const underside = createWaterUnderside( { waterLevel: WATER_LEVEL } );
 	scene.add( underside.mesh );
@@ -592,6 +598,7 @@ async function main() {
 		snow.update( camera, underwater.on.value > 0.5, wl );
 		// the surface seen from below: also at the waterline (the part of the view under the cut)
 		underside.update( underwater.on.value > 0.5 || underwater.line.value > 0.5, wl );
+		bubbles.update( dt, camera, { visible: underwater.on.value > 0.5 || underwater.line.value > 0.5, under: underwater.on.value > 0.5, eyeUnder: underwater.eyeUnder, level: wl } );
 	} );
 
 	// Bloom (as in three's ocean example): a soft glow around what is brighter than white in the
@@ -1013,6 +1020,7 @@ async function main() {
 			underwater.update( camera, WATER_LEVEL );
 			snow.update( camera, under );
 			underside.update( under );
+			bubbles.mesh.visible = under;
 		};
 		try {
 			camera.position.set( best.x, WATER_LEVEL - 3, best.z );
@@ -1023,7 +1031,7 @@ async function main() {
 			// shader key), out of the frustum culling, drawing nothing
 			// (the water's shadow layer and the chimney smoke get other pipelines seen from under the
 			// water too: tools/divecost.mjs lists them; the water mesh carries its shadow layer)
-			const targets = [ snow.mesh, underside.mesh, app.water.mesh, app.smoke?.mesh ].filter( Boolean );
+			const targets = [ snow.mesh, bubbles.mesh, underside.mesh, app.water.mesh, app.smoke?.mesh ].filter( Boolean );
 			for ( const o of scene.children ) if ( o.visible && ! o.isLight && ! targets.includes( o ) ) { hidden.push( o ); o.visible = false; }
 			for ( const t of targets ) t.traverse( ( o ) => {
 				if ( o.frustumCulled ) { culled.push( o ); o.frustumCulled = false; }
