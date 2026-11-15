@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import {
 	Fn, If, float, vec2, vec3, vec4, attribute, positionLocal, normalLocal, positionView, varyingProperty,
-	sin, mix, smoothstep, abs, fract, floor, length, max, select, uniformArray, int, fwidth, dot,
+	sin, cos, normalize, mix, smoothstep, abs, fract, floor, length, max, select, uniformArray, int, fwidth, dot,
 	normalView, positionViewDirection, sign, clamp, pow, atan, step, saturate, normalWorldGeometry, faceDirection,
 } from 'three/tsl';
 import { rotateQ, bumpNormal } from '../seabed/materials.js';
@@ -100,9 +100,28 @@ function swimVertex( batch, V ) {
 		const lat = sin( ph.sub( u.mul( 5.6 ) ) ).mul( env ).mul( r2.y ).add( bend );
 		const flap = select( part.equal( PART.PECTORAL ), sin( ph.mul( 0.7 ).add( 1.3 ) ).mul( aData.z ).mul( 0.035 ), 0 );
 		const fish = vec3( lat.add( flap.mul( sign( p.x ) ) ), 0, 0 );
-		const disc = vec3( 0, sin( ph.sub( u.mul( 8.0 ) ) ).mul( pow( side, 1.6 ) ).mul( r2.y ), 0 );
-		p.addAssign( select( isDisc, disc, select( part.equal( PART.WHIP ), vec3( 0 ), fish ) ) );
-		normalLocal.assign( rotateQ( q, normalLocal ) );
+		// ray (after the manta of Abyssal Garden, vsManta, MIT): the wave runs back along the disc and
+		// a little out toward the tips (the phase lags with the distance from the midline); the body
+		// heaves gently against the wing beat; the whip tail swings sideways behind the disc; and the
+		// disc normal follows the wave (y = f( x, z ): n - n.y ( df/dx, 0, df/dz ); u = 0.5 - z,
+		// side = |x| / 0.5), so the light ripples along the wings instead of lying flat on them
+		const wph = ph.sub( u.mul( 8.0 ) ).sub( side.mul( 0.7 ) );
+		const sp = pow( max( side, 1e-4 ), 0.6 );
+		const wave = sin( wph ).mul( sp.mul( side ) ).mul( r2.y ); // = sin * side^1.6 * amp
+		const heave = sin( ph ).mul( r2.y ).mul( - 0.12 );
+		const dfdz = cos( wph ).mul( 8.0 ).mul( sp.mul( side ) ).mul( r2.y );
+		const dfdx = sin( wph ).mul( sp.mul( 1.6 ) ).sub( cos( wph ).mul( 0.7 ).mul( sp.mul( side ) ) ).mul( r2.y ).mul( sign( p.x ).mul( 2 ) );
+		const disc = vec3( 0, wave.add( heave ), 0 );
+		const tailK = smoothstep( 0.6, 1.3, u );
+		const whip = vec3( sin( ph.mul( 0.5 ).sub( u.mul( 3.0 ) ) ).mul( tailK.mul( tailK ) ).mul( 0.05 ).mul( smoothstep( 0, 0.02, r2.y ) ), heave, 0 );
+		p.addAssign( select( isDisc, disc, select( part.equal( PART.WHIP ), whip, fish ) ) );
+		const nL = normalLocal.toVar();
+		If( isDisc, () => {
+
+			nL.assign( normalize( nL.sub( vec3( dfdx, 0, dfdz ).mul( nL.y ) ) ) );
+
+		} );
+		normalLocal.assign( rotateQ( q, nL ) );
 		return rotateQ( q, p.mul( r0.w ) ).add( r0.xyz );
 
 	} )();
